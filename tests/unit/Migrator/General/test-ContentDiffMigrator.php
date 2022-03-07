@@ -453,7 +453,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	/**
 	 * Checks that ContentDiffMigrator::get_data queries the DB as expected, and returns a correctly formatted data array.
 	 *
-	 * @covers ContentDiffMigrator::get_data.
+	 * @covers ContentDiffMigrator::get_post_data.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -558,7 +558,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		] );
 
 		// Run.
-		$data_actual = $logic_partial_mock->get_data( $post_id, $live_table_prefix );
+		$data_actual = $logic_partial_mock->get_post_data( $post_id, $live_table_prefix );
 
 		// Assert.
 		$this->assertEquals( $data, $data_actual );
