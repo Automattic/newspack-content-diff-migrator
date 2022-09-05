@@ -42,7 +42,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	/**
 	 * Override setUp.
 	 */
-	public function setUp() {
+	public function setUp(): void {
 		global $wpdb;
 
 		parent::setUp();
