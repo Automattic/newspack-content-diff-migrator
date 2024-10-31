@@ -7,12 +7,12 @@
 
 namespace NewspackCustomContentMigrator\Logic;
 
-use WP_CLI;
-use WP_User;
-use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
+use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
 use NewspackCustomContentMigrator\Utils\PHP as PHPUtil;
 use RuntimeException;
+use WP_CLI;
+use WP_User;
 use wpdb;
 
 /**
