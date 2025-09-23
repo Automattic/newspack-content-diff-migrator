@@ -257,7 +257,6 @@ class ContentDiffMigrator {
 	 * @param array $assoc_args CLI assoc args.
 	 */
 	public function cmd_search_new_content_on_live( $args, $assoc_args ) {
-echo 1111111111111111 . "\n"; return;
 		$export_dir        = $assoc_args['export-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'attachment' ];
