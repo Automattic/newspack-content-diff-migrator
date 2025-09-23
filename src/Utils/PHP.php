@@ -1,4 +1,9 @@
 <?php
+/**
+ * PHP utilities class.
+ * 
+ * @package Newspack_Content_Diff_Migrator
+ */
 
 namespace Newspack\ContentDiffMigrator\Utils;
 
@@ -15,8 +20,8 @@ class PHP {
 	 *
 	 * @return string CLI user input.
 	 */
-	public static function readline( $question, $assoc_args = [] ) {
-		fwrite( STDOUT, $question );
+	public static function readline( $question, $assoc_args = [] ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		fwrite( STDOUT, $question ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fwrite.
 		$answer = rtrim( fgets( STDIN ), "\t\n\r\0\x0B" );
 
 		return $answer;
@@ -30,6 +35,6 @@ class PHP {
 	 * @return void
 	 */
 	public static function echo_stdout( string $str ) {
-		fwrite( STDOUT, $str );
+		fwrite( STDOUT, $str ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fwrite.
 	}
 }
