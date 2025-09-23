@@ -1,15 +1,16 @@
 <?php
 /**
- * Content Diff migrator exports and imports the content differential from one site to the local site.
+ * Content Diff migrator exports and imports the content differential from one site to the local site
+ * while keeping the existing local content.
  *
- * @package NewspackCustomContentMigrator
+ * @package NewspackContentDiffMigrator
  */
 
-namespace NewspackCustomContentMigrator\Logic;
+namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
-use NewspackCustomContentMigrator\Utils\PHP as PHPUtil;
 use RuntimeException;
 use WP_CLI;
 use WP_User;
@@ -17,8 +18,6 @@ use wpdb;
 
 /**
  * Class ContentDiffMigrator and main logic.
- *
- * @package NewspackCustomContentMigrator\Logic
  */
 class ContentDiffMigrator {
 
@@ -216,7 +215,7 @@ class ContentDiffMigrator {
 		$post_ids_map = [];
 
 		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared -- placeholders generated dynamically.
-		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types ), '%d' ) );
+		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
 		$results = $this->wpdb->get_results(
 			$this->wpdb->prepare(
 				"SELECT wpm.post_id, wpm.meta_value
@@ -407,13 +406,15 @@ class ContentDiffMigrator {
 				// Get Comment User (if the same User was not already fetched).
 				if ( $comment['user_id'] > 0 && empty( $this->filter_array_elements( $data[ self::DATAKEY_USERS ], 'ID', $comment['user_id'] ) ) ) {
 					$comment_user_row              = $this->select_user_row( $table_prefix, $comment['user_id'] );
-					$data[ self::DATAKEY_USERS ][] = $comment_user_row;
-
-					// Get Get Comment User Metas.
-					$data[ self::DATAKEY_USERMETA ] = array_merge(
-						$data[ self::DATAKEY_USERMETA ],
-						$this->select_usermeta_rows( $table_prefix, $comment_user_row['ID'] )
-					);
+					if ( $comment_user_row ) {
+						$data[ self::DATAKEY_USERS ][] = $comment_user_row;
+	
+						// Get Get Comment User Metas.
+						$data[ self::DATAKEY_USERMETA ] = array_merge(
+							$data[ self::DATAKEY_USERMETA ],
+							$this->select_usermeta_rows( $table_prefix, $comment_user_row['ID'] )
+						);
+					}
 				}
 			}
 		}
@@ -547,7 +548,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Recreates all hierarchical taxonomies from Live to local.
+	 * Recreates all hierarchical or non-hierarchical taxonomies from Live to local.
 	 *
 	 * @param string $live_table_prefix Live DB table prefix.
 	 * @param array  $hierarchical_taxonomies_to_migrate Hierarchical taxonomies to migrate.
@@ -579,7 +580,26 @@ class ContentDiffMigrator {
 		// Go through all the $live_taxonomies and get or create them on local, and mark their term_id changes in $hierarchical_taxonomy_term_id_updates.
 		$hierarchical_taxonomy_term_id_updates = [];
 		foreach ( $live_hierarchical_taxonomies as $live_hierarchical_taxonomy ) {
-			$live_hierarchical_taxonomy_tree    = $this->get_hierarchical_taxonomy_tree( $live_table_prefix, $live_hierarchical_taxonomy, $hierarchical_taxonomies_to_migrate );
+			$live_hierarchical_taxonomy_tree = $this->get_hierarchical_taxonomy_tree( $live_table_prefix, $live_hierarchical_taxonomy );
+
+			// Register taxonomy if not already registered needed (init action not executed at this point, and it just needs to be register it for the purpose of this plugin).
+			if ( ! taxonomy_exists( $live_hierarchical_taxonomy_tree['taxonomy'] ) ) {
+				$registered_taxonomy = register_taxonomy(
+					$live_hierarchical_taxonomy_tree['taxonomy'],
+					'post',
+					[
+						'taxonomy'     => $live_hierarchical_taxonomy_tree['taxonomy'],
+						'description'  => $live_hierarchical_taxonomy_tree['taxonomy'],
+						'count'        => $live_hierarchical_taxonomy_tree['count'],
+						'public'       => true,
+						'hierarchical' => true,
+					]
+				);
+				if ( is_wp_error( $registered_taxonomy ) ) {
+					WP_CLI::error( 'Failed to register taxonomy ' . $live_hierarchical_taxonomy_tree['taxonomy'] . ' error: ' . $registered_taxonomy->get_error_message() );
+				}
+			}
+
 			$created_hierarchical_taxonomy_tree = $this->get_or_create_hierarchical_taxonomy_tree( $table_prefix, $live_hierarchical_taxonomy_tree );
 
 			$hierarchical_taxonomy_term_id_updates[ $live_hierarchical_taxonomy['term_id'] ] = $created_hierarchical_taxonomy_tree['term_id'];
@@ -603,7 +623,6 @@ class ContentDiffMigrator {
 	 *     @type string count       Hierarchical taxonomy count.
 	 *     @type string parent      Hierarchical taxonomy parent term_id.
 	 * }
-	 * @param array  $hierarchical_taxonomies_to_get Hierarchical taxonomies to get their trees.
 	 *
 	 * @return array {
 	 *     A nested array of hierarchical taxonomies, where 'parent' key is either another subarray hierarchical taxonomy, or '0' if no parent.
@@ -617,7 +636,7 @@ class ContentDiffMigrator {
 	 *     @type string|array parent      Either nested parent subarray hierarchical taxonomy containing all the same keys and values, or '0'.
 	 * }
 	 */
-	public function get_hierarchical_taxonomy_tree( $table_prefix, $hierarchical_taxonomy, $hierarchical_taxonomies_to_get ) {
+	public function get_hierarchical_taxonomy_tree( $table_prefix, $hierarchical_taxonomy ) {
 
 		$hierarchical_taxonomy_tree = $hierarchical_taxonomy;
 
@@ -645,7 +664,7 @@ class ContentDiffMigrator {
 			if ( 0 == $parent_row['parent'] ) {
 				$hierarchical_taxonomy_tree['parent'] = $parent_row;
 			} else {
-				$hierarchical_taxonomy_tree['parent'] = $this->get_hierarchical_taxonomy_tree( $table_prefix, $parent_row, $hierarchical_taxonomies_to_get );
+				$hierarchical_taxonomy_tree['parent'] = $this->get_hierarchical_taxonomy_tree( $table_prefix, $parent_row );
 			}
 		}
 
@@ -844,7 +863,7 @@ class ContentDiffMigrator {
 	 */
 	public function wp_insert_or_update_term( $term_name, $term_description, $term_parent, $taxonomy ) {
 		// Check if the term already exists.
-		$term_exists = term_exists( $term_name, $taxonomy, $term_parent );
+		$term_exists = term_exists( $term_name, $taxonomy, $term_parent ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.term_exists_term_exists
 
 		// If the term doesn't exist, insert it.
 		if ( ! $term_exists ) {
@@ -923,7 +942,7 @@ class ContentDiffMigrator {
 	 *
 	 * @param int   $post_id                  Post Id.
 	 * @param array $data                     Array containing all the data, @see
-	 *                                        \NewspackCustomContentMigrator\Logic\ContentDiffMigrator::get_post_data
+	 *                                        \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::get_post_data
 	 *                                        for structure.
 	 * @param array $hierarchical_taxonomy_term_id_updates Hierarchical Taxonomy term_ids updates. Keys are old Live hierarchical taxonomy term_ids, and values are
 	 *                                        corresponding Hierarchical Taxonomies on local (Staging) term_ids.
@@ -991,19 +1010,23 @@ class ContentDiffMigrator {
 				if ( ! is_null( $comment_user_row ) ) {
 					$comment_usermeta_rows = $this->filter_array_elements( $data[ self::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] );
 					$comment_user_existing = $this->get_user_by( 'login', $comment_user_row['user_login'] );
-				}
-				if ( $comment_user_existing instanceof WP_User ) {
-					$comment_user_id_new = (int) $comment_user_existing->ID;
-				} else {
-					// Insert a new Comment User.
-					try {
-						$comment_user_id_new = $this->insert_user( $comment_user_row );
-						foreach ( $comment_usermeta_rows as $comment_usermeta_row ) {
-							$this->insert_usermeta_row( $comment_usermeta_row, $comment_user_id_new );
+
+					if ( $comment_user_existing instanceof WP_User ) {
+						$comment_user_id_new = (int) $comment_user_existing->ID;
+					} else {
+						// Insert a new Comment User.
+						try {
+							$comment_user_id_new = $this->insert_user( $comment_user_row );
+							foreach ( $comment_usermeta_rows as $comment_usermeta_row ) {
+								$this->insert_usermeta_row( $comment_usermeta_row, $comment_user_id_new );
+							}
+						} catch ( \Exception $e ) {
+							$error_messages[] = $e->getMessage();
 						}
-					} catch ( \Exception $e ) {
-						$error_messages[] = $e->getMessage();
 					}
+				} else {
+					// Handle exception when wp_comment.user_id is not found in wp_users.
+					$comment_user_id_new = 0;
 				}
 			}
 
@@ -1075,18 +1098,26 @@ class ContentDiffMigrator {
 
 					// Create a new Term.
 					$term_insert_result = $this->wp_insert_term( $live_term_name, $live_term_taxonomy_row['taxonomy'], [ 'description' => $live_term_taxonomy_row['description'] ] );
+					
 					if ( is_wp_error( $term_insert_result ) ) {
 						$error_messages[] = sprintf(
-							"Error occurred while inserting %s '%s' live_term_id=%s at live_post_ID=%s :%s",
-							$live_term_taxonomy_row['taxonomy'],
+							"Warning, could not insert term='%s' taxonomy='%s' live_term_id=%s for live_post_ID=%s . This is totally OK if you did not wish to migrate this term taxonomy. Message: %s",
 							$live_term_name,
+							$live_term_taxonomy_row['taxonomy'],
 							$live_term_id,
 							$post_id,
 							$term_insert_result->get_error_message()
 						);
-
+						
 						continue;
 					}
+
+					/**
+					 * Update $hierarchical_taxonomy_term_id_updates which contains "old term ID" to "new term ID" (see this function's arguments in docblock for more info):
+					 *      - keys are old live hierarchical taxonomy term_ids
+					 *      - values are local (Staging) term_ids.
+					 */
+					$hierarchical_taxonomy_term_id_updates[ $live_term_taxonomy_row['term_id'] ] = $term_insert_result['term_id'];
 
 					$local_term_id             = $term_insert_result['term_id'];
 					$local_term_taxonomy_id    = $term_insert_result['term_taxonomy_id'];
@@ -1143,41 +1174,43 @@ class ContentDiffMigrator {
 	/**
 	 * Updates Posts' Thumbnail IDs with new Thumbnail IDs after insertion.
 	 *
-	 * @param array  $new_post_ids                Imported local Post IDs.
+	 * @param array  $imported_post_ids           Imported local Post IDs.
 	 * @param array  $imported_attachment_ids_map Keys are IDs on Live Site, values are IDs of imported posts on Local Site.
 	 * @param string $log_file_path               Optional. Full path to a log file. If provided, the method will save and append
 	 *                                            a detailed output of all the changes made.
+	 * @param bool   $dry_run                     If true, will not make changes to DB, and will output changes to CLI instead of
+	 *                                            saving them to $log_file_path.
 	 */
-	public function update_featured_images( $new_post_ids, $imported_attachment_ids_map, $log_file_path ) {
-		if ( empty( $new_post_ids ) || empty( $imported_attachment_ids_map ) ) {
+	public function update_featured_images( $imported_post_ids, $imported_attachment_ids_map, $log_file_path, $dry_run = false ) {
+		if ( empty( $imported_post_ids ) || empty( $imported_attachment_ids_map ) ) {
 			return;
 		}
 
 		/**
-		 * We should only be updating old live site's Post IDs which had '_thumbnail_id's that are found in our "old_id" attachment mapping.
+		 * This command will only update '_thumbnail_id's for Posts which were imported by the Content Diff (not any other Posts).
 		 *
 		 * Explanation why:
-		 * for example, we could have imported two different attachments,
+		 * for example, we could have imported two different attachments:
 		 *      {"post_type":"attachment","id_old":1111,"id_new":999}
 		 *      {"post_type":"attachment","id_old":1223,"id_new":1111}
-		 * and there could be two posts currently on Staging
-		 *      one with _thumbnail_id 1111
+		 * and let's say these two posts exist on Staging:
+		 *      - first with '_thumbnail_id' 1111
 		 *          --> this one needs to be updated from 1111 to 999
-		 *      second also with _thumbnail_id 1111, but let's say this post was created directly on staging and used the existing ID 1111
-		 *          --> this one's _thumbnail_id MUST NOT be updated from 1111 to 999
+		 *      - second with '_thumbnail_id' 1111, but let's say this post was created directly on Staging and it used the second attachment with Staging ID 1111
+		 *          --> this one's _thumbnail_id should be updated from 1111 to 999
 		 *
-		 * So, we should only update _thumbnail_ids for those posts that were imported by us.
+		 * Therefore this command will only update '_thumbnail_id's for those Posts that were imported by the Content Diff.
 		 */
 
-		// Loop through posts, and update their _thumbnail_id if needed.
-		foreach ( $new_post_ids as $new_post_id ) {
+		// Loop through posts and update their _thumbnail_id if needed.
+		foreach ( $imported_post_ids as $new_post_id ) {
 
 			// Get Post's current _thumbnail_id.
-			// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared -- correctly prepared.
+			// phpcs:disable
 			$current_thumbnail_id = $this->wpdb->get_var(
 				$this->wpdb->prepare(
 					"SELECT meta_value
-					FROM {$this->live_table_prefix}postmeta
+					FROM {$this->wpdb->postmeta}
 					WHERE meta_key = '_thumbnail_id'
 					AND post_id = %d",
 					$new_post_id
@@ -1186,33 +1219,41 @@ class ContentDiffMigrator {
 			// phpcs:enable
 
 			// Check if this _thumbnail_id is used as a key in $imported_attachment_ids_map (keys are "old_id"s, values are "new_id"s).
-			if ( ! array_key_exists( $current_thumbnail_id, $imported_attachment_ids_map ) ) {
+			if ( ! $current_thumbnail_id || ! array_key_exists( $current_thumbnail_id, $imported_attachment_ids_map ) ) {
 				continue;
 			}
 
 			// Get the new _thumbnail_id and update it.
 			$new_thumbnail_id = $imported_attachment_ids_map[ $current_thumbnail_id ];
-			$updated          = $this->wpdb->update(
-				$this->wpdb->postmeta,
-				[ 'meta_value' => $new_thumbnail_id ],
-				[
-					'post_id'  => $new_post_id,
-					'meta_key' => '_thumbnail_id',
-				]
-			);
+			if ( $dry_run ) {
+				$updated = 1;
+			} else {
+				// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				$updated = $this->wpdb->update(
+					$this->wpdb->postmeta,
+					[ 'meta_value' => $new_thumbnail_id ],
+					[
+						'post_id'  => $new_post_id,
+						'meta_key' => '_thumbnail_id',
+					]
+				);
+				// phpcs:enable
+			}
 
 			// Log.
 			if ( false != $updated && $updated > 0 && ! is_null( $log_file_path ) ) {
-				$this->log(
-					$log_file_path,
-					json_encode(
-						[
-							'post_id' => (int) $new_post_id,
-							'id_old'  => (int) $current_thumbnail_id,
-							'id_new'  => (int) $new_thumbnail_id,
-						]
-					)
+				$msg = wp_json_encode(
+					[
+						'post_id' => (int) $new_post_id,
+						'id_old'  => (int) $current_thumbnail_id,
+						'id_new'  => (int) $new_thumbnail_id,
+					]
 				);
+				if ( $dry_run ) {
+					WP_CLI::line( 'Updating _thubnail_id id_old=>id_new ' . $msg );
+				} else {
+					$this->log( $log_file_path, $msg );
+				}
 			}
 		}
 	}
@@ -1335,7 +1376,7 @@ class ContentDiffMigrator {
 					);
 				}
 
-				$this->log( $log_file_path, json_encode( $log_entry ) );
+				$this->log( $log_file_path, wp_json_encode( $log_entry ) );
 			}
 		}
 	}
@@ -2714,7 +2755,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->posts, $insert_post_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting post, ID %d, post row %s', $orig_id, json_encode( $post_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting post, ID %d, post row %s', $orig_id, wp_json_encode( $post_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2737,7 +2778,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->postmeta, $insert_postmeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error in insert_postmeta_row, post_id %s, postmeta_row %s', $post_id, json_encode( $postmeta_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error in insert_postmeta_row, post_id %s, postmeta_row %s', $post_id, wp_json_encode( $postmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2760,13 +2801,14 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->users, $insert_user_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting user, ID %d, user_row %s', $user_row['ID'], json_encode( $user_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting user, ID %d, user_row %s', $user_row['ID'], wp_json_encode( $user_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		// Last inserted ID.
 		$new_user_id = $this->wpdb->insert_id;
 
 		// Save original user ID as usermeta.
+		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 		$this->wpdb->insert(
 			$this->wpdb->usermeta,
 			[
@@ -2775,6 +2817,7 @@ class ContentDiffMigrator {
 				'meta_value' => $old_user_id,
 			]
 		);
+		// phpcs:enable
 
 		return $new_user_id;
 	}
@@ -2796,7 +2839,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->usermeta, $insert_usermeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting user meta, user_id %d, $usermeta_row %s', $user_id, json_encode( $usermeta_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting user meta, user_id %d, $usermeta_row %s', $user_id, wp_json_encode( $usermeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2821,7 +2864,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->comments, $insert_comment_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting comment, $new_post_id %d, $new_user_id %d, $comment_row %s', $new_post_id, $new_user_id, json_encode( $comment_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting comment, $new_post_id %d, $new_user_id %d, $comment_row %s', $new_post_id, $new_user_id, wp_json_encode( $comment_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2844,7 +2887,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->commentmeta, $insert_commentmeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, json_encode( $commentmeta_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, wp_json_encode( $commentmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2863,7 +2906,7 @@ class ContentDiffMigrator {
 	public function update_comment_parent( $comment_id, $comment_parent_new ) {
 		$updated = $this->wpdb->update( $this->wpdb->comments, [ 'comment_parent' => $comment_parent_new ], [ 'comment_ID' => $comment_id ] );
 		if ( 1 != $updated ) {
-			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) );
+			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $updated;
@@ -2886,7 +2929,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->terms, $insert_term_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term, $term_row %s', json_encode( $term_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting term, $term_row %s', wp_json_encode( $term_row ) ) );
 		}
 
 		return $this->wpdb->insert_id;
@@ -2935,7 +2978,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->termmeta, $insert_termmeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term meta, $term_id %d, $termmeta_row %s', $term_id, json_encode( $termmeta_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting term meta, $term_id %d, $termmeta_row %s', $term_id, wp_json_encode( $termmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2960,7 +3003,7 @@ class ContentDiffMigrator {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->term_taxonomy, $insert_term_taxonomy_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term_taxonomy, $new_term_id %d, term_taxonomy_id %s', $new_term_id, json_encode( $term_taxonomy_row ) ) );
+			throw new \RuntimeException( sprintf( 'Error inserting term_taxonomy, $new_term_id %d, term_taxonomy_id %s', $new_term_id, wp_json_encode( $term_taxonomy_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -2985,7 +3028,7 @@ class ContentDiffMigrator {
 			]
 		);
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term relationship, $object_id %d, $term_taxonomy_id %d', $object_id, $term_taxonomy_id ) );
+			throw new \RuntimeException( sprintf( 'Error inserting term relationship, $object_id %d, $term_taxonomy_id %d', $object_id, $term_taxonomy_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
@@ -3004,7 +3047,7 @@ class ContentDiffMigrator {
 	public function update_post_author( $post_id, $new_author_id ) {
 		$updated = $this->wpdb->update( $this->wpdb->posts, [ 'post_author' => $new_author_id ], [ 'ID' => $post_id ] );
 		if ( 1 != $updated ) {
-			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) );
+			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $updated;
@@ -3041,7 +3084,7 @@ class ContentDiffMigrator {
 			}
 			$tablename = $table_prefix . $table;
 			if ( ! in_array( $tablename, $all_tables ) ) {
-				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $tablename ) );
+				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $tablename ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 			}
 		}
 	}
@@ -3156,7 +3199,7 @@ class ContentDiffMigrator {
 		$rename_result             = $this->wpdb->query( $rename_sql );
 
 		if ( is_wp_error( $rename_result ) ) {
-			throw new \RuntimeException( "Unable to rename table: '$rename_sql'\n" . $rename_result->get_error_message() );
+			throw new \RuntimeException( "Unable to rename table: '$rename_sql'\n" . $rename_result->get_error_message() ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		$create_like_table_sql = "CREATE TABLE {$source_table} LIKE $match_collation_for_table";
@@ -3164,7 +3207,7 @@ class ContentDiffMigrator {
 		$create_result         = $this->wpdb->query( $create_like_table_sql );
 
 		if ( is_wp_error( $create_result ) ) {
-			throw new \RuntimeException( "Unable to create table: '$create_like_table_sql'\n" . $create_result->get_error_message() );
+			throw new \RuntimeException( "Unable to create table: '$create_like_table_sql'\n" . $create_result->get_error_message() ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		$limiter = [
@@ -3180,7 +3223,7 @@ class ContentDiffMigrator {
 		$count                 = $this->wpdb->get_row( "SELECT COUNT(*) as counter FROM $backup_table;" );
 
 		if ( 0 === $count ) {
-			throw new \RuntimeException( "Table '$backup_table' has 0 rows. No need to continue." );
+			throw new \RuntimeException( "Table '$backup_table' has 0 rows. No need to continue." ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		$iterations = ceil( $count->counter / $limiter['limit'] );
@@ -3299,7 +3342,7 @@ class ContentDiffMigrator {
 	 * @return string Cleaned URL.
 	 */
 	public function clean_attachment_url_for_query( $url ) {
-		$parsed_url = parse_url( $url );
+		$parsed_url = wp_parse_url( $url );
 
 		$url_cleaned = sprintf(
 			'%s://%s%s',
@@ -3321,7 +3364,7 @@ class ContentDiffMigrator {
 	 * @return bool Should this URL be queried as local attachment.
 	 */
 	public function should_url_be_queried_as_local_attachment( $url, $local_hostname_aliases ) {
-		$url_parsed = parse_url( $url );
+		$url_parsed = wp_parse_url( $url );
 		$url_host   = $url_parsed['host'];
 
 		$siteurl        = get_option( 'siteurl' );
@@ -3361,14 +3404,14 @@ class ContentDiffMigrator {
 	/**
 	 * Filters a multidimensional array and searches for a subarray with a key and value.
 	 *
-	 * @param array $array Array being searched and filtered.
+	 * @param array $data  Array being searched and filtered.
 	 * @param mixed $key   Array key to search for.
 	 * @param mixed $value Array value to search for.
 	 *
 	 * @return null|array The array which matches the $key $value filter, or null.
 	 */
-	public function filter_array_element( $array, $key, $value ) {
-		foreach ( $array as $subarray ) {
+	public function filter_array_element( $data, $key, $value ) {
+		foreach ( $data as $subarray ) {
 			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
 				return $subarray;
 			}
@@ -3380,15 +3423,15 @@ class ContentDiffMigrator {
 	/**
 	 * Filters a multidimensional array and searches for all subarray elemens containing a key and value.
 	 *
-	 * @param array $array Array being searched and filtered.
+	 * @param array $data  Array being searched and filtered.
 	 * @param mixed $key   Array key to search for.
 	 * @param mixed $value Array value to search for.
 	 *
 	 * @return array An array with sub-arrays which match the $key $value filter, or an empty array if nothing is found.
 	 */
-	public function filter_array_elements( $array, $key, $value ) {
+	public function filter_array_elements( $data, $key, $value ) {
 		$found = [];
-		foreach ( $array as $subarray ) {
+		foreach ( $data as $subarray ) {
 			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
 				$found[] = $subarray;
 			}
@@ -3467,6 +3510,6 @@ class ContentDiffMigrator {
 	 * @param string $msg  Error message.
 	 */
 	public function log( $file, $msg ) {
-		file_put_contents( $file, $msg . "\n", FILE_APPEND );
+		file_put_contents( $file, $msg . "\n", FILE_APPEND ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
 	}
 }

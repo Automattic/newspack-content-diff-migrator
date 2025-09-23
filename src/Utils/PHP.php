@@ -1,9 +1,9 @@
 <?php
 
-namespace NewspackCustomContentMigrator\Utils;
+namespace Newspack\ContentDiffMigrator\Utils;
 
 /**
- * PHP utilities class.
+ * Low level PHP utilities class.
  */
 class PHP {
 

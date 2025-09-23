@@ -1,6 +1,6 @@
 <?php
 
-namespace NewspackCustomContentMigratorTest\DataProviders;
+namespace Newspack\CustomContentMigrator\Test\DataProviders;
 
 class DataProviderGutenbergBlocks {
 
