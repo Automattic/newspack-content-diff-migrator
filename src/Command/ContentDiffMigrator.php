@@ -10,7 +10,6 @@ namespace Newspack\ContentDiffMigrator\Command;
 
 use Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator as ContentDiffMigratorLogic;
 use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
-use Newspack\MigrationTools\Command\WpCliCommandTrait;
 use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
 use WP_CLI;
 
@@ -18,8 +17,6 @@ use WP_CLI;
  * Content Diff Migrator CLI commands class.
  */
 class ContentDiffMigrator {
-
-	use WpCliCommandTrait;
 
 	const LOG_IDS_CSV                           = 'content-diff__new-ids-csv.log';
 	const LOG_IDS_MODIFIED                      = 'content-diff__modified-ids.log';
@@ -102,9 +99,11 @@ class ContentDiffMigrator {
 	 */
 	private $log_updated_blocks_ids;
 
+	/**
+	 * Constructor.
+	 */
 	public function __construct() {
 		global $wpdb;
-
 		$this->logic = new ContentDiffMigratorLogic( $wpdb );
 	}
 
@@ -172,10 +171,9 @@ class ContentDiffMigrator {
 				],
 			]
 		);
-
 		WP_CLI::add_command(
 			'newspack-content-migrator display-collations-comparison',
-			self::get_command_closure('cmd_compare_collations_of_live_and_core_wp_tables' ),
+			[ __CLASS__, 'cmd_compare_collations_of_live_and_core_wp_tables' ],
 			[
 				'shortdesc' => 'Display a table comparing collations of Live and Core WP tables.',
 				'synopsis'  => [
@@ -202,10 +200,9 @@ class ContentDiffMigrator {
 				],
 			]
 		);
-
 		WP_CLI::add_command(
 			'newspack-content-migrator correct-collations-for-live-wp-tables',
-			self::get_command_closure('cmd_correct_collations_for_live_wp_tables' ),
+			[ __CLASS__, 'cmd_correct_collations_for_live_wp_tables' ],
 			[
 				'shortdesc' => 'This command will handle the necessary operations to match collations across Live and Core WP tables',
 				'synopsis'  => [
@@ -290,7 +287,7 @@ class ContentDiffMigrator {
 		// Validate selected post types.
 		array_walk(
 			$post_types,
-			function ( &$v, $k ) use ( $cpts_live ) {
+			function ( &$v, $k ) use ( $cpts_live ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 				if ( ! in_array( $v, $cpts_live ) ) {
 					WP_CLI::error( sprintf( 'Post type %s not found in live DB.', $v ) );
 				}
@@ -339,18 +336,18 @@ class ContentDiffMigrator {
 		// Save logs and output results.
 		if ( count( $new_live_ids ) > 0 ) {
 			$file = $export_dir . '/' . self::LOG_IDS_CSV;
-			file_put_contents( $file, implode( ',', $new_live_ids ) );
+			file_put_contents( $file, implode( ',', $new_live_ids ) ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents.
 			WP_CLI::success( sprintf( 'New IDs exported to %s', $file ) );
 		}
 		if ( count( $modified_live_ids ) > 0 ) {
 			$file_modified = $export_dir . '/' . self::LOG_IDS_MODIFIED;
 			if ( file_exists( $file_modified ) ) {
-				unlink( $file_modified );
+				unlink( $file_modified ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_unlink.
 			}
 			foreach ( $modified_live_ids as $modified_live_id_pair ) {
 				$this->log(
 					$file_modified,
-					json_encode(
+					wp_json_encode(
 						[
 							'live_id'  => $modified_live_id_pair['live_id'],
 							'local_id' => $modified_live_id_pair['local_id'],
@@ -381,7 +378,7 @@ class ContentDiffMigrator {
 		if ( ! file_exists( $file_ids_csv ) ) {
 			WP_CLI::error( sprintf( 'File %s not found.', $file_ids_csv ) );
 		}
-		$all_live_posts_ids           = explode( ',', trim( file_get_contents( $file_ids_csv ) ) );
+		$all_live_posts_ids           = explode( ',', trim( file_get_contents( $file_ids_csv ) ) ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown.
 		$all_live_modified_posts_data = file_exists( $file_ids_modified ) ? $this->get_data_from_log( $file_ids_modified, [ 'live_id', 'local_id' ] ) : [];
 		if ( empty( $all_live_posts_ids ) ) {
 			WP_CLI::error( sprintf( 'File %s does not contain valid CSV IDs.', $file_ids_csv ) );
@@ -576,7 +573,7 @@ class ContentDiffMigrator {
 			$list              = '';
 			$term_taxonomy_ids = [];
 			foreach ( $hierarchical_taxonomies as $hierarchical_taxonomy ) {
-				$list               .= ( empty( $list ) ? '' : "\n" ) . '  ' . json_encode( $hierarchical_taxonomy );
+				$list               .= ( empty( $list ) ? '' : "\n" ) . '  ' . wp_json_encode( $hierarchical_taxonomy );
 				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
 			}
 
@@ -725,7 +722,7 @@ class ContentDiffMigrator {
 			// Log imported post.
 			$this->log(
 				$this->log_imported_post_ids,
-				json_encode(
+				wp_json_encode(
 					[
 						'post_type' => $post_type,
 						'id_old'    => (int) $post_id_live,
@@ -816,7 +813,7 @@ class ContentDiffMigrator {
 			$id_new = is_null( $id_new ) ? $imported_attachment_ids_map[ $id_old ] : $id_new;
 
 			// Get Post's post_parent which uses the live DB ID.
-			$parent_id_old = $wpdb->get_var( $wpdb->prepare( "SELECT post_parent FROM $wpdb->posts WHERE ID = %d;", $id_new ) );
+			$parent_id_old = $wpdb->get_var( $wpdb->prepare( "SELECT post_parent FROM $wpdb->posts WHERE ID = %d;", $id_new ) ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching.
 
 			// No update to do.
 			if ( ( '0' == $parent_id_old ) || empty( $parent_id_old ) ) {
@@ -868,7 +865,7 @@ class ContentDiffMigrator {
 					]
 				);
 			}
-			$this->log( $this->log_updated_posts_parent_ids, json_encode( $log_entry ) );
+			$this->log( $this->log_updated_posts_parent_ids, wp_json_encode( $log_entry ) );
 		}
 	}
 
@@ -1147,7 +1144,7 @@ class ContentDiffMigrator {
 		$data = [];
 
 		// Read line by line.
-		$handle = fopen( $log, 'r' );
+		$handle = fopen( $log, 'r' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fopen.
 		if ( $handle ) {
 			while ( ( $line = fgets( $handle ) ) !== false ) {
 				// Skip if not JSON data on line.
@@ -1198,6 +1195,6 @@ class ContentDiffMigrator {
 	 * @param string $msg  Error message.
 	 */
 	public function log( $file, $msg ) {
-		file_put_contents( $file, $msg . "\n", FILE_APPEND );
+		file_put_contents( $file, $msg . "\n", FILE_APPEND ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents.
 	}
 }
