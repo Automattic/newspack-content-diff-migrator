@@ -3,7 +3,7 @@
  * Content Diff migrator exports and imports the content differential from one site to the local site
  * while keeping the existing local content.
  *
- * @package NewspackContentDiffMigrator
+ * @package Newspack_Content_Diff_Migrator
  */
 
 namespace Newspack\ContentDiffMigrator\Command;

@@ -2,7 +2,7 @@
 /**
  * Test class for the \Newspack\ContentDiffMigrator\Command\ContentDiffMigrator.
  *
- * @package Newspack
+ * @package Newspack_Content_Diff_Migrator
  */
 
 namespace Newspack\ContentDiffMigrator\Test\Command;
