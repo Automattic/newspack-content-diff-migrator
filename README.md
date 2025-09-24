@@ -40,14 +40,14 @@ This plugin operates exclusively through WP-CLI commands. It's designed to be ru
 ```
 wp newspack-content-migrator content-diff-search-new-content-on-live \
 --live-table-prefix=live_ \
---export-dir=./cdiff_data \
+--export-dir=/tmp/cdiff_data \
 [--post-types-csv=post,page,attachment,custom_cpt]
 ```
 4. **Migrate Content**: Import the identified content differential to the local site
 ```
 wp newspack-content-migrator content-diff-migrate-live-content \
 --live-table-prefix=live_ \
---import-dir=./cdiff_data \
+--import-dir=/tmp/cdiff_data \
 [--custom-taxonomies-csv=post_tag,category,custom_taxonomy]
 ```
 
