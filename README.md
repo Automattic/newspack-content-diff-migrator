@@ -38,14 +38,14 @@ This plugin operates exclusively through WP-CLI commands. It's designed to be ru
 2. **Import Live Tables**: Import live site database tables with a specific prefix
 3. **Search for New Content**: Identify new or modified content on the live site
 ```
-wp newspack-content-diff-migrator search-new-content \
+wp newspack-content-migrator content-diff-search-new-content-on-live \
 --live-table-prefix=live_ \
 --export-dir=./cdiff_data \
 [--post-types-csv=post,page,attachment,custom_cpt]
 ```
 4. **Migrate Content**: Import the identified content differential to the local site
 ```
-wp newspack-content-diff-migrator content-diff-migrate-live-content \
+wp newspack-content-migrator content-diff-migrate-live-content \
 --live-table-prefix=live_ \
 --import-dir=./cdiff_data \
 [--custom-taxonomies-csv=post_tag,category,custom_taxonomy]
