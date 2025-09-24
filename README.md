@@ -13,8 +13,8 @@ It migrates the database content, however files synchronization should be done a
 - **Selective Import**: Only imports new or modified content from the live site
 - **Incremental Migration**: Can be run multiple times to migrate the entire content differential, and the migration resumes from the last successful step
 - **Preserves Local Content**: Keeps existing local content intact during migration
-- **Comprehensive Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category and post_tag) as well as custom taxonomies and custom post types.
-- **Side-by-side Tables**: Works with source site's database tables alongside local tables with a different table prefix.
+- **Comprehensive Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category and post_tag) as well as custom taxonomies and custom post types
+- **Side-by-side Tables**: Works with remote site's database tables alongside local tables with a different table prefix
 - **Error Handling**: Comprehensive error logging and recovery mechanisms
 - **Detailed Logging**: Provides extensive logging for troubleshooting
 - **Graceful Degradation**: Continues processing even when individual items fail
@@ -53,11 +53,11 @@ wp newspack-content-diff-migrator content-diff-migrate-live-content \
 
 ## Best Practices
 
-1. **Backup First**: Always backup your staging site before running migrations
+1. **Backup First**: Always backup your local staging site before running migrations
 2. **Test with Dry Run**: Use the `--dry-run` parameter to test migrations safely
 3. **Monitor Logs**: Check log files for any issues or warnings
 4. **Batch Processing**: Use appropriate batch sizes for large migrations
-5. **Memory Limits**: Ensure sufficient PHP memory limits for large content sets
+5. **Memory Limits**: Ensure sufficient PHP memory limits for large content sets, coupled with smaller batches
 
 ## Development
 
@@ -68,9 +68,9 @@ Run `./vendor/bin/phpcbf --standard=phpcs.xml {File}` to apply automatic fixes.
 
 ### Working with the NMT dependency (newspack-migration-tools)
 
-This plugin points to the `dev-trunk` branch. Whenever code has been merged to trunk in the NMT, run `composer update automattic/newspack-migration-tools` to update the lockfile and get the latest from the NMT. If nothing happens when you update, then run `composer clear-cache` and try again.
+This plugin points to the [Newspack Migration Tools](https://github.com/Automattic/newspack-migration-tools) `dev-trunk` branch. Whenever newer code has been merged to trunk in the NMT, run `composer update automattic/newspack-migration-tools` to update the lockfile and get the latest from the NMT. If nothing happens when you update, then run `composer clear-cache` and try again.
 
-Here is a oneliner (well – there are multiple lines for readability) that is safe to use even if you have the NMT symlinked into the `vendor` directory. From your PR's branch run:
+Here is a one-liner (well – there are multiple lines for readability) that is safe to use even if you have the NMT symlinked into the `vendor` directory. From your PR's branch run:
 
 ```bash
 rm -rf vendor/automattic/newspack-migration-tools && \
@@ -82,8 +82,8 @@ git push origin $(git symbolic-ref --short HEAD)
 
 ## Troubleshooting and Common Issues
 
-- Memory Exhaustion: Increase PHP memory limits or reduce batch sizes
-- CLI Timeout Issues: Consider running migrations in smaller batches, or simply resume the migration from the last successful step
+- Memory Exhaustion: Increase PHP memory limits or reduce batch size
+- CLI Timeout Issues: Consider running migrations in smaller batches, or simply rerun to resume the migration from the last successful step
 - Check the log files in the `cdiff_logs/` directory
 - Use the `--dry-run` parameter to test without making changes
 - Review the error log for specific error messages
