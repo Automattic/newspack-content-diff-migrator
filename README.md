@@ -1,6 +1,6 @@
 # Newspack Content Diff Migrator
 
-This plugin is a specialized content migration tool that migrates the content differential from a remote site on top of the local site while keeping the existing local content intact.
+This plugin is a content migration tool that migrates the content differential from a remote site on top of your local site while keeping the existing local content intact.
 
 ## Overview
 
