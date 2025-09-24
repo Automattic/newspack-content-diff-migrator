@@ -1,0 +1,17 @@
+name: Pre-Merge NMT Composer dependency check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pre-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run pre-merge script (only for trunk)
+        if: github.base_ref == 'trunk'
+        run: |
+          chmod +x .github/scripts/check-composer-dependency-hash.sh
+          ./.github/scripts/check-composer-dependency-hash.sh
