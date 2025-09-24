@@ -4,7 +4,7 @@ This plugin is a content migration tool that migrates the content differential f
 
 ## Overview
 
-The Newspack Content Diff Migrator is designed to synchronize content between a remote site (also addressed as "live site", due to Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
+The Newspack Content Diff Migrator is designed to synchronize content between a remote site (also addressed as "live site" after Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
 
 It migrates the database content, however files synchronization should be done additionally.
 
