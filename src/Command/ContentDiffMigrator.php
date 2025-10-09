@@ -368,8 +368,8 @@ class ContentDiffMigrator {
 	public function cmd_migrate_live_content( $args, $assoc_args ) {
 		global $wpdb;
 
-		$import_dir            = $assoc_args['import-dir'] ?? false;
-		$live_table_prefix     = $assoc_args['live-table-prefix'] ?? false;
+		$import_dir        = $assoc_args['import-dir'] ?? false;
+		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 
 		// Default taxonomies which are migrated are defined here.
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
