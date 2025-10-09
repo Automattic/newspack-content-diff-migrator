@@ -13,7 +13,7 @@ It migrates the database content, however files synchronization should be done a
 - **Selective Import**: Only imports new or modified content from the live site
 - **Incremental Migration**: Can be run multiple times to migrate the entire content differential, and the migration resumes from the last successful step
 - **Preserves Local Content**: Keeps existing local content intact during migration
-- **Comprehensive Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category and post_tag) as well as custom taxonomies and custom post types
+- **Comprehensive Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category,post_tag,author) as well as custom taxonomies and custom post types
 - **Side-by-side Tables**: Works with remote site's database tables alongside local tables with a different table prefix
 - **Error Handling**: Comprehensive error logging and recovery mechanisms
 - **Detailed Logging**: Provides extensive logging for troubleshooting
@@ -48,7 +48,7 @@ wp newspack-content-migrator content-diff-search-new-content-on-live \
 wp newspack-content-migrator content-diff-migrate-live-content \
 --live-table-prefix=live_ \
 --import-dir=/tmp/cdiff_data \
-[--custom-taxonomies-csv=post_tag,category,custom_taxonomy]
+[--custom-taxonomies-csv=category,post_tag,author,custom_taxonomy]
 ```
 
 ## Best Practices
