@@ -164,7 +164,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'custom-taxonomies-csv',
-						'description' => 'CSV of all the taxonomies to import, no extra spaces. NOTE, if you are modifying this list, make sure to include category and post_tag or else these will not be migrated. E.g. --custom-taxonomies-csv=post_tag,category,brand,custom_taxonomy.',
+						'description' => 'CSV of all the taxonomies to import, no extra spaces. NOTE, if you are modifying this list, make sure to include category,post_tag,author or else these will not be migrated. E.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -370,7 +370,9 @@ class ContentDiffMigrator {
 
 		$import_dir            = $assoc_args['import-dir'] ?? false;
 		$live_table_prefix     = $assoc_args['live-table-prefix'] ?? false;
-		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag' ];
+
+		// Default taxonomies which are migrated are defined here.
+		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 
 		// Validate all params.
 		$file_ids_csv      = $import_dir . '/' . self::LOG_IDS_CSV;
@@ -384,13 +386,16 @@ class ContentDiffMigrator {
 			WP_CLI::error( sprintf( 'File %s does not contain valid CSV IDs.', $file_ids_csv ) );
 		}
 
-		// In case some custom taxonomies were provided, but category or post_tag were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
+		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
 			if ( ! in_array( 'category', $taxonomies_to_migrate ) ) {
 				WP_CLI::confirm( 'Warning, category was not given in --custom-taxonomies-csv argument and so categories will not be migrated. Continue?' );
 			}
 			if ( ! in_array( 'post_tag', $taxonomies_to_migrate ) ) {
 				WP_CLI::confirm( 'Warning, post_tag was not given in --custom-taxonomies-csv argument and so tags will not be migrated. Continue?' );
+			}
+			if ( ! in_array( 'author', $taxonomies_to_migrate ) ) {
+				WP_CLI::confirm( 'Warning, author was not given in --custom-taxonomies-csv argument and so co-authors will not be migrated. Continue?' );
 			}
 		}
 

@@ -765,7 +765,7 @@ class ContentDiffMigrator {
 	 *
 	 * @return array|null {
 	 *     @type string term_id     Term term_id.
-	 *     @type string taxonomy    Term taxonomy, e.g. 'category' or 'post_tag'.
+	 *     @type string taxonomy    Term taxonomy, e.g. 'category' or 'post_tag' or 'author'.
 	 *     @type string name        Term name.
 	 *     @type string slug        Term slug.
 	 *     @type string description Taxonomy description.
