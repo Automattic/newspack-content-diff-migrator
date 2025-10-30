@@ -17,9 +17,9 @@ use WP_User;
 use wpdb;
 
 /**
- * Class ContentDiffMigrator and main logic.
+ * Core Content Diff logic.
  */
-class ContentDiffMigrator {
+class ContentDiffLogic {
 
 	// Postmeta telling us what the old live ID was.
 	const SAVED_META_LIVE_POST_ID = 'newspackcontentdiff_live_id';
@@ -241,7 +241,7 @@ class ContentDiffMigrator {
 
 	/**
 	 * Finds unique records in live posts table which don't exist in local posts table.
-	 * Uses programmatic approach which requires less memory, but is a bit slower to run.
+	 * Optimized to O(n+m) using a normalized composite key hash map.
 	 *
 	 * Outputs progress by 10% increments to the CLI.
 	 *
@@ -254,6 +254,14 @@ class ContentDiffMigrator {
 		// Search unique on live.
 		$ids = [];
 
+		// Build a lookup hash from local posts for O(1) lookup instead of O(n) search.
+		// Use a hardened composite key derived from normalized fields.
+		$local_posts_lookup = [];
+		foreach ( $results_local_posts as $local_post ) {
+			$lookup_key = $this->build_post_composite_key( $local_post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
+			$local_posts_lookup[ $lookup_key ] = true;
+		}
+
 		$percent_progress = null;
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
@@ -264,26 +272,13 @@ class ContentDiffMigrator {
 				PHPUtil::echo_stdout( $percent_progress . '%' . ( ( $percent_progress < 100 ) ? '... ' : ".\n" ) );
 			}
 
-			$found = false;
-			foreach ( $results_local_posts as $key_local_post => $local_post ) {
-				if (
-					$live_post['post_name'] == $local_post['post_name']
-					&& $live_post['post_title'] == $local_post['post_title']
-					&& $live_post['post_type'] == $local_post['post_type']
-					&& $live_post['post_status'] == $local_post['post_status']
-					&& $live_post['post_date'] == $local_post['post_date']
-				) {
-					// Remove the local post which was found (break; was done), to make the next search a bit faster.
-					unset( $results_local_posts[ $key_local_post ] );
-
-					$found = true;
-					break;
-				}
-			}
+			// Use hash lookup instead of nested loop - O(1) instead of O(n).
+			$lookup_key = $this->build_post_composite_key( $live_post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
+			$found = isset( $local_posts_lookup[ $lookup_key ] );
 
 			// Unique on live, add to $ids.
 			if ( false === $found ) {
-				$ids[] = $live_post['ID'];
+				$ids[] = (int) $live_post['ID'];
 			}
 		}
 
@@ -292,7 +287,7 @@ class ContentDiffMigrator {
 
 	/**
 	 * Finds records in live posts table which have a newer post_modified date.
-	 * Uses programmatic approach which requires less memory, but is a bit slower to run.
+	 * Optimized to O(n+m) using a normalized composite key hash map.
 	 *
 	 * Outputs progress by 10% increments to the CLI.
 	 *
@@ -312,6 +307,20 @@ class ContentDiffMigrator {
 		// But posts which were imported just by raw table import won't have the meta. So a full comparisson is needed.
 		$ids_modified = [];
 
+		// Build a lookup hash from local posts for O(1) lookup instead of O(n) search.
+		// Use a hardened composite key, store local ID and post_modified for comparison.
+		$local_posts_lookup = [];
+		foreach ( $results_local_posts as $local_post ) {
+			$lookup_key = $this->build_post_composite_key( $local_post, [ 'post_name', 'post_title', 'post_status', 'post_date' ] );
+			// Store only the first match (original code breaks on first match).
+			if ( ! isset( $local_posts_lookup[ $lookup_key ] ) ) {
+				$local_posts_lookup[ $lookup_key ] = [
+					'ID'            => $local_post['ID'],
+					'post_modified' => $local_post['post_modified'],
+				];
+			}
+		}
+
 		$percent_progress = null;
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
@@ -322,26 +331,18 @@ class ContentDiffMigrator {
 				PHPUtil::echo_stdout( $percent_progress . '%' . ( ( $percent_progress < 100 ) ? '... ' : ".\n" ) );
 			}
 
-			$modified = false;
-			foreach ( $results_local_posts as $key_local_post => $local_post ) {
-				if (
-					$live_post['post_name'] == $local_post['post_name']
-					&& $live_post['post_title'] == $local_post['post_title']
-					&& $live_post['post_status'] == $local_post['post_status']
-					&& $live_post['post_date'] == $local_post['post_date']
-					&& $live_post['post_modified'] > $local_post['post_modified']
-				) {
-					$modified = true;
-					break;
-				}
-			}
+			// Use hash lookup instead of nested loop - O(1) instead of O(n).
+			$lookup_key = $this->build_post_composite_key( $live_post, [ 'post_name', 'post_title', 'post_status', 'post_date' ] );
 
-			// Modified on live, add to $ids_modified.
-			if ( true === $modified ) {
-				$ids_modified[] = [
-					'live_id'  => (int) $live_post['ID'],
-					'local_id' => (int) $local_post['ID'],
-				];
+			// Check if match exists and post_modified is newer on live.
+			if ( isset( $local_posts_lookup[ $lookup_key ] ) ) {
+				$local_post = $local_posts_lookup[ $lookup_key ];
+				if ( $live_post['post_modified'] > $local_post['post_modified'] ) {
+					$ids_modified[] = [
+						'live_id'  => (int) $live_post['ID'],
+						'local_id' => (int) $local_post['ID'],
+					];
+				}
 			}
 		}
 
@@ -408,7 +409,7 @@ class ContentDiffMigrator {
 					$comment_user_row              = $this->select_user_row( $table_prefix, $comment['user_id'] );
 					if ( $comment_user_row ) {
 						$data[ self::DATAKEY_USERS ][] = $comment_user_row;
-	
+
 						// Get Get Comment User Metas.
 						$data[ self::DATAKEY_USERMETA ] = array_merge(
 							$data[ self::DATAKEY_USERMETA ],
@@ -906,11 +907,11 @@ class ContentDiffMigrator {
 	 * @param string $live_table_prefix Live DB table prefix.
 	 *
 	 * @return array Map of all newly inserted users. Keys are Live wp_user.ID's, and values are newly inserted user IDs.
-	 * 
+	 *
 	 * @throws RuntimeException If user insertion fails, gets thrown by insert_usermeta_row and insert_user.
 	 */
 	public function migrate_all_users( $live_table_prefix ) {
-		
+
 		// Keys are Live wp_user.IDs, and values are newly inserted user IDs.
 		$inserted_users_map = [];
 
@@ -1098,7 +1099,7 @@ class ContentDiffMigrator {
 
 					// Create a new Term.
 					$term_insert_result = $this->wp_insert_term( $live_term_name, $live_term_taxonomy_row['taxonomy'], [ 'description' => $live_term_taxonomy_row['description'] ] );
-					
+
 					if ( is_wp_error( $term_insert_result ) ) {
 						$error_messages[] = sprintf(
 							"Warning, could not insert term='%s' taxonomy='%s' live_term_id=%s for live_post_ID=%s . This is totally OK if you did not wish to migrate this term taxonomy. Message: %s",
@@ -1108,7 +1109,7 @@ class ContentDiffMigrator {
 							$post_id,
 							$term_insert_result->get_error_message()
 						);
-						
+
 						continue;
 					}
 
@@ -3204,10 +3205,11 @@ class ContentDiffMigrator {
 
 		$create_like_table_sql = "CREATE TABLE {$source_table} LIKE $match_collation_for_table";
 		// phpcs:ignore -- query fully sanitized.
-		$create_result         = $this->wpdb->query( $create_like_table_sql );
+        $create_result         = $this->wpdb->query( $create_like_table_sql );
 
-		if ( is_wp_error( $create_result ) ) {
-			throw new \RuntimeException( "Unable to create table: '$create_like_table_sql'\n" . $create_result->get_error_message() ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		if ( false === $create_result ) {
+			$db_error = ( '' != $this->wpdb->last_error ) ? $this->wpdb->last_error : 'unknown error';
+			throw new \RuntimeException( "Unable to create table: '$create_like_table_sql'\nDB error: $db_error" ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		$limiter = [
@@ -3220,9 +3222,9 @@ class ContentDiffMigrator {
 		$table_columns_results = $this->wpdb->get_results( $table_columns_sql );
 		$table_columns         = implode( ',', array_map( fn( $column_row ) => "`$column_row->Field`", $table_columns_results ) );
 		// phpcs:ignore -- query fully sanitized.
-		$count                 = $this->wpdb->get_row( "SELECT COUNT(*) as counter FROM $backup_table;" );
+        $count                 = $this->wpdb->get_row( "SELECT COUNT(*) as counter FROM $backup_table;" );
 
-		if ( 0 === $count ) {
+		if ( empty( $count ) || 0 === (int) $count->counter ) {
 			throw new \RuntimeException( "Table '$backup_table' has 0 rows. No need to continue." ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
@@ -3230,9 +3232,9 @@ class ContentDiffMigrator {
 		for ( $i = 1; $i <= $iterations; $i++ ) {
 			$insert_sql = "INSERT INTO `{$source_table}`({$table_columns}) SELECT {$table_columns} FROM {$backup_table} LIMIT {$limiter['start']}, {$limiter['limit']}";
 			// phpcs:ignore -- query fully sanitized.
-			$insert_result = $this->wpdb->query( $insert_sql );
+            $insert_result = $this->wpdb->query( $insert_sql );
 
-			if ( ! is_wp_error( $insert_result ) && ( false !== $insert_result ) && ( 0 !== $insert_result ) ) {
+			if ( ( false !== $insert_result ) && ( 0 !== $insert_result ) ) {
 				$limiter['start'] = $limiter['start'] + $limiter['limit'];
 			} else {
 				$db_error = ( '' != $this->wpdb->last_error ) ? 'DB error message: ' . $this->wpdb->last_error : 'No DB error message available -- check error and debug logs.';
@@ -3481,6 +3483,31 @@ class ContentDiffMigrator {
 				$current_percent = $next_percent_increase;
 			}
 		}
+	}
+
+	/**
+	 * Builds a hardened composite key from a post-like associative array and a list of fields.
+	 *
+	 * - Applies normalization: cast to string, trim whitespace, lowercase for case-insensitive match.
+	 * - Missing fields are treated as empty strings.
+	 * - Uses json encoding and md5 to avoid delimiter collision and keep the key compact.
+	 *
+	 * @param array $post   Associative array with post fields.
+	 * @param array $fields Ordered list of field names to include in the key.
+	 *
+	 * @return string Composite key.
+	 */
+	private function build_post_composite_key( array $post, array $fields ): string {
+		$normalized = [];
+		foreach ( $fields as $field ) {
+			$value        = isset( $post[ $field ] ) ? $post[ $field ] : '';
+			$value        = is_scalar( $value ) ? (string) $value : '';
+			$value        = trim( $value );
+			$value        = function_exists( 'mb_strtolower' ) ? mb_strtolower( $value ) : strtolower( $value );
+			$normalized[] = $value;
+		}
+
+		return md5( wp_json_encode( $normalized ) );
 	}
 
 	/**

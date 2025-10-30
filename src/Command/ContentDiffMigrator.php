@@ -8,7 +8,7 @@
 
 namespace Newspack\ContentDiffMigrator\Command;
 
-use Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator as ContentDiffMigratorLogic;
+use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
 use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
 use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
 use WP_CLI;
@@ -32,9 +32,9 @@ class ContentDiffMigrator {
 	/**
 	 * Content Diff logic class.
 	 *
-	 * @var ContentDiffMigratorLogic Logic.
+	 * @var ContentDiffLogic Logic.
 	 */
-	private ContentDiffMigratorLogic $logic;
+	private ContentDiffLogic $logic;
 
 	/**
 	 * Prefix of tables from the live DB, which are imported next to local WP tables.
@@ -56,7 +56,7 @@ class ContentDiffMigrator {
 	 * @var null|string Full path to file.
 	 */
 	private $log_recreated_hierarchical_taxonomies;
-	
+
 	/**
 	 * Log containing inserted WP_User IDs.
 	 *
@@ -104,7 +104,7 @@ class ContentDiffMigrator {
 	 */
 	public function __construct() {
 		global $wpdb;
-		$this->logic = new ContentDiffMigratorLogic( $wpdb );
+		$this->logic = new ContentDiffLogic( $wpdb );
 	}
 
 	/**
@@ -598,7 +598,7 @@ class ContentDiffMigrator {
 	 */
 	public function recreate_hierarchical_taxonomies( $taxonomies_to_migrate ) {
 		$hierarchical_taxonomy_term_id_updates = $this->logic->recreate_hierarchical_taxonomies( $this->live_table_prefix, $taxonomies_to_migrate );
-		
+
 		// Log taxonomy term_id updates.
 		$this->log(
 			$this->log_recreated_hierarchical_taxonomies,
@@ -610,7 +610,7 @@ class ContentDiffMigrator {
 
 	/**
 	 * Migrates all WP_Users from Live to local.
-	 * 
+	 *
 	 * @param string $live_table_prefix Live table prefix.
 	 * @return array Map of newly inserted WP_Users, keys are old Live IDs and values are new local IDs.
 	 */

@@ -10,7 +10,7 @@ namespace Newspack\ContentDiffMigrator\Test\Command;
 use http\Exception\UnexpectedValueException;
 use PHP_CodeSniffer\Tests\Core\Autoloader\Sub\C;
 use WP_UnitTestCase;
-use Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator;
+use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
 use Newspack\ContentDiffMigrator\Test\DataProviders\DataProviderGutenbergBlocks;
 use WP_User;
 
@@ -29,7 +29,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	/**
 	 * ContentDiffMigrator.
 	 *
-	 * @var ContentDiffMigrator.
+	 * @var ContentDiffLogic.
 	 */
 	private $logic;
 
@@ -71,7 +71,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$this->wpdb_mock->termmeta           = $wpdb->prefix . 'termmeta';
 		$this->wpdb_mock->term_taxonomy      = $wpdb->prefix . 'term_taxonomy';
 		$this->wpdb_mock->term_relationships = $wpdb->prefix . 'term_relationships';
-		$this->logic                         = new ContentDiffMigrator( $this->wpdb_mock );
+		$this->logic                         = new ContentDiffLogic( $this->wpdb_mock );
 		$this->blocks_data_provider          = new DataProviderGutenbergBlocks();
 		$this->table_prefix                  = $wpdb->prefix;
 	}
@@ -3217,6 +3217,284 @@ BLOCK;
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
+	}
+
+	/**
+	 * Verifies filter_new_live_ids returns IDs present in live but not in local using composite key.
+	 */
+	public function test_filter_new_live_ids_returns_only_unique_live_ids() {
+		$results_live_posts = [
+			[
+				'ID'          => 101,
+				'post_name'   => 'alpha',
+				'post_title'  => 'Alpha',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+			[
+				'ID'          => 102,
+				'post_name'   => 'beta',
+				'post_title'  => 'Beta',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-02 00:00:00',
+			],
+			[
+				'ID'          => 103,
+				'post_name'   => 'gamma',
+				'post_title'  => 'Gamma',
+				'post_type'   => 'page',
+				'post_status' => 'draft',
+				'post_date'   => '2023-01-03 00:00:00',
+			],
+		];
+
+		$results_local_posts = [
+			// Exact composite match for live ID 101 -> should be excluded from result.
+			[
+				'ID'          => 1,
+				'post_name'   => 'alpha',
+				'post_title'  => 'Alpha',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+			// Different status compared to live ID 102 -> does not match composite.
+			[
+				'ID'          => 2,
+				'post_name'   => 'beta',
+				'post_title'  => 'Beta',
+				'post_type'   => 'post',
+				'post_status' => 'draft',
+				'post_date'   => '2023-01-02 00:00:00',
+			],
+		];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+
+		// Expect live IDs 102 and 103 only (cast to int enforced by implementation).
+		$this->assertEquals( [ 102, 103 ], $ids );
+	}
+
+	/**
+	 * Case and whitespace normalization should allow matches.
+	 */
+	public function test_filter_new_live_ids_normalization_case_whitespace() {
+		$results_live_posts = [
+			[
+				'ID'          => 701,
+				'post_name'   => ' Alpha ',
+				'post_title'  => '  Hello  ',
+				'post_type'   => 'POST',
+				'post_status' => 'Publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+		];
+
+		$results_local_posts = [
+			[
+				'ID'          => 1,
+				'post_name'   => 'alpha',
+				'post_title'  => 'hello',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+		];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertSame( [], $ids );
+	}
+
+	/**
+	 * Verifies filter_modified_live_ids matches on composite key and returns pairs with newer live modified date.
+	 */
+	public function test_filter_modified_live_ids_returns_pairs_when_live_is_newer() {
+		$results_live_posts = [
+			[
+				'ID'            => 201,
+				'post_name'     => 'post-a',
+				'post_title'    => 'Post A',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-01 12:00:00',
+				'post_modified' => '2023-03-05 12:00:00',
+			],
+			[
+				'ID'            => 202,
+				'post_name'     => 'post-b',
+				'post_title'    => 'Post B',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-02 12:00:00',
+				'post_modified' => '2023-03-03 12:00:00',
+			],
+			[
+				'ID'            => 203,
+				'post_name'     => 'no-match',
+				'post_title'    => 'No Match',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-02 12:00:00',
+				'post_modified' => '2023-03-04 12:00:00',
+			],
+		];
+
+		$results_local_posts = [
+			// Match for live 201, but older modified -> should be returned.
+			[
+				'ID'            => 11,
+				'post_name'     => 'post-a',
+				'post_title'    => 'Post A',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-01 12:00:00',
+				'post_modified' => '2023-03-01 13:00:00',
+			],
+			// Match for live 202, but newer or equal modified not met -> should NOT be returned.
+			[
+				'ID'            => 22,
+				'post_name'     => 'post-b',
+				'post_title'    => 'Post B',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-02 12:00:00',
+				'post_modified' => '2023-03-04 12:00:00',
+			],
+		];
+
+		$pairs = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+
+		$this->assertEquals(
+			[
+				[
+					'live_id'  => 201,
+					'local_id' => 11,
+				],
+			],
+			$pairs 
+		);
+	}
+
+	/**
+	 * Duplicate local records for same composite key should not break behavior; first match kept.
+	 */
+	public function test_filter_modified_live_ids_duplicate_local_composite_keys() {
+		$results_live_posts  = [
+			[
+				'ID'            => '301',
+				'post_name'     => 'dup',
+				'post_title'    => 'Dup',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-05-01 00:00:00',
+				'post_modified' => '2023-05-10 00:00:00',
+			],
+		];
+		$results_local_posts = [
+			[
+				'ID'            => '41',
+				'post_name'     => 'dup',
+				'post_title'    => 'Dup',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-05-01 00:00:00',
+				'post_modified' => '2023-05-02 00:00:00',
+			],
+			[
+				'ID'            => '42',
+				'post_name'     => 'dup',
+				'post_title'    => 'Dup',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-05-01 00:00:00',
+				'post_modified' => '2023-05-03 00:00:00',
+			],
+		];
+
+		$pairs = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+
+		// Should return the first local match (ID 41), and cast to ints.
+		$this->assertEquals(
+			[
+				[
+					'live_id'  => 301,
+					'local_id' => 41,
+				],
+			],
+			$pairs 
+		);
+	}
+
+	/**
+	 * Equal modified times should not count as modified.
+	 */
+	public function test_filter_modified_live_ids_equal_modified_times_not_returned() {
+		$results_live_posts  = [
+			[
+				'ID'            => 401,
+				'post_name'     => 'eq',
+				'post_title'    => 'Eq',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-06-01 00:00:00',
+				'post_modified' => '2023-06-02 00:00:00',
+			],
+		];
+		$results_local_posts = [
+			[
+				'ID'            => 51,
+				'post_name'     => 'eq',
+				'post_title'    => 'Eq',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-06-01 00:00:00',
+				'post_modified' => '2023-06-02 00:00:00',
+			],
+		];
+
+		$pairs = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertEquals( [], $pairs );
+	}
+
+	/**
+	 * Missing keys in local should be treated as non-match.
+	 */
+	public function test_filter_new_live_ids_missing_keys_non_match() {
+		$results_live_posts  = [
+			[
+				'ID'          => 501,
+				'post_name'   => 'missing',
+				'post_title'  => 'Missing',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-07-01 00:00:00',
+			],
+		];
+		$results_local_posts = [
+			// Missing post_status -> composite will differ.
+			[
+				'ID'         => 61,
+				'post_name'  => 'missing',
+				'post_title' => 'Missing',
+				'post_type'  => 'post',
+				'post_date'  => '2023-07-01 00:00:00',
+			],
+		];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertEquals( [ 501 ], $ids );
+	}
+
+	/**
+	 * String-vs-int IDs should be normalized in outputs (ints returned).
+	 */
+	public function test_filter_new_live_ids_string_vs_int_ids() {
+		$results_live_posts  = [
+			[
+				'ID'          => '601',
+				'post_name'   => 'sid',
+				'post_title'  => 'Sid',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-08-01 00:00:00',
+			],
+		];
+		$results_local_posts = [];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertSame( [ 601 ], $ids );
 	}
 
 	/**
