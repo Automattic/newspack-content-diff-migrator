@@ -2682,16 +2682,16 @@ BLOCK;
 	 */
 	public function test_update_mediatext_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$mediaId_att_id_old_live_1    = 1111;
-		$mediaId_att_id_new_staging_1 = 2222;
-		$mediaLink_1                  = 'https://host.com/election-2022-1/';
-		$img_src_1                    = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
-		$text_1                       = 'foo bar 1';
-		$mediaId_att_id_old_live_2    = 3333;
-		$mediaId_att_id_new_staging_2 = 4444;
-		$mediaLink_2                  = 'https://host.com/election-2022-2/';
-		$img_src_2                    = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
-		$text_2                       = 'foo bar 3';
+		$media_id_att_id_old_live_1    = 1111;
+		$media_id_att_id_new_staging_1 = 2222;
+		$mediaLink_1                   = 'https://host.com/election-2022-1/';
+		$img_src_1                     = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
+		$text_1                        = 'foo bar 1';
+		$media_id_att_id_old_live_2    = 3333;
+		$media_id_att_id_new_staging_2 = 4444;
+		$mediaLink_2                   = 'https://host.com/election-2022-2/';
+		$img_src_2                     = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
+		$text_2                        = 'foo bar 3';
 
 		$custom_block_w_same_id_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"id":%d,"mediaId":%d,"mediaLink":"%s","mediaType":"image"} -->
@@ -2700,20 +2700,20 @@ BLOCK;
 <!-- /wp:paragraph --></div></div>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_id         = sprintf( $custom_block_w_same_id_sprintf, $mediaId_att_id_old_live_1, $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $mediaId_att_id_old_live_1, $text_1 );
+		$custom_block_w_same_id         = sprintf( $custom_block_w_same_id_sprintf, $media_id_att_id_old_live_1, $media_id_att_id_old_live_1, $mediaLink_1, $img_src_1, $media_id_att_id_old_live_1, $text_1 );
 
-		$html = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
+		$html = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
 				// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
 				. "\n\n" . $custom_block_w_same_id
 				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
 				. "\n\n" . '<!-- wp:group -->'
-				. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_2, $mediaLink_2, $img_src_2, $text_2 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_2, $mediaLink_2, $img_src_2, $text_2 )
 				. "\n\n" . '<!-- /wp:group -->';
-		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_new_staging_1, $mediaLink_1, $img_src_1, $text_1 )
+		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_new_staging_1, $mediaLink_1, $img_src_1, $text_1 )
 						. "\n\n" . $custom_block_w_same_id
 						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
 						. "\n\n" . '<!-- wp:group -->'
-						. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_new_staging_2, $mediaLink_2, $img_src_2, $text_2 )
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_new_staging_2, $mediaLink_2, $img_src_2, $text_2 )
 						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
@@ -2726,8 +2726,8 @@ BLOCK;
 			'attachment_url_to_postid',
 			[
 				// Will be called twice to get the cover files' attachment IDs on Staging.
-				[ $this->logic->clean_attachment_url_for_query( $img_src_1 ), [], $mediaId_att_id_new_staging_1 ],
-				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $mediaId_att_id_new_staging_2 ],
+				[ $this->logic->clean_attachment_url_for_query( $img_src_1 ), [], $media_id_att_id_new_staging_1 ],
+				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $media_id_att_id_new_staging_2 ],
 			]
 		);
 
@@ -2746,21 +2746,21 @@ BLOCK;
 	 */
 	public function test_update_mediatext_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$mediaId_att_id_old_live_1    = 1111;
-		$mediaId_att_id_new_staging_1 = 0;
-		$mediaLink_1                  = 'https://host.com/election-2022-1/';
-		$img_src_1                    = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
-		$text_1                       = 'foo bar 1';
-		$mediaId_att_id_old_live_2    = 3333;
-		$mediaId_att_id_new_staging_2 = 4444;
-		$mediaLink_2                  = 'https://host.com/election-2022-2/';
-		$img_src_2                    = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
-		$text_2                       = 'foo bar 3';
+		$media_id_att_id_old_live_1    = 1111;
+		$media_id_att_id_new_staging_1 = 0;
+		$mediaLink_1                   = 'https://host.com/election-2022-1/';
+		$img_src_1                     = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
+		$text_1                        = 'foo bar 1';
+		$media_id_att_id_old_live_2    = 3333;
+		$media_id_att_id_new_staging_2 = 4444;
+		$mediaLink_2                   = 'https://host.com/election-2022-2/';
+		$img_src_2                     = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
+		$text_2                        = 'foo bar 3';
 
-		$html          = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
-				. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_2, $mediaLink_2, $img_src_2, $text_2 );
-		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
-						. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_new_staging_2, $mediaLink_2, $img_src_2, $text_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_2, $mediaLink_2, $img_src_2, $text_2 );
+		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_new_staging_2, $mediaLink_2, $img_src_2, $text_2 );
 
 		// Mock (do a partial mock of this one method).
 		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
@@ -2773,7 +2773,7 @@ BLOCK;
 			[
 				// Will be called twice and won't make a change for the first one.
 				[ $this->logic->clean_attachment_url_for_query( $img_src_1 ), [], 0 ],
-				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $mediaId_att_id_new_staging_2 ],
+				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $media_id_att_id_new_staging_2 ],
 			]
 		);
 
@@ -3368,7 +3368,7 @@ BLOCK;
 					'local_id' => 11,
 				],
 			],
-			$pairs 
+			$pairs
 		);
 	}
 
@@ -3415,7 +3415,7 @@ BLOCK;
 					'local_id' => 41,
 				],
 			],
-			$pairs 
+			$pairs
 		);
 	}
 
