@@ -12,7 +12,7 @@ class PluginSetup {
 	 */
 	public static function register_ticker() {
 		register_tick_function(
-			function() {
+			function () {
 				$memory_usage = memory_get_usage( false );
 
 				if ( $memory_usage > 490000000 ) { // 490 MB in bytes, since the limit on Atomic is 512 MB.
@@ -25,7 +25,7 @@ class PluginSetup {
 
 	/**
 	 * Configures all errors and warnings will be output to CLI.
-	 * 
+	 *
 	 * @param string $level Error reporting level. 'dev' is default. 'live' will not change error reporting.
 	 */
 	public static function configure_error_reporting( $level = 'dev' ): void {
