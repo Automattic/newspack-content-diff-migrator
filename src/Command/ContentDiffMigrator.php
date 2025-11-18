@@ -547,7 +547,7 @@ class ContentDiffMigrator {
 		// Check if any of the taxonomies does not exist in the live DB.
 		foreach ( $taxonomies_to_migrate as $key_taxonomy_to_migrate => $taxonomy_to_migrate ) {
 			if ( ! in_array( $taxonomy_to_migrate, $live_taxonomies ) ) {
-				WP_CLI::warning( sprintf( 'Taxonomy %s not found in live DB, will not be migrated.', $taxonomy_to_migrate ) );
+				WP_CLI::warning( sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
 				unset( $taxonomies_to_migrate[ $key_taxonomy_to_migrate ] );
 			}
 		}
