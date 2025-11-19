@@ -8,9 +8,8 @@
 namespace Newspack\ContentDiffMigrator\Test\Command;
 
 use http\Exception\UnexpectedValueException;
-use PHP_CodeSniffer\Tests\Core\Autoloader\Sub\C;
 use WP_UnitTestCase;
-use Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator;
+use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
 use Newspack\ContentDiffMigrator\Test\DataProviders\DataProviderGutenbergBlocks;
 use WP_User;
 
@@ -29,7 +28,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	/**
 	 * ContentDiffMigrator.
 	 *
-	 * @var ContentDiffMigrator.
+	 * @var ContentDiffLogic.
 	 */
 	private $logic;
 
@@ -71,7 +70,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$this->wpdb_mock->termmeta           = $wpdb->prefix . 'termmeta';
 		$this->wpdb_mock->term_taxonomy      = $wpdb->prefix . 'term_taxonomy';
 		$this->wpdb_mock->term_relationships = $wpdb->prefix . 'term_relationships';
-		$this->logic                         = new ContentDiffMigrator( $this->wpdb_mock );
+		$this->logic                         = new ContentDiffLogic( $this->wpdb_mock );
 		$this->blocks_data_provider          = new DataProviderGutenbergBlocks();
 		$this->table_prefix                  = $wpdb->prefix;
 	}
@@ -94,7 +93,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$at          = 1;
 		$total_calls = count( $return_value_map );
 		$mock->expects( $this->exactly( $total_calls ) )
-			 ->method( $method )
+			->method( $method )
 			->will(
 				$this->returnCallback(
 					function() use ( $return_value_map, &$at, $method ) {
@@ -129,14 +128,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_post_row.
+	 * @covers ContentDiffLogic::select_post_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_should_select_post_row( $data ) {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
-		$post_row          = $data[ ContentDiffMigrator::DATAKEY_POST ];
+		$post_row          = $data[ ContentDiffLogic::DATAKEY_POST ];
 		$post_id           = $post_row['ID'];
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}posts WHERE ID = %s";
 		$sql               = sprintf( $sql_prepare, $post_id );
@@ -173,7 +172,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_postmeta_rows.
+	 * @covers ContentDiffLogic::select_postmeta_rows.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -181,13 +180,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
 		$post_id           = 123;
-		$postmeta_rows     = $data[ ContentDiffMigrator::DATAKEY_POSTMETA ];
+		$postmeta_rows     = $data[ ContentDiffLogic::DATAKEY_POSTMETA ];
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}postmeta WHERE post_id = %s";
 		$sql               = sprintf( $sql_prepare, $post_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'prepare' )
+					->method( 'prepare' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -196,7 +195,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 					)
 				);
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'get_results' )
+					->method( 'get_results' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -217,7 +216,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_user_row.
+	 * @covers ContentDiffLogic::select_user_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -225,7 +224,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
 		$post_author_id    = 22;
-		$author_row        = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $post_author_id );
+		$author_row        = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $post_author_id );
 		$autor_id          = $author_row['ID'];
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}users WHERE ID = %s";
 		$sql               = sprintf( $sql_prepare, $autor_id );
@@ -262,7 +261,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_usermeta_rows.
+	 * @covers ContentDiffLogic::select_usermeta_rows.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -270,7 +269,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
 		$post_author_id    = 22;
-		$authormeta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'user_id', $post_author_id );
+		$authormeta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $post_author_id );
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}usermeta WHERE user_id = %s";
 		$sql               = sprintf( $sql_prepare, $post_author_id );
 
@@ -306,7 +305,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_comment_rows.
+	 * @covers ContentDiffLogic::select_comment_rows.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -314,13 +313,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$post_id           = 123;
 		$live_table_prefix = 'live_wp_';
-		$comments_rows     = $data[ ContentDiffMigrator::DATAKEY_COMMENTS ];
+		$comments_rows     = $data[ ContentDiffLogic::DATAKEY_COMMENTS ];
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}comments WHERE comment_post_ID = %s";
 		$sql               = sprintf( $sql_prepare, $post_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'prepare' )
+					->method( 'prepare' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -329,7 +328,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 					)
 				);
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'get_results' )
+					->method( 'get_results' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -350,7 +349,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_commentmeta_rows.
+	 * @covers ContentDiffLogic::select_commentmeta_rows.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -358,13 +357,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
 		$comment_1_id      = 11;
-		$commentmeta_rows  = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_COMMENTMETA ], 'comment_id', $comment_1_id );
+		$commentmeta_rows  = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_1_id );
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}commentmeta WHERE comment_id = %s";
 		$sql               = sprintf( $sql_prepare, $comment_1_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'prepare' )
+					->method( 'prepare' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -373,7 +372,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 					)
 				);
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'get_results' )
+					->method( 'get_results' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -394,7 +393,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_term_relationships_rows.
+	 * @covers ContentDiffLogic::select_term_relationships_rows.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -402,7 +401,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix       = 'live_wp_';
 		$post_id                 = 123;
-		$term_relationships_rows = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMRELATIONSHIPS ], 'object_id', $post_id );
+		$term_relationships_rows = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMRELATIONSHIPS ], 'object_id', $post_id );
 		$sql_prepare             = "SELECT * FROM {$live_table_prefix}term_relationships WHERE object_id = %s";
 		$sql                     = sprintf( $sql_prepare, $post_id );
 
@@ -438,14 +437,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_term_taxonomy_row.
+	 * @covers ContentDiffLogic::select_term_taxonomy_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_should_select_term_taxonomy_rows( $data ) {
 		$live_table_prefix = 'live_wp_';
 		$term_taxonomy_id  = 1;
-		$term_taxonomy_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', 1 );
+		$term_taxonomy_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', 1 );
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}term_taxonomy WHERE term_taxonomy_id = %s";
 		$sql               = sprintf( $sql_prepare, $term_taxonomy_id );
 
@@ -481,7 +480,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_term_row.
+	 * @covers ContentDiffLogic::select_term_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -489,13 +488,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
 		$term_id           = 41;
-		$term_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_id );
+		$term_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_id );
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}terms WHERE term_id = %s";
 		$sql               = sprintf( $sql_prepare, $term_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'prepare' )
+					->method( 'prepare' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -504,7 +503,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 					)
 				);
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'get_row' )
+					->method( 'get_row' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -525,7 +524,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::select_termmeta_rows.
+	 * @covers ContentDiffLogic::select_termmeta_rows.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -533,13 +532,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$live_table_prefix = 'live_wp_';
 		$term_1_id         = 41;
-		$termmeta_rows     = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_1_id );
+		$termmeta_rows     = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_1_id );
 		$sql_prepare       = "SELECT * FROM {$live_table_prefix}termmeta WHERE term_id = %s";
 		$sql               = sprintf( $sql_prepare, $term_1_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'prepare' )
+					->method( 'prepare' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -548,7 +547,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 					)
 				);
 		$this->wpdb_mock->expects( $this->once() )
-				  ->method( 'get_results' )
+					->method( 'get_results' )
 				->will(
 					$this->returnValueMap(
 						[
@@ -565,11 +564,11 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Checks that ContentDiffMigrator::get_data queries the DB as expected, and returns a correctly formatted data array.
+	 * Checks that ContentDiffLogic::get_data queries the DB as expected, and returns a correctly formatted data array.
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::get_post_data.
+	 * @covers ContentDiffLogic::get_post_data.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -577,38 +576,38 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare test data.
 		$live_table_prefix          = 'live_wp_';
 		$post_id                    = 123;
-		$post_row                   = $data[ ContentDiffMigrator::DATAKEY_POST ];
-		$postmeta_rows              = $data[ ContentDiffMigrator::DATAKEY_POSTMETA ];
+		$post_row                   = $data[ ContentDiffLogic::DATAKEY_POST ];
+		$postmeta_rows              = $data[ ContentDiffLogic::DATAKEY_POSTMETA ];
 		$post_author_id             = $post_row['post_author'];
-		$post_author_row            = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $post_author_id );
-		$post_author_meta_rows      = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'user_id', $post_author_id );
-		$comments_rows              = $data[ ContentDiffMigrator::DATAKEY_COMMENTS ];
+		$post_author_row            = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $post_author_id );
+		$post_author_meta_rows      = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $post_author_id );
+		$comments_rows              = $data[ ContentDiffLogic::DATAKEY_COMMENTS ];
 		$comment_1_id               = 11;
-		$comment_1_commentmeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_COMMENTMETA ], 'comment_id', $comment_1_id );
+		$comment_1_commentmeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_1_id );
 		$comment_2_id               = 12;
-		$comment_2_row              = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_2_id );
-		$comment_2_commentmeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_COMMENTMETA ], 'comment_id', $comment_2_id );
-		$comment_2_user_row         = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $comment_2_row['user_id'] );
-		$comment_2_user_meta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'user_id', $comment_2_user_row['ID'] );
+		$comment_2_row              = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_2_id );
+		$comment_2_commentmeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_2_id );
+		$comment_2_user_row         = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment_2_row['user_id'] );
+		$comment_2_user_meta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_2_user_row['ID'] );
 		$comment_3_id               = 13;
-		$comment_3_row              = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_3_id );
-		$comment_3_commentmeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_COMMENTMETA ], 'comment_id', $comment_3_id );
-		$comment_3_user_row         = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $comment_3_row['user_id'] );
-		$comment_3_user_meta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'user_id', $comment_3_user_row['ID'] );
-		$term_relationships_rows    = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMRELATIONSHIPS ], 'object_id', $post_id );
-		$term_taxonomy_rows         = $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ];
+		$comment_3_row              = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_3_id );
+		$comment_3_commentmeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_3_id );
+		$comment_3_user_row         = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment_3_row['user_id'] );
+		$comment_3_user_meta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_3_user_row['ID'] );
+		$term_relationships_rows    = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMRELATIONSHIPS ], 'object_id', $post_id );
+		$term_taxonomy_rows         = $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ];
 		$term_1_id                  = 41;
-		$term_1_row                 = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_1_id );
+		$term_1_row                 = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_1_id );
 		$term_2_id                  = 42;
-		$term_2_row                 = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_2_id );
-		$term_2_termmeta_rows       = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_2_id );
+		$term_2_row                 = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_2_id );
+		$term_2_termmeta_rows       = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_2_id );
 		$term_3_id                  = 70;
-		$term_3_row                 = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_3_id );
-		$term_3_termmeta_rows       = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_3_id );
+		$term_3_row                 = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_3_id );
+		$term_3_termmeta_rows       = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_3_id );
 
 		// Mock.
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-								   ->setConstructorArgs( [ $this->wpdb_mock ] )
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
 								->setMethods(
 									[
 										'select_post_row',
@@ -623,7 +622,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 										'select_termmeta_rows',
 									]
 								)
-								   ->getMock();
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'select_post_row',
@@ -727,14 +726,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_post.
+	 * @covers ContentDiffLogic::insert_post.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_should_insert_post_row( $data ) {
 		// Prepare.
 		$new_post_id       = 234;
-		$post_row          = $data[ ContentDiffMigrator::DATAKEY_POST ];
+		$post_row          = $data[ ContentDiffLogic::DATAKEY_POST ];
 		$post_row_expected = $post_row;
 		unset( $post_row_expected['ID'] );
 
@@ -763,7 +762,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_post.
+	 * @covers ContentDiffLogic::insert_post.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -771,7 +770,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$new_post_id = 333;
 		$id          = 123;
-		$post_row    = $data[ ContentDiffMigrator::DATAKEY_POST ];
+		$post_row    = $data[ ContentDiffLogic::DATAKEY_POST ];
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -791,7 +790,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_postmeta_row.
+	 * @covers ContentDiffLogic::insert_postmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -799,7 +798,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$new_post_id           = 333;
 		$meta_id               = 22;
-		$postmeta_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_POSTMETA ], 'meta_id', $meta_id );
+		$postmeta_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_POSTMETA ], 'meta_id', $meta_id );
 		$meta_id_new           = 54;
 		$postmeta_row_expected = $postmeta_row;
 		unset( $postmeta_row_expected['meta_id'] );
@@ -829,7 +828,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_postmeta_row.
+	 * @covers ContentDiffLogic::insert_postmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -837,7 +836,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$new_post_id  = 333;
 		$meta_id      = 22;
-		$postmeta_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_POSTMETA ], 'meta_id', $meta_id );
+		$postmeta_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_POSTMETA ], 'meta_id', $meta_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -857,7 +856,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_user.
+	 * @covers ContentDiffLogic::insert_user.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -865,7 +864,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$new_user_id       = 234;
 		$old_user_id       = 22;
-		$user_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $old_user_id );
+		$user_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $old_user_id );
 		$user_row_expected = $user_row;
 		unset( $user_row_expected['ID'] );
 
@@ -893,14 +892,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_pinsert_userostmeta_row.
+	 * @covers ContentDiffLogic::insert_pinsert_userostmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_insert_user_should_throw_exception( $data ) {
 		// Prepare.
 		$old_user_id = 22;
-		$user_row    = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $old_user_id );
+		$user_row    = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $old_user_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -920,7 +919,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_usermeta.
+	 * @covers ContentDiffLogic::insert_usermeta.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -929,7 +928,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$new_user_id           = 333;
 		$umeta_id              = 2;
 		$new_umeta_id          = 56;
-		$usermeta_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'umeta_id', $umeta_id );
+		$usermeta_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'umeta_id', $umeta_id );
 		$usermeta_row_expected = $usermeta_row;
 		unset( $usermeta_row_expected['umeta_id'] );
 		$usermeta_row_expected['user_id'] = $new_user_id;
@@ -958,7 +957,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_usermeta_row.
+	 * @covers ContentDiffLogic::insert_usermeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -966,7 +965,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$new_user_id  = 333;
 		$umeta_id     = 2;
-		$usermeta_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'umeta_id', $umeta_id );
+		$usermeta_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'umeta_id', $umeta_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -986,7 +985,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::update_post_parent.
+	 * @covers ContentDiffLogic::update_post_parent.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -997,10 +996,10 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$old_post_parent = 145;
 
 		// Mock.
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-								   ->setConstructorArgs( [ $this->wpdb_mock ] )
-								   ->setMethods( [ 'update' ] )
-								   ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'update' ] )
+									->getMock();
 		$this->wpdb_mock->expects( $this->once() )
 						->method( 'update' )
 						->will(
@@ -1018,7 +1017,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	/**
 	 * Tests that a User is inserted correctly and that correct calls are made to the $wpdb.
 	 *
-	 * @covers ContentDiffMigrator::update_post_author.
+	 * @covers ContentDiffLogic::update_post_author.
 	 */
 	public function test_should_update_post_author() {
 		// Prepare.
@@ -1048,7 +1047,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::update_post_author.
+	 * @covers ContentDiffLogic::update_post_author.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1075,7 +1074,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_comment.
+	 * @covers ContentDiffLogic::insert_comment.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1083,7 +1082,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$old_comment_id       = 11;
 		$new_comment_id       = 456;
-		$comment_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $old_comment_id );
+		$comment_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $old_comment_id );
 		$new_post_id          = 234;
 		$new_user_id          = 345;
 		$comment_row_expected = $comment_row;
@@ -1115,14 +1114,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_comment.
+	 * @covers ContentDiffLogic::insert_comment.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_insert_comment_should_throw_exception( $data ) {
 		// Prepare.
 		$comment_id  = 11;
-		$comment_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_id );
+		$comment_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_id );
 		$new_post_id = 234;
 		$new_user_id = 345;
 
@@ -1144,7 +1143,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_commentmeta_row.
+	 * @covers ContentDiffLogic::insert_commentmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1153,7 +1152,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$meta_id                  = 2;
 		$new_comment_id           = 456;
 		$new_commentmeta_id       = 456;
-		$commentmeta_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTMETA ], 'meta_id', $meta_id );
+		$commentmeta_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'meta_id', $meta_id );
 		$commentmeta_row_expected = $commentmeta_row;
 		unset( $commentmeta_row_expected['meta_id'] );
 		$commentmeta_row_expected['comment_id'] = $new_comment_id;
@@ -1182,7 +1181,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_commentmeta_row.
+	 * @covers ContentDiffLogic::insert_commentmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1190,7 +1189,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$meta_id         = 2;
 		$new_comment_id  = 456;
-		$commentmeta_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTMETA ], 'meta_id', $meta_id );
+		$commentmeta_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'meta_id', $meta_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -1210,7 +1209,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_term.
+	 * @covers ContentDiffLogic::insert_term.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1218,7 +1217,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$term_id           = 41;
 		$term_id_new       = 123;
-		$term_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_id );
+		$term_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_id );
 		$term_row_expected = $term_row;
 		unset( $term_row_expected['term_id'] );
 
@@ -1246,14 +1245,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_term.
+	 * @covers ContentDiffLogic::insert_term.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_insert_term_should_throw_exception( $data ) {
 		// Prepare.
 		$term_id  = 41;
-		$term_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_id );
+		$term_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -1273,7 +1272,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_termmeta_row.
+	 * @covers ContentDiffLogic::insert_termmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1281,7 +1280,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$term_id               = 42;
 		$term_id_new           = 123;
-		$termmeta_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_id );
+		$termmeta_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_id );
 		$insert_id_expected    = 543;
 		$termmeta_row_expected = $termmeta_row;
 		unset( $termmeta_row_expected['meta_id'] );
@@ -1311,7 +1310,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_termmeta_row.
+	 * @covers ContentDiffLogic::insert_termmeta_row.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1319,7 +1318,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		// Prepare.
 		$term_id      = 42;
 		$term_id_new  = 123;
-		$termmeta_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_id );
+		$termmeta_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_id );
 
 		// Mock.
 		$this->wpdb_mock->expects( $this->once() )
@@ -1335,11 +1334,11 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Tests that ContentDiffMigrator::get_existing_term_taxonomy performs correct calls to the $wpdb and returns existing records.
+	 * Tests that ContentDiffLogic::get_existing_term_taxonomy performs correct calls to the $wpdb and returns existing records.
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::get_existing_term_taxonomy.
+	 * @covers ContentDiffLogic::get_existing_term_taxonomy.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1385,7 +1384,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	/**
 	 * Tests that a Comment Parent is updated correctly and that correct calls are made to the $wpdb.
 	 *
-	 * @covers ContentDiffMigrator::update_comment_parent.
+	 * @covers ContentDiffLogic::update_comment_parent.
 	 */
 	public function test_should_update_comment_parent() {
 		// Prepare.
@@ -1415,7 +1414,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::update_comment_parent.
+	 * @covers ContentDiffLogic::update_comment_parent.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1442,14 +1441,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_term_taxonomy.
+	 * @covers ContentDiffLogic::insert_term_taxonomy.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_should_insert_term_taxonomy( $data ) {
 		// Prepare.
 		$term_id                    = 41;
-		$term_taxonomy_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ], 'term_id', $term_id );
+		$term_taxonomy_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_id', $term_id );
 		$term_id_new                = 234;
 		$term_taxonomy_id_expected  = 123;
 		$term_taxonomy_row_expected = $term_taxonomy_row;
@@ -1480,14 +1479,14 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_term_taxonomy.
+	 * @covers ContentDiffLogic::insert_term_taxonomy.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_insert_term_taxonomy_should_throw_exception( $data ) {
 		// Prepare.
 		$term_id           = 41;
-		$term_taxonomy_row = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ], 'term_id', $term_id );
+		$term_taxonomy_row = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_id', $term_id );
 		$term_id_new       = 234;
 
 		// Mock.
@@ -1508,7 +1507,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_term_relationship.
+	 * @covers ContentDiffLogic::insert_term_relationship.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1549,7 +1548,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::insert_term_relationship.
+	 * @covers ContentDiffLogic::insert_term_relationship.
 	 *
 	 * @dataProvider db_data_provider
 	 */
@@ -1572,40 +1571,40 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Checks that ContentDiffMigrator::import_post_data runs all insert methods with all the appropriate arguments.
+	 * Checks that ContentDiffLogic::import_post_data runs all insert methods with all the appropriate arguments.
 	 *
 	 * @param array $data db_data_provider return.
 	 *
-	 * @covers ContentDiffMigrator::import_post_data.
+	 * @covers ContentDiffLogic::import_post_data.
 	 *
 	 * @dataProvider db_data_provider
 	 */
 	public function test_should_correctly_import_post_data_array( $data ) {
-		// Prepare all the test data that's going to be queried by the ContentDiffMigrator::get_data method.
-		$post_row                    = $data[ ContentDiffMigrator::DATAKEY_POST ];
+		// Prepare all the test data that's going to be queried by the ContentDiffLogic::get_data method.
+		$post_row                    = $data[ ContentDiffLogic::DATAKEY_POST ];
 		$new_post_id                 = 500;
 		$post_author_id              = $post_row['post_author'];
-		$post_author_row             = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $post_author_id );
+		$post_author_row             = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $post_author_id );
 		$post_author_user_login      = $post_author_row['user_login'];
-		$post_author_usermeta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'user_id', $post_author_id );
+		$post_author_usermeta_rows   = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $post_author_id );
 		$new_post_author_id          = 321;
 		$user_admin                  = new WP_User();
 		$user_admin->ID              = 22;
 		$comment_1_id                = 11;
 		$comment_1_id_new            = 31;
-		$comment_1_row               = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_1_id );
+		$comment_1_row               = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_1_id );
 		$comment_2_id                = 12;
 		$comment_2_id_new            = 32;
-		$comment_2_row               = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_2_id );
+		$comment_2_row               = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_2_id );
 		$comment_3_id                = 13;
 		$comment_3_id_new            = 33;
-		$comment_3_row               = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_3_id );
+		$comment_3_row               = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_3_id );
 		$comment1_user_id            = 0;
 		$comment2_user_id            = $comment_2_row['user_id'];
 		$comment3_user_id            = $comment_3_row['user_id'];
-		$comment3_user_row           = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $comment3_user_id );
+		$comment3_user_row           = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment3_user_id );
 		$comment3_user_login         = $comment3_user_row['user_login'];
-		$comment3_user_usermeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_USERMETA ], 'user_id', $comment3_user_id );
+		$comment3_user_usermeta_rows = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment3_user_id );
 		$new_comment3_user_id        = 400;
 		$term_1_id                   = 41;
 		$term_1_name                 = 'Uncategorized';
@@ -1613,24 +1612,24 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$term_2_name                 = 'Custom Term';
 		$term_2_slug                 = 'custom-term';
 		$term_2_id                   = 42;
-		$term_2_row                  = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_2_id );
-		$term_2_taxonomy_row         = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ], 'term_id', $term_2_id );
-		$term_2_meta_rows            = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_2_id );
+		$term_2_row                  = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_2_id );
+		$term_2_taxonomy_row         = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_id', $term_2_id );
+		$term_2_meta_rows            = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_2_id );
 		$new_term_2_id               = 62;
 		$term_3_name                 = 'Blue';
 		$term_3_slug                 = 'blue';
 		$term_3_id                   = 70;
-		$term_3_row                  = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_TERMS ], 'term_id', $term_3_id );
-		$term_3_meta_rows            = $this->logic->filter_array_elements( $data[ ContentDiffMigrator::DATAKEY_TERMMETA ], 'term_id', $term_3_id );
+		$term_3_row                  = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $term_3_id );
+		$term_3_meta_rows            = $this->logic->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $term_3_id );
 		$new_term_3_id               = 100;
-		$term_taxonomy_rows          = $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ];
+		$term_taxonomy_rows          = $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ];
 		$term_1_taxonomy_id          = 1;
 		$term_2_taxonomy_id          = 2;
 		$new_term_taxonomy_3_id      = 521;
 		$new_term_taxonomy_4_id      = 522;
 
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-								   ->setConstructorArgs( [ $this->wpdb_mock ] )
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
 								->setMethods(
 									[
 										'insert_postmeta_row',
@@ -1648,13 +1647,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 										'insert_term_relationship',
 									]
 								)
-								   ->getMock();
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'insert_postmeta_row',
 			[
-				[ $data[ ContentDiffMigrator::DATAKEY_POSTMETA ][0], $new_post_id ],
-				[ $data[ ContentDiffMigrator::DATAKEY_POSTMETA ][1], $new_post_id ],
+				[ $data[ ContentDiffLogic::DATAKEY_POSTMETA ][0], $new_post_id ],
+				[ $data[ ContentDiffLogic::DATAKEY_POSTMETA ][1], $new_post_id ],
 			]
 		);
 		$this->mock_consecutive_value_maps(
@@ -1792,27 +1791,27 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Checks that ContentDiffMigrator::import_post_data captures all errors that occurred.
+	 * Checks that ContentDiffLogic::import_post_data captures all errors that occurred.
 	 *
 	 * @param array $data db_data_provider return.
 	 *
 	 * @dataProvider db_data_provider
 	 *
-	 * @covers ContentDiffMigrator::import_post_data.
+	 * @covers ContentDiffLogic::import_post_data.
 	 */
 	public function test_import_post_data_should_capture_errors( $data ) {
-		// Prepare all the test data that's going to be queried by the ContentDiffMigrator::get_data method.
-		$post_row               = $data[ ContentDiffMigrator::DATAKEY_POST ];
+		// Prepare all the test data that's going to be queried by the ContentDiffLogic::get_data method.
+		$post_row               = $data[ ContentDiffLogic::DATAKEY_POST ];
 		$new_post_id            = 500;
 		$post_author_id         = $post_row['post_author'];
-		$post_author_row        = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $post_author_id );
+		$post_author_row        = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $post_author_id );
 		$post_author_user_login = $post_author_row['user_login'];
 		$user_admin             = new WP_User();
 		$user_admin->ID         = 22;
 		$comment_3_id           = 13;
-		$comment_3_row          = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_COMMENTS ], 'comment_ID', $comment_3_id );
+		$comment_3_row          = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_3_id );
 		$comment3_user_id       = $comment_3_row['user_id'];
-		$comment3_user_row      = $this->logic->filter_array_element( $data[ ContentDiffMigrator::DATAKEY_USERS ], 'ID', $comment3_user_id );
+		$comment3_user_row      = $this->logic->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment3_user_id );
 		$comment3_user_login    = $comment3_user_row['user_login'];
 		$term_1_id              = 41;
 		$term_1_name            = 'Uncategorized';
@@ -1821,11 +1820,11 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 		$term_2_slug            = 'custom-term';
 		$term_3_name            = 'Blue';
 		$term_3_slug            = 'blue';
-		$term_taxonomy_rows     = $data[ ContentDiffMigrator::DATAKEY_TERMTAXONOMY ];
+		$term_taxonomy_rows     = $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ];
 
 		// Mock.
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-								   ->setConstructorArgs( [ $this->wpdb_mock ] )
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
 								->setMethods(
 									[
 										'insert_postmeta_row',
@@ -1844,7 +1843,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 										'insert_term_relationship',
 									]
 								)
-								   ->getMock();
+									->getMock();
 		$logic_partial_mock->method( 'insert_postmeta_row' )
 			->will( $this->throwException( new \RuntimeException( 'err insert_postmeta_row' ) ) );
 		$logic_partial_mock->method( 'insert_postmeta_row' )
@@ -1863,13 +1862,13 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 			]
 		);
 		$logic_partial_mock->method( 'insert_user' )
-						   ->will( $this->throwException( new \RuntimeException( 'err insert_user' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err insert_user' ) ) );
 		$logic_partial_mock->method( 'update_post_author' )
-						   ->will( $this->throwException( new \RuntimeException( 'err update_post_author' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err update_post_author' ) ) );
 		$logic_partial_mock->method( 'insert_comment' )
-						   ->will( $this->throwException( new \RuntimeException( 'err insert_comment' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err insert_comment' ) ) );
 		$logic_partial_mock->method( 'update_comment_parent' )
-						   ->will( $this->throwException( new \RuntimeException( 'err update_comment_parent' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err update_comment_parent' ) ) );
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'term_exists',
@@ -1883,7 +1882,7 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 			]
 		);
 		$logic_partial_mock->method( 'insert_term' )
-						   ->will( $this->throwException( new \RuntimeException( 'err insert_term' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err insert_term' ) ) );
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'get_existing_term_taxonomy',
@@ -1898,9 +1897,9 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 			]
 		);
 		$logic_partial_mock->method( 'insert_term_taxonomy' )
-						   ->will( $this->throwException( new \RuntimeException( 'err insert_term_taxonomy' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err insert_term_taxonomy' ) ) );
 		$logic_partial_mock->method( 'insert_term_relationship' )
-						   ->will( $this->throwException( new \RuntimeException( 'err insert_term_relationship' ) ) );
+							->will( $this->throwException( new \RuntimeException( 'err insert_term_relationship' ) ) );
 
 		// Run.
 		$import_errors = $logic_partial_mock->import_post_data( $new_post_id, $data );
@@ -1928,9 +1927,9 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 			// Term relationships rows.
 			'err insert_term_relationship',
 			// Inserts didn't happen here.
-			sprintf( "Error, could not insert term_relationship for live post/object_id=%d (new post_id=%d) because term_taxonomy_id=%d is not found in live DB -- it exists in live term_relationships, but not in live term_taxonomy table", $post_row['ID'], $new_post_id, $data['term_taxonomy'][1]['term_taxonomy_id'] ),
-			sprintf( "Error, could not insert term_relationship for live post/object_id=%d (new post_id=%d) because term_taxonomy_id=%d is not found in live DB -- it exists in live term_relationships, but not in live term_taxonomy table", $post_row['ID'], $new_post_id, $data['term_taxonomy'][2]['term_taxonomy_id'] ),
-			sprintf( "Error, could not insert term_relationship for live post/object_id=%d (new post_id=%d) because term_taxonomy_id=%d is not found in live DB -- it exists in live term_relationships, but not in live term_taxonomy table", $post_row['ID'], $new_post_id, $data['term_taxonomy'][3]['term_taxonomy_id'] ),
+			sprintf( 'Error, could not insert term_relationship for live post/object_id=%d (new post_id=%d) because term_taxonomy_id=%d is not found in live DB -- it exists in live term_relationships, but not in live term_taxonomy table', $post_row['ID'], $new_post_id, $data['term_taxonomy'][1]['term_taxonomy_id'] ),
+			sprintf( 'Error, could not insert term_relationship for live post/object_id=%d (new post_id=%d) because term_taxonomy_id=%d is not found in live DB -- it exists in live term_relationships, but not in live term_taxonomy table', $post_row['ID'], $new_post_id, $data['term_taxonomy'][2]['term_taxonomy_id'] ),
+			sprintf( 'Error, could not insert term_relationship for live post/object_id=%d (new post_id=%d) because term_taxonomy_id=%d is not found in live DB -- it exists in live term_relationships, but not in live term_taxonomy table', $post_row['ID'], $new_post_id, $data['term_taxonomy'][3]['term_taxonomy_id'] ),
 		];
 		$this->assertEquals( $expected_errors, $import_errors );
 	}
@@ -1944,37 +1943,37 @@ class TestContentDiffMigrator extends WP_UnitTestCase {
 			11111 => 11110,
 		];
 
-		$html          = <<<HTML
+		$html          = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="wp-image-11111"/>
 HTML;
-		$html_expected = <<<HTML
+		$html_expected = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="wp-image-11110"/>
 HTML;
 		$html_actual   = $this->logic->update_image_element_class_attribute( $imported_attachment_ids, $html );
 		$this->assertEquals( $html_expected, $html_actual );
 
-		$html          = <<<HTML
+		$html          = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="otherclass wp-image-11111"/>
 HTML;
-		$html_expected = <<<HTML
+		$html_expected = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="otherclass wp-image-11110"/>
 HTML;
 		$html_actual   = $this->logic->update_image_element_class_attribute( $imported_attachment_ids, $html );
 		$this->assertEquals( $html_expected, $html_actual );
 
-		$html          = <<<HTML
+		$html          = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="wp-image-11111 otherclass"/>
 HTML;
-		$html_expected = <<<HTML
+		$html_expected = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="wp-image-11110 otherclass"/>
 HTML;
 		$html_actual   = $this->logic->update_image_element_class_attribute( $imported_attachment_ids, $html );
 		$this->assertEquals( $html_expected, $html_actual );
 
-		$html          = <<<HTML
+		$html          = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="otherclassA wp-image-11111 otherclassB"/>
 HTML;
-		$html_expected = <<<HTML
+		$html_expected = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="otherclassA wp-image-11110 otherclassB"/>
 HTML;
 		$html_actual   = $this->logic->update_image_element_class_attribute( $imported_attachment_ids, $html );
@@ -1989,10 +1988,10 @@ HTML;
 		$imported_attachment_ids = [
 			11111 => 11110,
 		];
-		$html                    = <<<HTML
+		$html                    = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11111" class="wp-image-11111"/>
 HTML;
-		$html_expected           = <<<HTML
+		$html_expected           = <<<'HTML'
 <img src="https://philomath.test/wp-content/uploads/2022/02/022822-haskell-sign.jpeg" alt="Haskell Indian Nations University entrance sign" data-id="11110" class="wp-image-11111"/>
 HTML;
 
@@ -2036,7 +2035,7 @@ HTML;
 			33333 => 33330,
 			44444 => 44440,
 		];
-		$html_with_placeholders  = <<<HTML
+		$html_with_placeholders  = <<<'HTML'
 <!-- wp:blocka {"id":%d,"sizeSlug":"large"} -->
 some content
 <!-- /wp:image -->
@@ -2096,11 +2095,11 @@ HTML;
 
 		// The second assertion is for Jetpack Tiled Gallery block.
 		$html_jp_tiled_gallery          = $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 11111, 99999, 33333 )
-								 . "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 1111111111, 2222222222, 3333333333 )
-								 . "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 555, 11111, 666 );
+								. "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 1111111111, 2222222222, 3333333333 )
+								. "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 555, 11111, 666 );
 		$html_jp_tiled_gallery_expected = $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 11110, 99999, 33330 )
-										  . "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 1111111111, 2222222222, 3333333333 )
-										  . "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 555, 11110, 666 );
+											. "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 1111111111, 2222222222, 3333333333 )
+											. "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 555, 11110, 666 );
 
 		$html_jp_tiled_gallery_actual = $html_jp_tiled_gallery;
 		$html_jp_tiled_gallery_actual = $this->logic->update_gutenberg_blocks_headers_multiple_ids( $imported_attachment_ids, $html_jp_tiled_gallery_actual );
@@ -2113,7 +2112,7 @@ HTML;
 	/**
 	 * A more exhaustive search replace test, testing all the exact replacements which the update_blocks_ids method does.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_blocks_ids
 	 */
 	public function test_update_blocks_ids_should_update_all_ids_correctly() {
 
@@ -2139,7 +2138,7 @@ HTML;
 			. "\n\n" . $this->blocks_data_provider->get_jetpack_tiled_gallery_block( 1111111111, 2222222222, 3333333333 );
 
 		$html_actual = $html;
-		// All the updates made in \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_blocks_ids.
+		// All the updates made in \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_blocks_ids.
 		$html_actual = $this->logic->update_gutenberg_blocks_headers_single_id( 'wp:image', $imported_attachment_ids, $html_actual );
 		$html_actual = $this->logic->update_gutenberg_blocks_headers_multiple_ids( $imported_attachment_ids, $html_actual );
 		$html_actual = $this->logic->update_image_element_class_attribute( $imported_attachment_ids, $html_actual );
@@ -2151,52 +2150,52 @@ HTML;
 	/**
 	 * Testings exact replacements which the update_image_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_image_blocks_ids
 	 */
-		public function test_update_image_blocks_ids_should_update_all_ids_correctly() {
+	public function test_update_image_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$img_block_id_old_live_1 = 111111;
+		$img_block_id_old_live_1    = 111111;
 		$img_block_id_new_staging_1 = 111112;
-		$img_block_url_1 = 'https://host.com/wp-content/uploads/2022/09/AP22244107023566-2-1200x800.jpg';
-		$img_block_id_old_live_2 = 222222;
+		$img_block_url_1            = 'https://host.com/wp-content/uploads/2022/09/AP22244107023566-2-1200x800.jpg';
+		$img_block_id_old_live_2    = 222222;
 		$img_block_id_new_staging_2 = 222223;
-		$img_block_url_2 = 'https://host.com/wp-content/uploads/2022/09/file_2.jpg';
-		$html = $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_1, $img_block_url_1 )
-			    . "\n\n"
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-				. '<!-- wp:group -->'
-		        . $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_2, $img_block_url_2 )
-				. '<!-- /wp:group -->';
+		$img_block_url_2            = 'https://host.com/wp-content/uploads/2022/09/file_2.jpg';
+		$html                       = $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_1, $img_block_url_1 )
+			. "\n\n"
+			// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+			. '<!-- wp:group -->'
+			. $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_2, $img_block_url_2 )
+			. '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_new_staging_1, $img_block_url_1 )
-		                 . "\n\n"
-						 . '<!-- wp:group -->'
-		                 . $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_new_staging_2, $img_block_url_2 )
-						 . '<!-- /wp:group -->';
+					. "\n\n"
+					. '<!-- wp:group -->'
+					. $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_new_staging_2, $img_block_url_2 )
+					. '<!-- /wp:group -->';
 		// Add a couple of gallery blockc. Should replace all the images inside these too.
-		$gallery_block_img_ids_old_live_1 = [ 111111, 12, 13 ];
+		$gallery_block_img_ids_old_live_1    = [ 111111, 12, 13 ];
 		$gallery_block_img_ids_new_staging_1 = [ 111112, 122, 133 ];
-		$gallery_block_img_urls_old_live_1 = [
+		$gallery_block_img_urls_old_live_1   = [
 			'https://host.com/wp-content/uploads/2022/09/AP22244107023566-2-1200x800.jpg',
 			'https://host.com/wp-content/uploads/2022/09/img2.jpg',
 			'https://host.com/wp-content/uploads/2022/09/img3.jpg',
 		];
-		$gallery_block_img_ids_old_live_2 = [ 44441, 55551, 66661 ];
+		$gallery_block_img_ids_old_live_2    = [ 44441, 55551, 66661 ];
 		$gallery_block_img_ids_new_staging_2 = [ 44442, 55552, 66662 ];
-		$gallery_block_img_urls_old_live_2 = [
+		$gallery_block_img_urls_old_live_2   = [
 			'https://host.com/wp-content/uploads/2022/09/img_21',
 			'https://host.com/wp-content/uploads/2022/09/img_22.jpg',
 			'https://host.com/wp-content/uploads/2022/09/img_23.jpg',
 		];
-		$html .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_old_live_1, $gallery_block_img_urls_old_live_1 )
-			. "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_old_live_2, $gallery_block_img_urls_old_live_2 );
-		$html_expected .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_new_staging_1, $gallery_block_img_urls_old_live_1 )
-					. "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_new_staging_2, $gallery_block_img_urls_old_live_2 );
+		$html                               .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_old_live_1, $gallery_block_img_urls_old_live_1 )
+		. "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_old_live_2, $gallery_block_img_urls_old_live_2 );
+		$html_expected                      .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_new_staging_1, $gallery_block_img_urls_old_live_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_new_staging_2, $gallery_block_img_urls_old_live_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+								->setConstructorArgs( [ $this->wpdb_mock ] )
+								->setMethods( [ 'attachment_url_to_postid' ] )
+								->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2216,7 +2215,7 @@ HTML;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_image_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2226,46 +2225,46 @@ HTML;
 	/**
 	 * Testings exact replacements which the update_image_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_image_blocks_ids
 	 */
-		public function test_update_image_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
+	public function test_update_image_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$img_block_id_old_live_1 = 111111;
+		$img_block_id_old_live_1    = 111111;
 		$img_block_id_new_staging_1 = 0;
-		$img_block_url_1 = 'https://host.com/wp-content/uploads/2022/09/AP22244107023566-2-1200x800.jpg';
-		$img_block_id_old_live_2 = 222222;
+		$img_block_url_1            = 'https://host.com/wp-content/uploads/2022/09/AP22244107023566-2-1200x800.jpg';
+		$img_block_id_old_live_2    = 222222;
 		$img_block_id_new_staging_2 = 222223;
-		$img_block_url_2 = 'https://host.com/wp-content/uploads/2022/09/file_2.jpg';
-		$html = $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_1, $img_block_url_1 )
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_2, $img_block_url_2 );
+		$img_block_url_2            = 'https://host.com/wp-content/uploads/2022/09/file_2.jpg';
+		$html                       = $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_1, $img_block_url_1 )
+			. "\n\n" . $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_2, $img_block_url_2 );
 		// First stays the same, second gets updated.
 		$html_expected = $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_old_live_1, $img_block_url_1 )
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_new_staging_2, $img_block_url_2 );
+					. "\n\n" . $this->blocks_data_provider->get_gutenberg_image_block( $img_block_id_new_staging_2, $img_block_url_2 );
 		// Add a couple of gallery blockc. Should replace all the images inside these too.
-		$gallery_block_img_ids_old_live_1 = [ 111111, 12, 13 ];
+		$gallery_block_img_ids_old_live_1    = [ 111111, 12, 13 ];
 		$gallery_block_img_ids_new_staging_1 = [ 0, 0, 133 ];
-		$gallery_block_img_urls_1 = [
+		$gallery_block_img_urls_1            = [
 			'https://host.com/wp-content/uploads/2022/09/AP22244107023566-2-1200x800.jpg',
 			'https://host.com/wp-content/uploads/2022/09/img2.jpg',
 			'https://host.com/wp-content/uploads/2022/09/img3.jpg',
 		];
-		$html .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_old_live_1, $gallery_block_img_urls_1 );
-		$html_expected .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block(
+		$html                               .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block( $gallery_block_img_ids_old_live_1, $gallery_block_img_urls_1 );
+		$html_expected                      .= "\n\n" . $this->blocks_data_provider->get_gutenberg_gallery_block(
 			[
 				// First two will stay the same.
 				$gallery_block_img_ids_old_live_1[0],
 				$gallery_block_img_ids_old_live_1[1],
 				// Third gets updated.
-				$gallery_block_img_ids_new_staging_1[2]
+				$gallery_block_img_ids_new_staging_1[2],
 			],
 			$gallery_block_img_urls_1
-			);
+		);
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+								->setConstructorArgs( [ $this->wpdb_mock ] )
+								->setMethods( [ 'attachment_url_to_postid' ] )
+								->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2281,7 +2280,7 @@ HTML;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_image_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2291,33 +2290,33 @@ HTML;
 	/**
 	 * Testings exact replacements which the update_audio_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_audio_blocks_ids
 	 */
 	public function test_update_audio_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$audio_att_id_old_live_1 = 1111;
+		$audio_att_id_old_live_1    = 1111;
 		$audio_att_id_new_staging_1 = 2222;
-		$audio_src_1 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp3';
-		$audio_att_id_old_live_2 = 3333;
+		$audio_src_1                = 'https://host.com/wp-content/uploads/2022/07/file_1.mp3';
+		$audio_att_id_old_live_2    = 3333;
 		$audio_att_id_new_staging_2 = 4444;
-		$audio_src_2 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp3';
-		$html = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_1, $audio_src_1 )
-			    . "\n\n"
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . '<!-- wp:group -->'
-		        . $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_2, $audio_src_2 )
-		        . '<!-- /wp:group -->';
+		$audio_src_2                = 'https://host.com/wp-content/uploads/2022/07/file_2.mp3';
+		$html                       = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_1, $audio_src_1 )
+				. "\n\n"
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. '<!-- wp:group -->'
+				. $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_2, $audio_src_2 )
+				. '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_new_staging_1, $audio_src_1 )
-		                 . "\n\n"
-		                 . '<!-- wp:group -->'
-		                 . $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_new_staging_2, $audio_src_2 )
-		                 . '<!-- /wp:group -->';
+						. "\n\n"
+						. '<!-- wp:group -->'
+						. $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_new_staging_2, $audio_src_2 )
+						. '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2329,7 +2328,7 @@ HTML;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_audio_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2339,26 +2338,26 @@ HTML;
 	/**
 	 * Testings exact replacements which the update_audio_blocks_ids method should do.
 	 *
-	 * @covers \ContentMigrator\Logic\ContentDiffMigrator::update_audio_blocks_ids
+	 * @covers \ContentMigrator\Logic\ContentDiffLogic::update_audio_blocks_ids
 	 */
 	public function test_update_audio_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$audio_att_id_old_live_1 = 1111;
+		$audio_att_id_old_live_1    = 1111;
 		$audio_att_id_new_staging_1 = 0;
-		$audio_src_1 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp3';
-		$audio_att_id_old_live_2 = 3333;
+		$audio_src_1                = 'https://host.com/wp-content/uploads/2022/07/file_1.mp3';
+		$audio_att_id_old_live_2    = 3333;
 		$audio_att_id_new_staging_2 = 4444;
-		$audio_src_2 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp3';
-		$html = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_1, $audio_src_1 )
-			    . "\n\n" . $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_2, $audio_src_2 );
-		$html_expected = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_1, $audio_src_1 )
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_new_staging_2, $audio_src_2 );
+		$audio_src_2                = 'https://host.com/wp-content/uploads/2022/07/file_2.mp3';
+		$html                       = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_1, $audio_src_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_2, $audio_src_2 );
+		$html_expected              = $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_old_live_1, $audio_src_1 )
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_audio_block( $audio_att_id_new_staging_2, $audio_src_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2370,7 +2369,7 @@ HTML;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_audio_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2380,41 +2379,41 @@ HTML;
 	/**
 	 * Testings exact replacements which the update_video_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_video_blocks_ids
 	 */
 	public function test_update_video_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$video_att_id_old_live_1 = 1111;
-		$video_att_id_new_staging_1 = 2222;
-		$video_src_1 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
-			$video_att_id_old_live_2 = 3333;
-		$video_att_id_new_staging_2 = 4444;
-		$video_src_2 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
-		$custom_block_w_same_id_sprintf = <<<BLOCK
+		$video_att_id_old_live_1        = 1111;
+		$video_att_id_new_staging_1     = 2222;
+		$video_src_1                    = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
+			$video_att_id_old_live_2    = 3333;
+		$video_att_id_new_staging_2     = 4444;
+		$video_src_2                    = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
+		$custom_block_w_same_id_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"id":%d} -->
 <figure class="wp-block-video"><video controls src="%s"></video></figure>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_id = sprintf( $custom_block_w_same_id_sprintf, $video_att_id_old_live_1, 'https://host.com/foo.bar' );
+		$custom_block_w_same_id         = sprintf( $custom_block_w_same_id_sprintf, $video_att_id_old_live_1, 'https://host.com/foo.bar' );
 
 		$html = $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_1, $video_src_1 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than video Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_id
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-			    . "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_2, $video_src_2 )
-		        . "\n\n" . '<!-- /wp:group -->';
+				// Let's throw in a different block which uses same ID values, but which mean something else than video Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_id
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_2, $video_src_2 )
+				. "\n\n" . '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_new_staging_1, $video_src_1 )
-		                 . "\n\n" . $custom_block_w_same_id
-		                 . "\n\n" . '<!-- wp:group -->'
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_new_staging_2, $video_src_2 )
-		                 . "\n\n" . '<!-- /wp:group -->';
+						. "\n\n" . $custom_block_w_same_id
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_new_staging_2, $video_src_2 )
+						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2426,7 +2425,7 @@ BLOCK;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_video_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2436,27 +2435,27 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_video_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_video_blocks_ids
 	 */
 	public function test_update_video_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$video_att_id_old_live_1 = 1111;
-		$video_att_id_new_staging_1 = 0;
-		$video_src_1 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
+		$video_att_id_old_live_1     = 1111;
+		$video_att_id_new_staging_1  = 0;
+		$video_src_1                 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
 			$video_att_id_old_live_2 = 3333;
-		$video_att_id_new_staging_2 = 4444;
-		$video_src_2 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
+		$video_att_id_new_staging_2  = 4444;
+		$video_src_2                 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
 
-		$html = $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_1, $video_src_1 )
-			    . "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_2, $video_src_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_1, $video_src_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_2, $video_src_2 );
 		$html_expected = $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_old_live_1, $video_src_1 )
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_new_staging_2, $video_src_2 );
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_video_block( $video_att_id_new_staging_2, $video_src_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2468,7 +2467,7 @@ BLOCK;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_video_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2478,42 +2477,42 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_file_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_file_blocks_ids
 	 */
 	public function test_update_file_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$file_att_id_old_live_1 = 1111;
-		$file_att_id_new_staging_1 = 2222;
-		$file_href_1 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
-		$file_att_id_old_live_2 = 3333;
-		$file_att_id_new_staging_2 = 4444;
-		$file_href_2 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
-		$custom_block_w_same_id_sprintf = <<<BLOCK
+		$file_att_id_old_live_1         = 1111;
+		$file_att_id_new_staging_1      = 2222;
+		$file_href_1                    = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
+		$file_att_id_old_live_2         = 3333;
+		$file_att_id_new_staging_2      = 4444;
+		$file_href_2                    = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
+		$custom_block_w_same_id_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"id":%d} -->
 <div class="wp-block-file"><a id="wp-block-file--media-1b32a8dc-27e7-4af8-b4e3-f14348bb6889" href="%s">link text</a><a href="%s" class="wp-block-file__button" download aria-describedby="wp-block-file--media-1b32a8dc-27e7-4af8-b4e3-f14348bb6889">Download</a></div>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_id = sprintf( $custom_block_w_same_id_sprintf, $file_att_id_old_live_1, 'https://host.com/foo.bar', 'https://host.com/foo.bar', 'https://host.com/foo.bar' );
+		$custom_block_w_same_id         = sprintf( $custom_block_w_same_id_sprintf, $file_att_id_old_live_1, 'https://host.com/foo.bar', 'https://host.com/foo.bar', 'https://host.com/foo.bar' );
 
 		$html = $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_1, $file_href_1 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than file Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_id
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-			    . "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_2, $file_href_2 )
-		        . "\n\n" . '<!-- /wp:group -->';
+				// Let's throw in a different block which uses same ID values, but which mean something else than file Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_id
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_2, $file_href_2 )
+				. "\n\n" . '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_new_staging_1, $file_href_1 )
-		                 . "\n\n" . $custom_block_w_same_id
-		                 // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		                 . "\n\n" . '<!-- wp:group -->'
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_new_staging_2, $file_href_2 )
-		                 . "\n\n" . '<!-- /wp:group -->';
+						. "\n\n" . $custom_block_w_same_id
+						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_new_staging_2, $file_href_2 )
+						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2525,7 +2524,7 @@ BLOCK;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_file_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2535,27 +2534,27 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_file_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_file_blocks_ids
 	 */
-		public function test_update_file_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
+	public function test_update_file_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$file_att_id_old_live_1 = 1111;
+		$file_att_id_old_live_1    = 1111;
 		$file_att_id_new_staging_1 = 2222;
-		$file_href_1 = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
-		$file_att_id_old_live_2 = 3333;
+		$file_href_1               = 'https://host.com/wp-content/uploads/2022/07/file_1.mp4';
+		$file_att_id_old_live_2    = 3333;
 		$file_att_id_new_staging_2 = 0;
-		$file_href_2 = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
+		$file_href_2               = 'https://host.com/wp-content/uploads/2022/07/file_2.mp4';
 
-		$html = $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_1, $file_href_1 )
-			    . "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_2, $file_href_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_1, $file_href_1 )
+			. "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_2, $file_href_2 );
 		$html_expected = $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_new_staging_1, $file_href_1 )
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_2, $file_href_2 );
+					. "\n\n" . $this->blocks_data_provider->get_gutenberg_file_block( $file_att_id_old_live_2, $file_href_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+								->setConstructorArgs( [ $this->wpdb_mock ] )
+								->setMethods( [ 'attachment_url_to_postid' ] )
+								->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2567,7 +2566,7 @@ BLOCK;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_file_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2577,44 +2576,44 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_cover_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_cover_blocks_ids
 	 */
 	public function test_update_cover_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$cover_att_id_old_live_1 = 1111;
-		$cover_att_id_new_staging_1 = 2222;
-		$cover_src_1 = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
-		$cover_att_id_old_live_2 = 3333;
-		$cover_att_id_new_staging_2 = 4444;
-		$cover_src_2 = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
-		$custom_block_w_same_id_sprintf = <<<BLOCK
+		$cover_att_id_old_live_1        = 1111;
+		$cover_att_id_new_staging_1     = 2222;
+		$cover_src_1                    = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
+		$cover_att_id_old_live_2        = 3333;
+		$cover_att_id_new_staging_2     = 4444;
+		$cover_src_2                    = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
+		$custom_block_w_same_id_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"id":%d} -->
 <div class="wp-block-cover is-light"><span aria-hidden="true" class="wp-block-cover__background has-background-dim"></span><img class="wp-block-cover__image-background wp-image-%d" alt="" src="%s" data-object-fit="cover"/><div class="wp-block-cover__inner-container"><!-- wp:paragraph {"align":"center","placeholder":"Write title…","fontSize":"large"} -->
 <p class="has-text-align-center has-large-font-size"></p>
 <!-- /wp:paragraph --></div></div>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_id = sprintf( $custom_block_w_same_id_sprintf, $cover_att_id_old_live_1, $cover_att_id_old_live_1, 'https://host.com/foo.bar' );
+		$custom_block_w_same_id         = sprintf( $custom_block_w_same_id_sprintf, $cover_att_id_old_live_1, $cover_att_id_old_live_1, 'https://host.com/foo.bar' );
 
 		$html = $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_1, $cover_src_1 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_id
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_2, $cover_src_2 )
-		        . "\n\n" . '<!-- /wp:group -->';
+				// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_id
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_2, $cover_src_2 )
+				. "\n\n" . '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_new_staging_1, $cover_src_1 )
-		                 . "\n\n" . $custom_block_w_same_id
-		                 // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		                 . "\n\n" . '<!-- wp:group -->'
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_new_staging_2, $cover_src_2 )
-		                 . "\n\n" . '<!-- /wp:group -->';
+						. "\n\n" . $custom_block_w_same_id
+						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_new_staging_2, $cover_src_2 )
+						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2626,7 +2625,7 @@ BLOCK;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_cover_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2636,27 +2635,27 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_cover_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_cover_blocks_ids
 	 */
 	public function test_update_cover_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$cover_att_id_old_live_1 = 1111;
+		$cover_att_id_old_live_1    = 1111;
 		$cover_att_id_new_staging_1 = 2222;
-		$cover_src_1 = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
-		$cover_att_id_old_live_2 = 3333;
+		$cover_src_1                = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
+		$cover_att_id_old_live_2    = 3333;
 		$cover_att_id_new_staging_2 = 0;
-		$cover_src_2 = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
+		$cover_src_2                = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
 
-		$html = $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_1, $cover_src_1 )
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_2, $cover_src_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_1, $cover_src_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_2, $cover_src_2 );
 		$html_expected = $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_new_staging_1, $cover_src_1 )
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_2, $cover_src_2 );
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_cover_block( $cover_att_id_old_live_2, $cover_src_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2668,7 +2667,7 @@ BLOCK;
 		);
 
 		// Run.
-		$known_ids = [];
+		$known_ids   = [];
 		$html_actual = $logic_partial_mock->update_cover_blocks_ids( $html, $known_ids );
 
 		// Assert.
@@ -2678,62 +2677,62 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_mediatext_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_mediatext_blocks_ids
 	 */
 	public function test_update_mediatext_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$mediaId_att_id_old_live_1 = 1111;
-		$mediaId_att_id_new_staging_1 = 2222;
-		$mediaLink_1 = 'https://host.com/election-2022-1/';
-		$img_src_1 = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
-		$text_1 = 'foo bar 1';
-		$mediaId_att_id_old_live_2 = 3333;
-		$mediaId_att_id_new_staging_2 = 4444;
-		$mediaLink_2 = 'https://host.com/election-2022-2/';
-		$img_src_2 = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
-		$text_2 = 'foo bar 3';
+		$media_id_att_id_old_live_1    = 1111;
+		$media_id_att_id_new_staging_1 = 2222;
+		$media_link_1                  = 'https://host.com/election-2022-1/';
+		$img_src_1                     = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
+		$text_1                        = 'foo bar 1';
+		$media_id_att_id_old_live_2    = 3333;
+		$media_id_att_id_new_staging_2 = 4444;
+		$media_link_2                  = 'https://host.com/election-2022-2/';
+		$img_src_2                     = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
+		$text_2                        = 'foo bar 3';
 
-		$custom_block_w_same_id_sprintf = <<<BLOCK
+		$custom_block_w_same_id_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"id":%d,"mediaId":%d,"mediaLink":"%s","mediaType":"image"} -->
 <div class="wp-block-media-text alignwide is-stacked-on-mobile"><figure class="wp-block-media-text__media"><img src="%s" alt="" class="wp-image-%d size-full"/></figure><div class="wp-block-media-text__content"><!-- wp:paragraph {"placeholder":"Content…"} -->
 <p>%s</p>
 <!-- /wp:paragraph --></div></div>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_id = sprintf( $custom_block_w_same_id_sprintf, $mediaId_att_id_old_live_1, $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $mediaId_att_id_old_live_1, $text_1 );
+		$custom_block_w_same_id         = sprintf( $custom_block_w_same_id_sprintf, $media_id_att_id_old_live_1, $media_id_att_id_old_live_1, $media_link_1, $img_src_1, $media_id_att_id_old_live_1, $text_1 );
 
-		$html = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_id
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_2, $mediaLink_2, $img_src_2, $text_2 )
-		        . "\n\n" . '<!-- /wp:group -->';
-		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_new_staging_1, $mediaLink_1, $img_src_1, $text_1 )
-		                 . "\n\n" . $custom_block_w_same_id
-		                 // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		                 . "\n\n" . '<!-- wp:group -->'
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_new_staging_2, $mediaLink_2, $img_src_2, $text_2 )
-		                 . "\n\n" . '<!-- /wp:group -->';
+		$html = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_1, $media_link_1, $img_src_1, $text_1 )
+				// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_id
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_2, $media_link_2, $img_src_2, $text_2 )
+				. "\n\n" . '<!-- /wp:group -->';
+		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_new_staging_1, $media_link_1, $img_src_1, $text_1 )
+						. "\n\n" . $custom_block_w_same_id
+						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_new_staging_2, $media_link_2, $img_src_2, $text_2 )
+						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
 			[
 				// Will be called twice to get the cover files' attachment IDs on Staging.
-				[ $this->logic->clean_attachment_url_for_query( $img_src_1 ), [], $mediaId_att_id_new_staging_1 ],
-				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $mediaId_att_id_new_staging_2 ],
+				[ $this->logic->clean_attachment_url_for_query( $img_src_1 ), [], $media_id_att_id_new_staging_1 ],
+				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $media_id_att_id_new_staging_2 ],
 			]
 		);
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_mediatext_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_mediatext_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -2742,44 +2741,44 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_mediatext_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_mediatext_blocks_ids
 	 */
 	public function test_update_mediatext_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$mediaId_att_id_old_live_1 = 1111;
-		$mediaId_att_id_new_staging_1 = 0;
-		$mediaLink_1 = 'https://host.com/election-2022-1/';
-		$img_src_1 = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
-		$text_1 = 'foo bar 1';
-		$mediaId_att_id_old_live_2 = 3333;
-		$mediaId_att_id_new_staging_2 = 4444;
-		$mediaLink_2 = 'https://host.com/election-2022-2/';
-		$img_src_2 = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
-		$text_2 = 'foo bar 3';
+		$media_id_att_id_old_live_1    = 1111;
+		$media_id_att_id_new_staging_1 = 0;
+		$media_link_1                  = 'https://host.com/election-2022-1/';
+		$img_src_1                     = 'https://host.com/wp-content/uploads/2022/07/img_1.jpg';
+		$text_1                        = 'foo bar 1';
+		$media_id_att_id_old_live_2    = 3333;
+		$media_id_att_id_new_staging_2 = 4444;
+		$media_link_2                  = 'https://host.com/election-2022-2/';
+		$img_src_2                     = 'https://host.com/wp-content/uploads/2022/07/img_2.jpg';
+		$text_2                        = 'foo bar 3';
 
-		$html = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_2, $mediaLink_2, $img_src_2, $text_2 );
-		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_old_live_1, $mediaLink_1, $img_src_1, $text_1 )
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $mediaId_att_id_new_staging_2, $mediaLink_2, $img_src_2, $text_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_1, $media_link_1, $img_src_1, $text_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_2, $media_link_2, $img_src_2, $text_2 );
+		$html_expected = $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_old_live_1, $media_link_1, $img_src_1, $text_1 )
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_mediatext_block( $media_id_att_id_new_staging_2, $media_link_2, $img_src_2, $text_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
 			[
 				// Will be called twice and won't make a change for the first one.
 				[ $this->logic->clean_attachment_url_for_query( $img_src_1 ), [], 0 ],
-				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $mediaId_att_id_new_staging_2 ],
+				[ $this->logic->clean_attachment_url_for_query( $img_src_2 ), [], $media_id_att_id_new_staging_2 ],
 			]
 		);
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_mediatext_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_mediatext_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -2788,35 +2787,35 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_jetpacktiledgallery_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function test_update_jetpacktiledgallery_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$img_ids_old_live_1 = [ 1111, 2222 ];
+		$img_ids_old_live_1    = [ 1111, 2222 ];
 		$img_ids_new_staging_1 = [ 1119, 2229 ];
-		$img_data_links_1 = [
+		$img_data_links_1      = [
 			'https://host.com/2022/09/06/path/link_11/',
 			'https://host.com/2022/09/06/path/link_12/',
 		];
-		$img_data_urls_1 = [
+		$img_data_urls_1       = [
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg',
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg',
 		];
-		$img_srcs_1 = [
+		$img_srcs_1            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1',
 		];
-		$img_ids_old_live_2 = [ 2222, 3333 ];
+		$img_ids_old_live_2    = [ 2222, 3333 ];
 		$img_ids_new_staging_2 = [ 2229, 3339 ];
-		$img_data_links_2 = [
+		$img_data_links_2      = [
 			'https://host.com/2022/09/06/path/link_21/',
 			'https://host.com/2022/09/06/path/link_22/',
 		];
-		$img_data_urls_2 = [
+		$img_data_urls_2       = [
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg',
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg',
 		];
-		$img_srcs_2 = [
+		$img_srcs_2            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1',
 		];
@@ -2830,25 +2829,25 @@ BLOCK;
 BLOCK;
 
 		$html = $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_1, $img_data_links_1, $img_data_urls_1, $img_srcs_1 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_id
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_2, $img_data_links_2, $img_data_urls_2, $img_srcs_2 )
-		        . "\n\n" . '<!-- /wp:group -->';
+				// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_id
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_2, $img_data_links_2, $img_data_urls_2, $img_srcs_2 )
+				. "\n\n" . '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_new_staging_1, $img_data_links_1, $img_data_urls_1, $img_srcs_1 )
-		                 // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		                 . "\n\n" . $custom_block_w_same_id
-		                 // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		                 . "\n\n" . '<!-- wp:group -->'
-		                 . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_new_staging_2, $img_data_links_2, $img_data_urls_2, $img_srcs_2 )
-		                 . "\n\n" . '<!-- /wp:group -->';
+						// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+						. "\n\n" . $custom_block_w_same_id
+						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_new_staging_2, $img_data_links_2, $img_data_urls_2, $img_srcs_2 )
+						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2863,7 +2862,7 @@ BLOCK;
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_jetpacktiledgallery_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_jetpacktiledgallery_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -2872,59 +2871,59 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_jetpacktiledgallery_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function test_update_jetpacktiledgallery_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$img_ids_old_live_1 = [ 1111, 2222 ];
+		$img_ids_old_live_1    = [ 1111, 2222 ];
 		$img_ids_new_staging_1 = [ 1119, 0 ];
-		$img_data_links_1 = [
+		$img_data_links_1      = [
 			'https://host.com/2022/09/06/path/link_11/',
 			'https://host.com/2022/09/06/path/link_12/',
 		];
-		$img_data_urls_1 = [
+		$img_data_urls_1       = [
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg',
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg',
 		];
-		$img_srcs_1 = [
+		$img_srcs_1            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1',
 		];
-		$img_ids_old_live_2 = [ 2222, 3333 ];
+		$img_ids_old_live_2    = [ 2222, 3333 ];
 		$img_ids_new_staging_2 = [ 0, 3339 ];
-		$img_data_links_2 = [
+		$img_data_links_2      = [
 			'https://host.com/2022/09/06/path/link_21/',
 			'https://host.com/2022/09/06/path/link_22/',
 		];
-		$img_data_urls_2 = [
+		$img_data_urls_2       = [
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg',
 			'https://host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg',
 		];
-		$img_srcs_2 = [
+		$img_srcs_2            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1',
 		];
 
-		$html = $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_1, $img_data_links_1, $img_data_urls_1, $img_srcs_1 )
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_2, $img_data_links_2, $img_data_urls_2, $img_srcs_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_1, $img_data_links_1, $img_data_urls_1, $img_srcs_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block( $img_ids_old_live_2, $img_data_links_2, $img_data_urls_2, $img_srcs_2 );
 		$html_expected = $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block(
-				[ $img_ids_new_staging_1[0], $img_ids_old_live_1[1] ],
-				$img_data_links_1,
-				$img_data_urls_1,
-				$img_srcs_1
-			)
-             . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block(
-				 [ $img_ids_old_live_2[0], $img_ids_new_staging_2[1] ],
-				 $img_data_links_2,
-				 $img_data_urls_2,
-				 $img_srcs_2
+			[ $img_ids_new_staging_1[0], $img_ids_old_live_1[1] ],
+			$img_data_links_1,
+			$img_data_urls_1,
+			$img_srcs_1
+		)
+			. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpacktiledgallery_block(
+				[ $img_ids_old_live_2[0], $img_ids_new_staging_2[1] ],
+				$img_data_links_2,
+				$img_data_urls_2,
+				$img_srcs_2
 			);
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -2940,7 +2939,7 @@ BLOCK;
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_jetpacktiledgallery_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_jetpacktiledgallery_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -2949,62 +2948,70 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_jetpackslideshow_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_jetpackslideshow_blocks_ids
 	 */
 	public function test_update_jetpackslideshow_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$img_ids_old_live_1 = [ 1111, 2222 ];
+		$img_ids_old_live_1    = [ 1111, 2222 ];
 		$img_ids_new_staging_1 = [ 1119, 2229 ];
-		$img_srcs_1 = [
+		$img_srcs_1            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1',
 		];
-		$img_caption_texts_1 = [
+		$img_caption_texts_1   = [
 			'caption text 11',
 			'caption text 12',
 		];
-		$img_ids_old_live_2 = [ 2222, 3333 ];
+		$img_ids_old_live_2    = [ 2222, 3333 ];
 		$img_ids_new_staging_2 = [ 2229, 3339 ];
-		$img_srcs_2 = [
+		$img_srcs_2            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1',
 		];
-		$img_caption_texts_2 = [
+		$img_caption_texts_2   = [
 			'caption text 21',
 			'caption text 22',
 		];
 
-		$custom_block_w_same_ids_sprintf = <<<BLOCK
+		$custom_block_w_same_ids_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"columnWidths":[["40.03600","59.96400"]],"ids":[%d,%d]} -->
 <div class="wp-block-jetpack-slideshow aligncenter" data-effect="slide"><div class="wp-block-jetpack-slideshow_container swiper-container"><ul class="wp-block-jetpack-slideshow_swiper-wrapper swiper-wrapper"><li class="wp-block-jetpack-slideshow_slide swiper-slide"><figure><img alt="" class="wp-block-jetpack-slideshow_image wp-image-%d" data-id="%d" src="%s"/><figcaption class="wp-block-jetpack-slideshow_caption gallery-caption">%s</figcaption></figure></li><li class="wp-block-jetpack-slideshow_slide swiper-slide"><figure><img alt="" class="wp-block-jetpack-slideshow_image wp-image-%d" data-id="%d" src="%s"/><figcaption class="wp-block-jetpack-slideshow_caption gallery-caption">%s</figcaption></figure></li></ul><a class="wp-block-jetpack-slideshow_button-prev swiper-button-prev swiper-button-white" role="button"></a><a class="wp-block-jetpack-slideshow_button-next swiper-button-next swiper-button-white" role="button"></a><a aria-label="Pause Slideshow" class="wp-block-jetpack-slideshow_button-pause" role="button"></a><div class="wp-block-jetpack-slideshow_pagination swiper-pagination swiper-pagination-white"></div></div></div>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_ids = sprintf( $custom_block_w_same_ids_sprintf,
-			$img_ids_old_live_1[0], $img_ids_old_live_1[1],
-			$img_ids_old_live_1[0], $img_ids_old_live_1[0], $img_srcs_1[0], $img_caption_texts_1[0],
-			$img_ids_old_live_2[0], $img_ids_old_live_2[0], $img_srcs_2[0], $img_caption_texts_2[0],
+		$custom_block_w_same_ids         = sprintf(
+			$custom_block_w_same_ids_sprintf,
+			$img_ids_old_live_1[0],
+			$img_ids_old_live_1[1],
+			$img_ids_old_live_1[0],
+			$img_ids_old_live_1[0],
+			$img_srcs_1[0],
+			$img_caption_texts_1[0],
+			$img_ids_old_live_2[0],
+			$img_ids_old_live_2[0],
+			$img_srcs_2[0],
+			$img_caption_texts_2[0],
 		);
 
 		$html = $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_1, $img_srcs_1, $img_caption_texts_1 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_ids
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_2, $img_srcs_2, $img_caption_texts_2 )
-		        . "\n\n" . '<!-- /wp:group -->';
+				// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_ids
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_2, $img_srcs_2, $img_caption_texts_2 )
+				. "\n\n" . '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_new_staging_1, $img_srcs_1, $img_caption_texts_1 )
-                         // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		                 . "\n\n" . $custom_block_w_same_ids
-		                 // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		                 . "\n\n" . '<!-- wp:group -->'
-                         . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_new_staging_2, $img_srcs_2, $img_caption_texts_2 )
-		                 . "\n\n" . '<!-- /wp:group -->';
+						// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+						. "\n\n" . $custom_block_w_same_ids
+						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_new_staging_2, $img_srcs_2, $img_caption_texts_2 )
+						. "\n\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -3019,7 +3026,7 @@ BLOCK;
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_jetpackslideshow_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_jetpackslideshow_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -3028,41 +3035,41 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_jetpackslideshow_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_jetpackslideshow_blocks_ids
 	 */
 	public function test_update_jetpackslideshow_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$img_ids_old_live_1 = [ 1111, 2222 ];
+		$img_ids_old_live_1    = [ 1111, 2222 ];
 		$img_ids_new_staging_1 = [ 0, 2229 ];
-		$img_srcs_1 = [
+		$img_srcs_1            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1',
 		];
-		$img_caption_texts_1 = [
+		$img_caption_texts_1   = [
 			'caption text 11',
 			'caption text 12',
 		];
-		$img_ids_old_live_2 = [ 2222, 3333 ];
+		$img_ids_old_live_2    = [ 2222, 3333 ];
 		$img_ids_new_staging_2 = [ 2229, 0 ];
-		$img_srcs_2 = [
+		$img_srcs_2            = [
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1',
 			'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1',
 		];
-		$img_caption_texts_2 = [
+		$img_caption_texts_2   = [
 			'caption text 21',
 			'caption text 22',
 		];
 
-		$html = $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_1, $img_srcs_1, $img_caption_texts_1 )
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_2, $img_srcs_2, $img_caption_texts_2 );
+		$html          = $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_1, $img_srcs_1, $img_caption_texts_1 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( $img_ids_old_live_2, $img_srcs_2, $img_caption_texts_2 );
 		$html_expected = $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( [ $img_ids_old_live_1[0], $img_ids_new_staging_1[1] ], $img_srcs_1, $img_caption_texts_1 )
-                         . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( [ $img_ids_new_staging_2[0] , $img_ids_old_live_2[1] ], $img_srcs_2, $img_caption_texts_2 );
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackslideshow_block( [ $img_ids_new_staging_2[0] , $img_ids_old_live_2[1] ], $img_srcs_2, $img_caption_texts_2 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -3077,7 +3084,7 @@ BLOCK;
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_jetpackslideshow_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_jetpackslideshow_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -3086,52 +3093,60 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_jetpackimagecompare_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_jetpackimagecompare_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_jetpackimagecompare_blocks_ids
 	 */
 	public function test_update_jetpackimagecompare_blocks_ids_should_update_all_ids_correctly() {
 		// Prepare.
-		$img_id_old_live_11 = 1111;
+		$img_id_old_live_11    = 1111;
 		$img_id_new_staging_11 = 1119;
-		$img_src_11 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1';
-		$img_id_old_live_12 = 222;
+		$img_src_11            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1';
+		$img_id_old_live_12    = 222;
 		$img_id_new_staging_12 = 2229;
-		$img_src_12 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1';
-		$img_id_old_live_21 = 1111;
+		$img_src_12            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1';
+		$img_id_old_live_21    = 1111;
 		$img_id_new_staging_21 = 1119;
-		$img_src_21 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1';
-		$img_id_old_live_22 = 333;
+		$img_src_21            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1';
+		$img_id_old_live_22    = 333;
 		$img_id_new_staging_22 = 3338;
-		$img_src_22 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1';
+		$img_src_22            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1';
 
-		$custom_block_w_same_ids_sprintf = <<<BLOCK
+		$custom_block_w_same_ids_sprintf = <<<'BLOCK'
 <!-- wp:somecustomblock {"imageBefore":{"id":%d,"url":"%s","alt":"","width":2560,"height":1707},"imageAfter":{"id":%d,"url":"%s","alt":"","width":2560,"height":1707}} -->
 <figure class="wp-block-jetpack-image-compare"><div class="juxtapose" data-mode="horizontal"><img id="%d" src="%s" alt="" width="2560" height="1707" class="image-compare__image-before"/><img id="%d" src="%s" alt="" width="2560" height="1707" class="image-compare__image-after"/></div></figure>
 <!-- /wp:somecustomblock -->
 BLOCK;
-		$custom_block_w_same_ids = sprintf( $custom_block_w_same_ids_sprintf,
-			$img_id_old_live_11, $img_src_11, $img_id_old_live_21, $img_src_21, $img_id_old_live_11, $img_src_11, $img_id_old_live_21, $img_src_21
+		$custom_block_w_same_ids         = sprintf(
+			$custom_block_w_same_ids_sprintf,
+			$img_id_old_live_11,
+			$img_src_11,
+			$img_id_old_live_21,
+			$img_src_21,
+			$img_id_old_live_11,
+			$img_src_11,
+			$img_id_old_live_21,
+			$img_src_21
 		);
 
 		$html = $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_11, $img_src_11, $img_id_old_live_12, $img_src_12 )
-		        // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		        . "\n\n" . $custom_block_w_same_ids
-		        // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		        . "\n\n" . '<!-- wp:group -->'
-		        . "\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_21, $img_src_21, $img_id_old_live_22, $img_src_22 )
-		        . "\n" . '<!-- /wp:group -->';
+				// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+				. "\n\n" . $custom_block_w_same_ids
+				// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+				. "\n\n" . '<!-- wp:group -->'
+				. "\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_21, $img_src_21, $img_id_old_live_22, $img_src_22 )
+				. "\n" . '<!-- /wp:group -->';
 		$html_expected = $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_new_staging_11, $img_src_11, $img_id_new_staging_12, $img_src_12 )
-                         // Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
-		                 . "\n\n" . $custom_block_w_same_ids
-		                 // Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
-		                 . "\n\n" . '<!-- wp:group -->'
-                         . "\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_new_staging_21, $img_src_21, $img_id_new_staging_22, $img_src_22 )
-		                 . "\n" . '<!-- /wp:group -->';
+						// Let's throw in a different block which uses same ID values, but which mean something else than cover Attachment ID, and should not be updated.
+						. "\n\n" . $custom_block_w_same_ids
+						// Wrap the second block in wp:group -- we want to replace all image blocks, even those inside other types of blocks
+						. "\n\n" . '<!-- wp:group -->'
+						. "\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_new_staging_21, $img_src_21, $img_id_new_staging_22, $img_src_22 )
+						. "\n" . '<!-- /wp:group -->';
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -3146,7 +3161,7 @@ BLOCK;
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_jetpackimagecompare_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_jetpackimagecompare_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
@@ -3155,33 +3170,33 @@ BLOCK;
 	/**
 	 * Testings exact replacements which the update_jetpackimagecompare_blocks_ids method should do.
 	 *
-	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::update_jetpackimagecompare_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\ContentDiffLogic::update_jetpackimagecompare_blocks_ids
 	 */
 	public function test_update_jetpackimagecompare_blocks_ids_does_not_make_changes_if_no_attachment_id_found() {
 		// Prepare.
-		$img_id_old_live_11 = 1111;
+		$img_id_old_live_11    = 1111;
 		$img_id_new_staging_11 = 0;
-		$img_src_11 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1';
-		$img_id_old_live_12 = 222;
+		$img_src_11            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img11.jpg?ssl=1';
+		$img_id_old_live_12    = 222;
 		$img_id_new_staging_12 = 2229;
-		$img_src_12 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1';
-		$img_id_old_live_21 = 1111;
+		$img_src_12            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img12.jpg?ssl=1';
+		$img_id_old_live_21    = 1111;
 		$img_id_new_staging_21 = 0;
-		$img_src_21 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1';
-		$img_id_old_live_22 = 333;
+		$img_src_21            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img21.jpg?ssl=1';
+		$img_id_old_live_22    = 333;
 		$img_id_new_staging_22 = 3338;
-		$img_src_22 = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1';
+		$img_src_22            = 'https://i2.wp.com/host.s3.amazonaws.com/wp-content/uploads/2022/09/img22.jpg?ssl=1';
 
-		$html = $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_11, $img_src_11, $img_id_old_live_12, $img_src_12 )
-		        . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_21, $img_src_21, $img_id_old_live_22, $img_src_22 );
+		$html          = $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_11, $img_src_11, $img_id_old_live_12, $img_src_12 )
+				. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_21, $img_src_21, $img_id_old_live_22, $img_src_22 );
 		$html_expected = $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_11, $img_src_11, $img_id_new_staging_12, $img_src_12 )
-                         . "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_21, $img_src_21, $img_id_new_staging_22, $img_src_22 );
+						. "\n\n" . $this->blocks_data_provider->get_gutenberg_jetpackimagecompare_block( $img_id_old_live_21, $img_src_21, $img_id_new_staging_22, $img_src_22 );
 
 		// Mock (do a partial mock of this one method).
-		$logic_partial_mock = $this->getMockBuilder( ContentDiffMigrator::class )
-		                           ->setConstructorArgs( [ $this->wpdb_mock ] )
-		                           ->setMethods( [ 'attachment_url_to_postid', ] )
-		                           ->getMock();
+		$logic_partial_mock = $this->getMockBuilder( ContentDiffLogic::class )
+									->setConstructorArgs( [ $this->wpdb_mock ] )
+									->setMethods( [ 'attachment_url_to_postid' ] )
+									->getMock();
 		$this->mock_consecutive_value_maps(
 			$logic_partial_mock,
 			'attachment_url_to_postid',
@@ -3197,10 +3212,288 @@ BLOCK;
 
 		// Run.
 		$known_attachment_ids_updates = [];
-		$html_actual = $logic_partial_mock->update_jetpackimagecompare_blocks_ids( $html, $known_attachment_ids_updates );
+		$html_actual                  = $logic_partial_mock->update_jetpackimagecompare_blocks_ids( $html, $known_attachment_ids_updates );
 
 		// Assert.
 		$this->assertEquals( $html_expected, $html_actual );
+	}
+
+	/**
+	 * Verifies filter_new_live_ids returns IDs present in live but not in local using composite key.
+	 */
+	public function test_filter_new_live_ids_returns_only_unique_live_ids() {
+		$results_live_posts = [
+			[
+				'ID'          => 101,
+				'post_name'   => 'alpha',
+				'post_title'  => 'Alpha',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+			[
+				'ID'          => 102,
+				'post_name'   => 'beta',
+				'post_title'  => 'Beta',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-02 00:00:00',
+			],
+			[
+				'ID'          => 103,
+				'post_name'   => 'gamma',
+				'post_title'  => 'Gamma',
+				'post_type'   => 'page',
+				'post_status' => 'draft',
+				'post_date'   => '2023-01-03 00:00:00',
+			],
+		];
+
+		$results_local_posts = [
+			// Exact composite match for live ID 101 -> should be excluded from result.
+			[
+				'ID'          => 1,
+				'post_name'   => 'alpha',
+				'post_title'  => 'Alpha',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+			// Different status compared to live ID 102 -> does not match composite.
+			[
+				'ID'          => 2,
+				'post_name'   => 'beta',
+				'post_title'  => 'Beta',
+				'post_type'   => 'post',
+				'post_status' => 'draft',
+				'post_date'   => '2023-01-02 00:00:00',
+			],
+		];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+
+		// Expect live IDs 102 and 103 only (cast to int enforced by implementation).
+		$this->assertEquals( [ 102, 103 ], $ids );
+	}
+
+	/**
+	 * Case and whitespace normalization should allow matches.
+	 */
+	public function test_filter_new_live_ids_normalization_case_whitespace() {
+		$results_live_posts = [
+			[
+				'ID'          => 701,
+				'post_name'   => ' Alpha ',
+				'post_title'  => '  Hello  ',
+				'post_type'   => 'POST',
+				'post_status' => 'Publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+		];
+
+		$results_local_posts = [
+			[
+				'ID'          => 1,
+				'post_name'   => 'alpha',
+				'post_title'  => 'hello',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-01-01 00:00:00',
+			],
+		];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertSame( [], $ids );
+	}
+
+	/**
+	 * Verifies filter_modified_live_ids matches on composite key and returns pairs with newer live modified date.
+	 */
+	public function test_filter_modified_live_ids_returns_pairs_when_live_is_newer() {
+		$results_live_posts = [
+			[
+				'ID'            => 201,
+				'post_name'     => 'post-a',
+				'post_title'    => 'Post A',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-01 12:00:00',
+				'post_modified' => '2023-03-05 12:00:00',
+			],
+			[
+				'ID'            => 202,
+				'post_name'     => 'post-b',
+				'post_title'    => 'Post B',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-02 12:00:00',
+				'post_modified' => '2023-03-03 12:00:00',
+			],
+			[
+				'ID'            => 203,
+				'post_name'     => 'no-match',
+				'post_title'    => 'No Match',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-02 12:00:00',
+				'post_modified' => '2023-03-04 12:00:00',
+			],
+		];
+
+		$results_local_posts = [
+			// Match for live 201, but older modified -> should be returned.
+			[
+				'ID'            => 11,
+				'post_name'     => 'post-a',
+				'post_title'    => 'Post A',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-01 12:00:00',
+				'post_modified' => '2023-03-01 13:00:00',
+			],
+			// Match for live 202, but newer or equal modified not met -> should NOT be returned.
+			[
+				'ID'            => 22,
+				'post_name'     => 'post-b',
+				'post_title'    => 'Post B',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-03-02 12:00:00',
+				'post_modified' => '2023-03-04 12:00:00',
+			],
+		];
+
+		$pairs = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+
+		$this->assertEquals(
+			[
+				[
+					'live_id'  => 201,
+					'local_id' => 11,
+				],
+			],
+			$pairs
+		);
+	}
+
+	/**
+	 * Duplicate local records for same composite key should not break behavior; first match kept.
+	 */
+	public function test_filter_modified_live_ids_duplicate_local_composite_keys() {
+		$results_live_posts  = [
+			[
+				'ID'            => '301',
+				'post_name'     => 'dup',
+				'post_title'    => 'Dup',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-05-01 00:00:00',
+				'post_modified' => '2023-05-10 00:00:00',
+			],
+		];
+		$results_local_posts = [
+			[
+				'ID'            => '41',
+				'post_name'     => 'dup',
+				'post_title'    => 'Dup',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-05-01 00:00:00',
+				'post_modified' => '2023-05-02 00:00:00',
+			],
+			[
+				'ID'            => '42',
+				'post_name'     => 'dup',
+				'post_title'    => 'Dup',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-05-01 00:00:00',
+				'post_modified' => '2023-05-03 00:00:00',
+			],
+		];
+
+		$pairs = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+
+		// Should return the first local match (ID 41), and cast to ints.
+		$this->assertEquals(
+			[
+				[
+					'live_id'  => 301,
+					'local_id' => 41,
+				],
+			],
+			$pairs
+		);
+	}
+
+	/**
+	 * Equal modified times should not count as modified.
+	 */
+	public function test_filter_modified_live_ids_equal_modified_times_not_returned() {
+		$results_live_posts  = [
+			[
+				'ID'            => 401,
+				'post_name'     => 'eq',
+				'post_title'    => 'Eq',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-06-01 00:00:00',
+				'post_modified' => '2023-06-02 00:00:00',
+			],
+		];
+		$results_local_posts = [
+			[
+				'ID'            => 51,
+				'post_name'     => 'eq',
+				'post_title'    => 'Eq',
+				'post_status'   => 'publish',
+				'post_date'     => '2023-06-01 00:00:00',
+				'post_modified' => '2023-06-02 00:00:00',
+			],
+		];
+
+		$pairs = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertEquals( [], $pairs );
+	}
+
+	/**
+	 * Missing keys in local should be treated as non-match.
+	 */
+	public function test_filter_new_live_ids_missing_keys_non_match() {
+		$results_live_posts  = [
+			[
+				'ID'          => 501,
+				'post_name'   => 'missing',
+				'post_title'  => 'Missing',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-07-01 00:00:00',
+			],
+		];
+		$results_local_posts = [
+			// Missing post_status -> composite will differ.
+			[
+				'ID'         => 61,
+				'post_name'  => 'missing',
+				'post_title' => 'Missing',
+				'post_type'  => 'post',
+				'post_date'  => '2023-07-01 00:00:00',
+			],
+		];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertEquals( [ 501 ], $ids );
+	}
+
+	/**
+	 * String-vs-int IDs should be normalized in outputs (ints returned).
+	 */
+	public function test_filter_new_live_ids_string_vs_int_ids() {
+		$results_live_posts  = [
+			[
+				'ID'          => '601',
+				'post_name'   => 'sid',
+				'post_title'  => 'Sid',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2023-08-01 00:00:00',
+			],
+		];
+		$results_local_posts = [];
+
+		$ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+		$this->assertSame( [ 601 ], $ids );
 	}
 
 	/**
@@ -3223,14 +3516,14 @@ BLOCK;
 	/**
 	 * Sample data.
 	 *
-	 * @return \array[][][] Array with keys and values defined in ContentDiffMigrator::get_empty_data_array.
+	 * @return \array[][][] Array with keys and values defined in ContentDiffLogic::get_empty_data_array.
 	 */
 	public function db_data_provider() {
 		return [
 			[
 				[
 					// Post.
-					ContentDiffMigrator::DATAKEY_POST     => [
+					ContentDiffLogic::DATAKEY_POST         => [
 						'ID'                    => 123,
 						'post_author'           => 21,
 						'post_date'             => '2021-09-23 11:43:56.000',
@@ -3256,7 +3549,7 @@ BLOCK;
 						'comment_count'         => 3,
 					],
 					// Postmeta.
-					ContentDiffMigrator::DATAKEY_POSTMETA => [
+					ContentDiffLogic::DATAKEY_POSTMETA     => [
 						[
 							'meta_id'    => 21,
 							'post_id'    => 123,
@@ -3270,7 +3563,7 @@ BLOCK;
 							'meta_value' => 'custom_value',
 						],
 					],
-					ContentDiffMigrator::DATAKEY_COMMENTS => [
+					ContentDiffLogic::DATAKEY_COMMENTS     => [
 						// Comment 1 has no user, and has some meta.
 						[
 							'comment_ID'           => 11,
@@ -3327,7 +3620,7 @@ BLOCK;
 						],
 					],
 					// Comment 1 has some Comment Meta.
-					ContentDiffMigrator::DATAKEY_COMMENTMETA => [
+					ContentDiffLogic::DATAKEY_COMMENTMETA  => [
 						[
 							'meta_id'    => 1,
 							'comment_id' => 11,
@@ -3341,7 +3634,7 @@ BLOCK;
 							'meta_value' => 'value_a2',
 						],
 					],
-					ContentDiffMigrator::DATAKEY_USERS    => [
+					ContentDiffLogic::DATAKEY_USERS        => [
 						// Post Author User.
 						[
 							'ID'                  => 21,
@@ -3382,7 +3675,7 @@ BLOCK;
 							'display_name'        => 'test_user',
 						],
 					],
-					ContentDiffMigrator::DATAKEY_USERMETA => [
+					ContentDiffLogic::DATAKEY_USERMETA     => [
 						// User Meta for Post Author.
 						[
 							'umeta_id'   => 1,
@@ -3435,7 +3728,7 @@ BLOCK;
 							'meta_value' => 'bla bla',
 						],
 					],
-					ContentDiffMigrator::DATAKEY_TERMRELATIONSHIPS => [
+					ContentDiffLogic::DATAKEY_TERMRELATIONSHIPS => [
 						[
 							'object_id'        => 123,
 							'term_taxonomy_id' => 1,
@@ -3457,7 +3750,7 @@ BLOCK;
 							'term_order'       => 0,
 						],
 					],
-					ContentDiffMigrator::DATAKEY_TERMTAXONOMY => [
+					ContentDiffLogic::DATAKEY_TERMTAXONOMY => [
 						[
 							'term_taxonomy_id' => 1,
 							'term_id'          => 41,
@@ -3491,7 +3784,7 @@ BLOCK;
 							'count'            => 0,
 						],
 					],
-					ContentDiffMigrator::DATAKEY_TERMS    => [
+					ContentDiffLogic::DATAKEY_TERMS        => [
 						// Term 1 has no meta.
 						[
 							'term_id'    => 41,
@@ -3514,7 +3807,7 @@ BLOCK;
 							'term_group' => 0,
 						],
 					],
-					ContentDiffMigrator::DATAKEY_TERMMETA => [
+					ContentDiffLogic::DATAKEY_TERMMETA     => [
 						// Term 2 Meta.
 						[
 							'meta_id'    => 1,
