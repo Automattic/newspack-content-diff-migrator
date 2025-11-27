@@ -444,7 +444,7 @@ class ContentDiffMigrator {
 
 		// Before we create hierarchical taxonomies, let's make sure all hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		WP_CLI::log( sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
-		$this->validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
+		$taxonomies_to_migrate = $this->validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 
 		// Recreate taxonomies but leave out (unused) tags.
 		$taxonomies_to_recreate = array_diff( $taxonomies_to_migrate, [ 'post_tag' ] );
@@ -536,23 +536,25 @@ class ContentDiffMigrator {
 	/**
 	 * Validates local DB and live DB taxonomies. Checks if the taxonomies's parent term_ids are correct in the live DB, and sets those to zero if they are not correct.
 	 *
-	 * @param array $taxonomies_to_check Hierarchical taxonomies to validate.
-	 * @param array $live_taxonomies     List of all taxonomies found in the Live DB.
+	 * @param array $taxonomies_to_migrate Hierarchical taxonomies to migrate.
+	 * @param array $live_taxonomies       List of all taxonomies found in the Live DB.
 	 *
-	 * @return void
+	 * @return array $taxonomies_to_migrate Validated and filtered hierarchical taxonomies to migrate.
 	 */
-	public function validate_hierarchical_taxonomies( $taxonomies_to_check, $live_taxonomies ): void {
+	public function validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies ): array {
 		global $wpdb;
 
 		// Check if any of the taxonomies does not exist in the live DB.
-		foreach ( $taxonomies_to_check as $taxonomy_to_check ) {
-			if ( ! in_array( $taxonomy_to_check, $live_taxonomies ) ) {
-				WP_CLI::error( sprintf( 'Taxonomy %s not found in live DB.', $taxonomy_to_check ) );
+		foreach ( $taxonomies_to_migrate as $key_taxonomy_to_migrate => $taxonomy_to_migrate ) {
+			if ( ! in_array( $taxonomy_to_migrate, $live_taxonomies ) ) {
+				WP_CLI::warning( sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
+				unset( $taxonomies_to_migrate[ $key_taxonomy_to_migrate ] );
 			}
 		}
+		$taxonomies_to_migrate = array_values( $taxonomies_to_migrate );
 
-		// Check if any of the local taxonomies have nonexistent wp_term_taxonomy.parent, and fix those before continuing.
-		$hierarchical_taxonomies = $this->logic->get_taxonomies_with_nonexistent_parents( $wpdb->prefix, $taxonomies_to_check );
+		// Check if any of the local taxonomies have nonexistent wp_term_taxonomy.parent, and fix those before continuing by setting their parents to 0.
+		$hierarchical_taxonomies = $this->logic->get_taxonomies_with_nonexistent_parents( $wpdb->prefix, $taxonomies_to_migrate );
 		if ( ! empty( $hierarchical_taxonomies ) ) {
 			$list              = '';
 			$term_taxonomy_ids = [];
@@ -568,8 +570,8 @@ class ContentDiffMigrator {
 			$this->logic->reset_hierarchical_taxonomies_parents( $wpdb->prefix, $term_taxonomy_ids );
 		}
 
-		// Check the same for Live DB's hierarchical taxonomies, and fix those before continuing.
-		$hierarchical_taxonomies = $this->logic->get_taxonomies_with_nonexistent_parents( $this->live_table_prefix, $taxonomies_to_check );
+		// Check the same for Live DB's hierarchical taxonomies, and fix those before continuing by setting their parents to 0.
+		$hierarchical_taxonomies = $this->logic->get_taxonomies_with_nonexistent_parents( $this->live_table_prefix, $taxonomies_to_migrate );
 		if ( ! empty( $hierarchical_taxonomies ) ) {
 			$list              = '';
 			$term_taxonomy_ids = [];
@@ -584,6 +586,8 @@ class ContentDiffMigrator {
 			WP_CLI::confirm( "OK to fix and set all these hierarchical taxonomies' parents to 0 in live DB tables?" );
 			$this->logic->reset_hierarchical_taxonomies_parents( $this->live_table_prefix, $term_taxonomy_ids );
 		}
+
+		return $taxonomies_to_migrate;
 	}
 
 	/**

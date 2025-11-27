@@ -55,12 +55,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Automattic/newspack-migration-tools.git",
-                "reference": "7fbd797d9dd2ea61e3d2627db90ef01417938b89"
+                "reference": "9f62b779abf0fcd64f4a10ca899e21fe06e0ddea"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/7fbd797d9dd2ea61e3d2627db90ef01417938b89",
-                "reference": "7fbd797d9dd2ea61e3d2627db90ef01417938b89",
+                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/9f62b779abf0fcd64f4a10ca899e21fe06e0ddea",
+                "reference": "9f62b779abf0fcd64f4a10ca899e21fe06e0ddea",
                 "shasum": ""
             },
             "require": {
@@ -104,6 +104,10 @@
                     "rm -rf release",
                     "composer install --no-dev --optimize-autoloader",
                     "composer archive --format=zip --dir=release --file=newspack-migration-tools"
+                ],
+                "gh-release": [
+                    "@build-release",
+                    "./.github/scripts/gh-release.sh"
                 ]
             },
             "license": [
@@ -114,7 +118,7 @@
                 "source": "https://github.com/Automattic/newspack-migration-tools/tree/trunk",
                 "issues": "https://github.com/Automattic/newspack-migration-tools/issues"
             },
-            "time": "2025-10-02T12:52:47+00:00"
+            "time": "2025-11-14T14:04:59+00:00"
         },
         {
             "name": "bramus/ansi-php",
