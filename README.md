@@ -1,6 +1,8 @@
 # Newspack Content Diff Migrator
 
-This plugin is a content migration tool that migrates the content differential from a remote site on top of your local site while keeping the existing local content intact.
+**Version 2.0.0** — See [Legacy Migration](#legacy-migration-pre-multiple-source-installs) for upgrade instructions from v1.x.
+
+This plugin is a content migration tool that migrates the content differential from one or more remote sites on top of your local site while keeping the existing local content intact.
 
 ## Overview
 
@@ -36,19 +38,27 @@ This plugin operates exclusively through WP-CLI commands. It's designed to be ru
 
 1. **Prepare Live Site Data**: Ensure you have access to the live site's database
 2. **Import Live Tables**: Import live site database tables with a specific prefix
-3. **Search for New Content**: Identify new or modified content on the live site
+3. **Attribute Initial Content** (if local site was cloned from source): Create source-specific metadata for existing content
+```bash
+wp newspack-content-migrator content-diff-attribute-initial-content \
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com
 ```
+4. **Search for New Content**: Identify new or modified content on the live site
+```bash
 wp newspack-content-migrator content-diff-search-new-content-on-live \
---live-table-prefix=live_ \
---export-dir=/tmp/cdiff_data \
-[--post-types-csv=post,page,attachment,custom_cpt]
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com \
+    --export-dir=/tmp/cdiff_data \
+    [--post-types-csv=post,page,attachment,custom_cpt]
 ```
-4. **Migrate Content**: Import the identified content differential to the local site
-```
+5. **Migrate Content**: Import the identified content differential to the local site
+```bash
 wp newspack-content-migrator content-diff-migrate-live-content \
---live-table-prefix=live_ \
---import-dir=/tmp/cdiff_data \
-[--custom-taxonomies-csv=category,post_tag,author,custom_taxonomy]
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com \
+    --import-dir=/tmp/cdiff_data \
+    [--custom-taxonomies-csv=category,post_tag,author,custom_taxonomy]
 ```
 
 ## Best Practices
@@ -87,6 +97,110 @@ git push origin $(git symbolic-ref --short HEAD)
 - Check the log files in the `cdiff_logs/` directory
 - Use the `--dry-run` parameter to test without making changes
 - Review the error log for specific error messages
+
+## Multiple Source Sites
+
+This plugin supports importing content from multiple source sites. Each source site is identified by a unique `--source-site` parameter (the full hostname) that must be provided to all commands. This allows you to:
+
+- Import content from Site A with `--source-site=www.example-1.com`
+- Import content from Site B with `--source-site=www.example-2.com`
+- Run multiple refresh cycles for each source without conflicts
+
+The source site hostname is used to namespace the "old ID" metadata, ensuring that old IDs from different sources don't clash.
+
+### List Imported Source Sites
+
+To see which source sites (hostnames) have already been imported:
+
+```bash
+wp newspack-content-migrator content-diff-list-source-sites
+```
+
+### Workflow for Multiple Sources
+
+```bash
+# Import from Site A (www.example-1.com)
+wp newspack-content-migrator content-diff-search-new-content-on-live \
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com \
+    --export-dir=/tmp/cdiff_eg1
+
+wp newspack-content-migrator content-diff-migrate-live-content \
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com \
+    --import-dir=/tmp/cdiff_eg1
+
+# Import from Site B (www.example-2.com)
+wp newspack-content-migrator content-diff-search-new-content-on-live \
+    --live-table-prefix=eg2_ \
+    --source-site=www.example-2.com \
+    --export-dir=/tmp/cdiff_eg2
+
+wp newspack-content-migrator content-diff-migrate-live-content \
+    --live-table-prefix=eg2_ \
+    --source-site=www.example-2.com \
+    --import-dir=/tmp/cdiff_eg2
+```
+
+### Attributing Initial Content
+
+If your local site was initially cloned from a source site, you should attribute existing content before running content-diff. This creates the necessary source-specific metadata for proper tracking:
+
+```bash
+wp newspack-content-migrator content-diff-attribute-initial-content \
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com
+```
+
+---
+
+## Legacy Migration (Pre-Multiple-Source Installs)
+
+If you have previously used this plugin **before** the multiple source sites feature was introduced, you need to clean up legacy metadata before using the new functionality.
+
+### What Changed
+
+Previous versions stored old IDs using a single meta key:
+- `newspackcontentdiff_live_id` (for posts, attachments, and users)
+
+The new version uses source-namespaced meta keys:
+- `newspackcontentdiff_live_id_{source-site}` (e.g., `newspackcontentdiff_live_id_www.example-1.com`)
+
+The old meta keys are no longer recognized and must be removed before running attribution.
+
+### Step 1: Delete Legacy Metadata
+
+Run these SQL commands to remove all legacy Content Diff metadata. **Always backup your database first.**
+
+```sql
+-- Delete legacy post/attachment metadata
+DELETE FROM wp_postmeta WHERE meta_key = 'newspackcontentdiff_live_id';
+
+-- Delete legacy user metadata
+DELETE FROM wp_usermeta WHERE meta_key = 'newspackcontentdiff_live_id';
+```
+
+**Note:** If necessary update a custom installation custom table prefix other than `wp_`.
+
+### Step 2: Attribute Existing Content
+
+After cleaning legacy metadata, attribute your existing content to its source site with new metas:
+
+```bash
+wp newspack-content-migrator content-diff-attribute-initial-content \
+    --live-table-prefix=eg1_ \
+    --source-site=www.example-1.com
+```
+
+This command will:
+1. Compare existing local content with the source site's database tables
+2. Match existing posts and create new source-specific metadata
+
+### Step 3: Resume Normal Operations
+
+You can now use the content-diff commands with the `--source-site` parameter as documented above.
+
+---
 
 ## License
 
