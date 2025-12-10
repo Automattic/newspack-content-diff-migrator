@@ -21,8 +21,12 @@ use wpdb;
  */
 class ContentDiffLogic {
 
-	// Postmeta telling us what the old live ID was.
-	const SAVED_META_LIVE_POST_ID = 'newspackcontentdiff_live_id';
+	/**
+	 * Prefix for meta key with the old ID.
+	 * Source hostname is appended, e.g. meta_key:
+	 *  'newspackcontentdiff_live_id_www.example.com'
+	 */
+	const SAVED_META_LIVE_ID_PREFIX = 'newspackcontentdiff_live_id_';
 
 	// Data array keys.
 	const DATAKEY_POST              = 'post';
@@ -88,6 +92,65 @@ class ContentDiffLogic {
 		$this->wpdb                     = $wpdb;
 		$this->wp_block_manipulator     = new WpBlockManipulator();
 		$this->html_element_manipulator = new HtmlElementManipulator();
+	}
+
+	/**
+	 * Gets all source hostnames from which content has been imported, by scanning meta keys.
+	 *
+	 * @return array List of source hostnames.
+	 */
+	public function get_migrated_source_hostnames(): array {
+		// Get all distinct meta keys.
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$like          = self::SAVED_META_LIVE_ID_PREFIX . '%';
+		$postmeta_keys = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT DISTINCT meta_key FROM {$this->wpdb->postmeta} WHERE meta_key LIKE %s",
+				$like
+			)
+		);
+		$usermeta_keys = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT DISTINCT meta_key FROM {$this->wpdb->usermeta} WHERE meta_key LIKE %s",
+				$like
+			)
+		);
+		// phpcs:enable
+		
+		$postmeta_keys = is_array( $postmeta_keys ) ? $postmeta_keys : [];
+		$usermeta_keys = is_array( $usermeta_keys ) ? $usermeta_keys : [];
+		$all_keys      = array_unique( array_merge( $postmeta_keys, $usermeta_keys ) );
+
+		// Get migrated source hostnames.
+		$source_hostnames = [];
+		foreach ( $all_keys as $key ) {
+			$site = substr( $key, strlen( self::SAVED_META_LIVE_ID_PREFIX ) );
+			if ( ! in_array( $site, $source_hostnames, true ) ) {
+				$source_hostnames[] = $site;
+			}
+		}
+
+		return $source_hostnames;
+	}
+
+	/**
+	 * Gets the source-specific meta key for storing old IDs.
+	 *
+	 * @param string $source_hostname Source hostname (e.g., 'www.example.com').
+	 *
+	 * @throws \InvalidArgumentException If source hostname is empty.
+	 *
+	 * @return string The full meta key (e.g., 'newspackcontentdiff_live_id_www.example.com').
+	 */
+	public function get_old_id_meta_key( string $source_hostname ): string {
+		if ( empty( $source_hostname ) ) {
+			throw new \InvalidArgumentException( 'Source hostname is required.' );
+		}
+
+		// Sanitize hostname.
+		$source_hostname = wp_parse_url( 'https://' . $source_hostname, PHP_URL_HOST );
+
+		return self::SAVED_META_LIVE_ID_PREFIX . $source_hostname;
 	}
 
 	/**
@@ -181,11 +244,14 @@ class ContentDiffLogic {
 	/**
 	 * Gets a list of all Attachments imported by Content Diff, "old_id"=>"new_id" IDs mapping from the postmeta.
 	 *
+	 * @param string $source_hostname Source hostname.
+	 *
 	 * @return array Imported attachment IDs, keys are old/live IDs, values are new/local/Staging IDs.
 	 */
-	public function get_imported_attachment_id_mapping_from_db(): array {
+	public function get_imported_attachment_id_mapping_from_db( string $source_hostname ): array {
 
 		$attachment_ids_map = [];
+		$meta_key           = $this->get_old_id_meta_key( $source_hostname );
 
 		$results = $this->wpdb->get_results(
 			$this->wpdb->prepare(
@@ -194,7 +260,7 @@ class ContentDiffLogic {
 					JOIN {$this->wpdb->posts} wp ON wp.ID = wpm.post_id
 					WHERE wpm.meta_key = %s
 					AND wp.post_type = 'attachment';",
-				self::SAVED_META_LIVE_POST_ID,
+				$meta_key,
 			),
 			ARRAY_A
 		);
@@ -208,11 +274,15 @@ class ContentDiffLogic {
 	/**
 	 * Gets an array of all Post IDs imported by Content Diff, their "old_id"=>"new_id" from the postmeta.
 	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param array  $post_types  Post types to include.
+	 *
 	 * @return array Imported post and pages IDs, keys are old/live IDs, values are new/local/Staging IDs.
 	 */
-	public function get_imported_post_id_mapping_from_db( $post_types = [ 'post', 'page' ] ): array {
+	public function get_imported_post_id_mapping_from_db( string $source_hostname, array $post_types = [ 'post', 'page' ] ): array {
 
 		$post_ids_map = [];
+		$meta_key     = $this->get_old_id_meta_key( $source_hostname );
 
 		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared -- placeholders generated dynamically.
 		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
@@ -224,7 +294,7 @@ class ContentDiffLogic {
 					WHERE wpm.meta_key = %s
 					AND wp.post_type IN ( {$post_types_placeholders} );",
 				array_merge(
-					[ self::SAVED_META_LIVE_POST_ID ] ,
+					[ $meta_key ],
 					$post_types
 				)
 			),
@@ -258,7 +328,7 @@ class ContentDiffLogic {
 		// Use a hardened composite key derived from normalized fields.
 		$local_posts_lookup = [];
 		foreach ( $results_local_posts as $local_post ) {
-			$lookup_key = $this->build_post_composite_key( $local_post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
+			$lookup_key = $this->build_post_composite_key_for_post( $local_post );
 			$local_posts_lookup[ $lookup_key ] = true;
 		}
 
@@ -273,7 +343,7 @@ class ContentDiffLogic {
 			}
 
 			// Use hash lookup instead of nested loop - O(1) instead of O(n).
-			$lookup_key = $this->build_post_composite_key( $live_post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
+			$lookup_key = $this->build_post_composite_key_for_post( $live_post );
 			$found = isset( $local_posts_lookup[ $lookup_key ] );
 
 			// Unique on live, add to $ids.
@@ -311,7 +381,7 @@ class ContentDiffLogic {
 		// Use a hardened composite key, store local ID and post_modified for comparison.
 		$local_posts_lookup = [];
 		foreach ( $results_local_posts as $local_post ) {
-			$lookup_key = $this->build_post_composite_key( $local_post, [ 'post_name', 'post_title', 'post_status', 'post_date' ] );
+			$lookup_key = $this->build_post_composite_key_for_post( $local_post );
 			// Store only the first match (original code breaks on first match).
 			if ( ! isset( $local_posts_lookup[ $lookup_key ] ) ) {
 				$local_posts_lookup[ $lookup_key ] = [
@@ -332,7 +402,7 @@ class ContentDiffLogic {
 			}
 
 			// Use hash lookup instead of nested loop - O(1) instead of O(n).
-			$lookup_key = $this->build_post_composite_key( $live_post, [ 'post_name', 'post_title', 'post_status', 'post_date' ] );
+			$lookup_key = $this->build_post_composite_key_for_post( $live_post );
 
 			// Check if match exists and post_modified is newer on live.
 			if ( isset( $local_posts_lookup[ $lookup_key ] ) ) {
@@ -905,12 +975,13 @@ class ContentDiffLogic {
 	 * Migrates all users from Live tables to local tables.
 	 *
 	 * @param string $live_table_prefix Live DB table prefix.
+	 * @param string $source_hostname   Source hostname.
 	 *
 	 * @return array Map of all newly inserted users. Keys are Live wp_user.ID's, and values are newly inserted user IDs.
 	 *
 	 * @throws RuntimeException If user insertion fails, gets thrown by insert_usermeta_row and insert_user.
 	 */
-	public function migrate_all_users( $live_table_prefix ) {
+	public function migrate_all_users( $live_table_prefix, string $source_hostname ) {
 
 		// Keys are Live wp_user.IDs, and values are newly inserted user IDs.
 		$inserted_users_map = [];
@@ -927,7 +998,7 @@ class ContentDiffLogic {
 			$usermeta_rows = $this->select_usermeta_rows( $live_table_prefix, $user_row['ID'] );
 
 			// Insert user and user metas.
-			$user_id_new = $this->insert_user( $user_row );
+			$user_id_new = $this->insert_user( $user_row, $source_hostname );
 			foreach ( $usermeta_rows as $usermeta_row ) {
 				$this->insert_usermeta_row( $usermeta_row, $user_id_new );
 			}
@@ -939,18 +1010,110 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Matches local posts to live posts using composite key hash mapping.
+	 * Similar pattern to filter_new_live_ids but returns local->live ID pairs.
+	 *
+	 * @param array $results_local_posts Rows from local posts table.
+	 * @param array $results_live_posts  Rows from live posts table.
+	 *
+	 * @return array Matched pairs with local_id and live_id.
+	 */
+	public function match_local_to_live_posts( array $results_local_posts, array $results_live_posts ): array {
+		$matches = [];
+
+		// Get posts composite hashes, and compare them to find matches.
+		
+		// Get hashes for live posts.
+		$live_posts_lookup = [];
+		foreach ( $results_live_posts as $live_post ) {
+			$lookup_key = $this->build_post_composite_key_for_post( $live_post );
+			
+			// Store composite key with live ID.
+			if ( ! isset( $live_posts_lookup[ $lookup_key ] ) ) {
+				$live_posts_lookup[ $lookup_key ] = (int) $live_post['ID'];
+			}
+		}
+
+		// Get hashes for local posts, and compare them to find matches.
+		foreach ( $results_local_posts as $key_local_post => $local_post ) {
+			$lookup_key = $this->build_post_composite_key_for_post( $local_post );
+
+			// Found a match.
+			if ( isset( $live_posts_lookup[ $lookup_key ] ) ) {
+				$matches[] = [
+					'local_id' => (int) $local_post['ID'],
+					'live_id'  => $live_posts_lookup[ $lookup_key ],
+				];
+			}
+		}
+
+		return $matches;
+	}
+
+	/**
+	 * Gets user rows for attribution matching.
+	 *
+	 * @param string $table_prefix Table prefix (local or live).
+	 *
+	 * @return array Associative array with ID and user_login.
+	 */
+	public function get_users_rows_for_attribution( string $table_prefix ): array {
+		$users_table = esc_sql( $table_prefix . 'users' );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$results = $this->wpdb->get_results(
+			"SELECT ID, user_login FROM {$users_table}",
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		return is_null( $results ) ? [] : $results;
+	}
+
+	/**
+	 * Matches local users to live users by user_login (unique identifier).
+	 *
+	 * @param array $results_local_users Rows from local users table.
+	 * @param array $results_live_users  Rows from live users table.
+	 *
+	 * @return array Matched pairs with local_id and live_id.
+	 */
+	public function match_local_to_live_users( array $results_local_users, array $results_live_users ): array {
+		$matched_users = [];
+
+		// Live users lookup by user_login.
+		$live_users_lookup = [];
+		foreach ( $results_live_users as $live_user ) {
+			$live_users_lookup[ $live_user['user_login'] ] = (int) $live_user['ID'];
+		}
+
+		foreach ( $results_local_users as $local_user ) {
+			// User is matched.
+			if ( isset( $live_users_lookup[ $local_user['user_login'] ] ) ) {
+				$matched_users[] = [
+					'local_id' => (int) $local_user['ID'],
+					'live_id'  => $live_users_lookup[ $local_user['user_login'] ],
+				];
+			}
+		}
+
+		return $matched_users;
+	}
+
+	/**
 	 * Imports all the Post related data.
 	 *
-	 * @param int   $post_id                  Post Id.
-	 * @param array $data                     Array containing all the data, @see
-	 *                                        \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::get_post_data
-	 *                                        for structure.
-	 * @param array $hierarchical_taxonomy_term_id_updates Hierarchical Taxonomy term_ids updates. Keys are old Live hierarchical taxonomy term_ids, and values are
-	 *                                        corresponding Hierarchical Taxonomies on local (Staging) term_ids.
+	 * @param int    $post_id                  Post Id.
+	 * @param array  $data                     Array containing all the data, @see
+	 *                                         \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::get_post_data
+	 *                                         for structure.
+	 * @param array  $hierarchical_taxonomy_term_id_updates Hierarchical Taxonomy term_ids updates. Keys are old Live hierarchical taxonomy term_ids, and values are
+	 *                                         corresponding Hierarchical Taxonomies on local (Staging) term_ids.
+	 * @param string $source_hostname          Source hostname.
 	 *
 	 * @return array List of errors which occurred.
 	 */
-	public function import_post_data( $post_id, $data, $hierarchical_taxonomy_term_id_updates ) {
+	public function import_post_data( $post_id, $data, $hierarchical_taxonomy_term_id_updates, string $source_hostname ) {
 		$error_messages = [];
 
 		// Insert Post Metas.
@@ -976,7 +1139,7 @@ class ContentDiffLogic {
 		} else {
 			// Insert a new Author User.
 			try {
-				$author_id_new = $this->insert_user( $author_row );
+				$author_id_new = $this->insert_user( $author_row, $source_hostname );
 				foreach ( $usermeta_rows as $usermeta_row ) {
 					$this->insert_usermeta_row( $usermeta_row, $author_id_new );
 				}
@@ -1017,7 +1180,7 @@ class ContentDiffLogic {
 					} else {
 						// Insert a new Comment User.
 						try {
-							$comment_user_id_new = $this->insert_user( $comment_user_row );
+							$comment_user_id_new = $this->insert_user( $comment_user_row, $source_hostname );
 							foreach ( $comment_usermeta_rows as $comment_usermeta_row ) {
 								$this->insert_usermeta_row( $comment_usermeta_row, $comment_user_id_new );
 							}
@@ -2788,13 +2951,14 @@ class ContentDiffLogic {
 	/**
 	 * Inserts a User.
 	 *
-	 * @param array $user_row `user` row.
+	 * @param array  $user_row         `user` row.
+	 * @param string $source_hostname  Source hostname.
 	 *
 	 * @throws \RuntimeException In case insert fails.
 	 *
 	 * @return int Inserted User ID.
 	 */
-	public function insert_user( $user_row ) {
+	public function insert_user( $user_row, string $source_hostname ) {
 		$old_user_id = $user_row['ID'];
 
 		$insert_user_row = $user_row;
@@ -2814,7 +2978,7 @@ class ContentDiffLogic {
 			$this->wpdb->usermeta,
 			[
 				'user_id'    => $new_user_id,
-				'meta_key'   => self::SAVED_META_LIVE_POST_ID,
+				'meta_key'   => $this->get_old_id_meta_key( $source_hostname ),
 				'meta_value' => $old_user_id,
 			]
 		);
@@ -3260,10 +3424,10 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Finds for current post ID by old live DB ID, by searching for the self::SAVED_META_LIVE_POST_ID post meta.
+	 * Finds current post ID by old live DB ID, by searching for a source-specific post meta.
 	 *
 	 * @param int|string $id_live  Post ID from live DB.
-	 * @param string     $meta_key Name of postmeta which contains old post ID.
+	 * @param string     $meta_key Name of postmeta which contains old post ID (use get_old_id_meta_key()).
 	 *
 	 * @return string|null Current Post ID.
 	 */
@@ -3508,6 +3672,17 @@ class ContentDiffLogic {
 		}
 
 		return md5( wp_json_encode( $normalized ) );
+	}
+
+	/**
+	 * Builds a composite key for posts, using the standard post field sets for comparison.
+	 *
+	 * @param array $post Associative array with post fields.
+	 *
+	 * @return string Composite key.
+	 */
+	private function build_post_composite_key_for_post( array $post ): string {
+		return $this->build_post_composite_key( $post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
 	}
 
 	/**
