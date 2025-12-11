@@ -18,7 +18,9 @@
   ],
   "require": {
     "automattic/newspack-content-converter": "dev-master",
-    "automattic/newspack-migration-tools": "dev-trunk"
+    "automattic/newspack-migration-tools": "dev-trunk",
+    "monolog/monolog": "^3.7",
+    "bramus/monolog-colored-line-formatter": "^3.1"
   },
   "require-dev": {
     "automattic/vipwpcs": "^3.0",

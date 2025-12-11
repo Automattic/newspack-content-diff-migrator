@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "dc6a36b361fc2ea59051120181203c5f",
+    "content-hash": "4566b0af2fd04b768cdfc9dbf21bdc00",
     "packages": [
         {
             "name": "automattic/newspack-content-converter",
