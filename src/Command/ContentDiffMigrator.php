@@ -9,8 +9,11 @@
 namespace Newspack\ContentDiffMigrator\Command;
 
 use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
+use Newspack\ContentDiffMigrator\Logic\RunState;
+use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
 use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
+use Psr\Log\LogLevel;
 use WP_CLI;
 
 /**
@@ -18,16 +21,6 @@ use WP_CLI;
  */
 class ContentDiffMigrator {
 
-	const LOG_IDS_CSV                           = 'content-diff__new-ids-csv.log';
-	const LOG_IDS_MODIFIED                      = 'content-diff__modified-ids.log';
-	const LOG_IMPORTED_POST_IDS                 = 'content-diff__imported-post-ids.log';
-	const LOG_UPDATED_PARENT_IDS                = 'content-diff__updated-parent-ids.log';
-	const LOG_DELETED_MODIFIED_IDS              = 'content-diff__deleted-modified-ids.log';
-	const LOG_UPDATED_FEATURED_IMAGES_IDS       = 'content-diff__updated-feat-imgs-ids.log';
-	const LOG_UPDATED_BLOCKS_IDS                = 'content-diff__wp-blocks-ids-updates.log';
-	const LOG_ERROR                             = 'content-diff__err.log';
-	const LOG_RECREATED_HIERARCHICAL_TAXONOMIES = 'content-diff__recreated_hierarchical_taxonomies.log';
-	const LOG_INSERTED_WP_USERS                 = 'content-diff__inserted_wp_users.log';
 
 	/**
 	 * Content Diff logic class.
@@ -41,76 +34,76 @@ class ContentDiffMigrator {
 	 *
 	 * @var null|string Live DB tables prefix.
 	 */
-	private $live_table_prefix;
+	private ?string $live_table_prefix = null;
 
 	/**
-	 * General error log file.
+	 * RunState instance for managing execution state data files.
 	 *
-	 * @var null|string Full path to file.
+	 * @var null|RunState RunState instance.
 	 */
-	private $log_error;
+	private ?RunState $run_state = null;
 
 	/**
-	 * Log containing recreated categories term_ids.
+	 * Logger utility.
 	 *
-	 * @var null|string Full path to file.
+	 * @var Logger
 	 */
-	private $log_recreated_hierarchical_taxonomies;
-
-	/**
-	 * Log containing inserted WP_User IDs.
-	 *
-	 * @var null|string Full path to file.
-	 */
-	private $log_inserted_wp_users;
-
-	/**
-	 * Log containing imported post IDs.
-	 *
-	 * @var null|string Full path to file.
-	 */
-	private $log_imported_post_ids;
-
-	/**
-	 * Log containing posts ID which had their post_parent IDs updated.
-	 *
-	 * @var null|string Full path to file.
-	 */
-	private $log_updated_posts_parent_ids;
-
-	/**
-	 * Log containing post IDs which were deleted and reimported.
-	 *
-	 * @var null|string Full path to file.
-	 */
-	private $log_deleted_modified_ids;
-
-	/**
-	 * Log containing attachment IDs which were updated to new IDs if used as attachment images.
-	 *
-	 * @var null|string Full path to file.
-	 */
-	private $log_updated_featured_imgs_ids;
-
-	/**
-	 * Log containing post IDs which had their content updated with new IDs in blocks syntax.
-	 *
-	 * @var null|string Full path to file.
-	 */
-	private $log_updated_blocks_ids;
+	private Logger $logger;
 
 	/**
 	 * Constructor.
+	 * 
+	 * @param bool $enable_logging Whether to enable logging (useful for testing environment).
+	 * 
+	 * @return void
 	 */
-	public function __construct() {
+	public function __construct( bool $enable_logging = true ) {
 		global $wpdb;
-		$this->logic = new ContentDiffLogic( $wpdb );
+		$this->logic  = new ContentDiffLogic( $wpdb );
+		$this->logger = new Logger( $enable_logging );
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
 	public static function register_commands(): void {
+		WP_CLI::add_command(
+			'newspack-content-migrator content-diff-list-source-hostnames',
+			[ __CLASS__, 'cmd_list_source_hostnames' ],
+			[
+				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
+			]
+		);
+		WP_CLI::add_command(
+			'newspack-content-migrator content-diff-attribute-initial-content',
+			[ __CLASS__, 'cmd_attribute_initial_content' ],
+			[
+				'shortdesc' => 'Attributes existing local content to a source hostname by comparing with those live DB tables and adding source-specific metadata.',
+				'synopsis'  => [
+					[
+						'type'        => 'assoc',
+						'name'        => 'live-table-prefix',
+						'description' => 'Live site table prefix.',
+						'optional'    => false,
+						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'source-hostname',
+						'description' => 'Source hostname (e.g., www.example.com).',
+						'optional'    => false,
+						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'post-types-csv',
+						'description' => 'CSV of post types to attribute. Default: post,page,attachment.',
+						'optional'    => true,
+						'repeating'   => false,
+					],
+				],
+			]
+		);
 		WP_CLI::add_command(
 			'newspack-content-migrator content-diff-search-new-content-on-live',
 			[ __CLASS__, 'cmd_search_new_content_on_live' ],
@@ -119,8 +112,8 @@ class ContentDiffMigrator {
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
-						'name'        => 'export-dir',
-						'description' => 'Folder to export the IDs to.',
+						'name'        => 'data-dir',
+						'description' => 'Directory to store migration data and logs.',
 						'optional'    => false,
 						'repeating'   => false,
 					],
@@ -128,6 +121,13 @@ class ContentDiffMigrator {
 						'type'        => 'assoc',
 						'name'        => 'live-table-prefix',
 						'description' => 'Live site table prefix.',
+						'optional'    => false,
+						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'source-hostname',
+						'description' => 'Source hostname (e.g., www.example.com). Used to namespace old ID metadata.',
 						'optional'    => false,
 						'repeating'   => false,
 					],
@@ -149,8 +149,8 @@ class ContentDiffMigrator {
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
-						'name'        => 'import-dir',
-						'description' => 'Folder containing the file with list of IDs to migrate.',
+						'name'        => 'data-dir',
+						'description' => 'Directory containing migration data and logs.',
 						'optional'    => false,
 						'repeating'   => false,
 					],
@@ -158,6 +158,13 @@ class ContentDiffMigrator {
 						'type'        => 'assoc',
 						'name'        => 'live-table-prefix',
 						'description' => 'Live site table prefix.',
+						'optional'    => false,
+						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'source-hostname',
+						'description' => 'Source hostname (e.g., www.example.com).',
 						'optional'    => false,
 						'repeating'   => false,
 					],
@@ -218,12 +225,11 @@ class ContentDiffMigrator {
 						'name'        => 'mode',
 						'description' => 'Determines how large the SQL insert transactions are and the latency between them.',
 						'optional'    => true,
-						'default'     => 'generous',
+						'default'     => 'regular',
 						'options'     => [
 							'aggressive',
-							'generous',
-							'cautious',
-							'calm',
+							'regular',
+							'slow',
 						],
 						'repeating'   => false,
 					],
@@ -248,26 +254,61 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-migrator content-diff-search-new-content-on-live`.
+	 * Callable for `newspack-content-migrator content-diff-list-source-hostnames`.
+	 *
+	 * Lists all source hostnames from which content has been imported.
 	 *
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 */
-	public function cmd_search_new_content_on_live( $args, $assoc_args ) {
-		$export_dir        = $assoc_args['export-dir'] ?? false;
-		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
-		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'attachment' ];
-		// Disable CAP's "guest-author" CPT.
-		if ( in_array( 'guest-author', $post_types ) ) {
-			WP_CLI::error( "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
+	public function cmd_list_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		$this->logger->init_loggers( __FUNCTION__ );
+
+		$source_sites = $this->logic->get_migrated_source_hostnames();
+
+		if ( empty( $source_sites ) ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No source hostnames found.' );
+			return;
 		}
 
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrated source hostnames:' );
+		foreach ( $source_sites as $site ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '  - %s', $site ) );
+		}
+	}
+
+	/**
+	 * Callable for `newspack-content-migrator content-diff-attribute-initial-content`.
+	 *
+	 * Attributes/assigns existing local content to a source hostname by comparing with live DB
+	 * and adding source-specific metadata.
+	 *
+	 * @param array $args       CLI args.
+	 * @param array $assoc_args CLI assoc args.
+	 */
+	public function cmd_attribute_initial_content( array $args, array $assoc_args ): void {
 		global $wpdb;
+
+		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
+		$source_hostname   = $assoc_args['source-hostname'] ?? false;
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
+		
+		$this->logger->init_loggers( __FUNCTION__ );
+
+		// Show existing source hostnames.
+		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
+		if ( ! empty( $existing_source_sites ) ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
+		} else {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
+		}
+
+		// Validate DBs.
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			WP_CLI::warning( $e->getMessage() );
-			WP_CLI::line( "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=generous --skip-tables=options` ..." );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'About to run command correct-collations-for-live-wp-tables ...' );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
@@ -278,18 +319,153 @@ class ContentDiffMigrator {
 			);
 		}
 
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing local users and CPTs %s to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
+		
+		// Post statuses by type.
+		$statuses_regular    = [ 'publish', 'future', 'draft', 'pending', 'private' ];
+		$statuses_attachment = [ 'inherit' ];
+		
+		$total_attributed = 0;
+		$total_local      = 0;
+		
+		// Get list of post types except attachments (handled separately like in cmd_search).
+		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
+		$process_attachments        = in_array( 'attachment', $post_types, true );
+		
+		$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
+
+		// Process non-attachment post types.
+		if ( ! empty( $post_types_non_attachments ) ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
+
+			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
+			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
+			MemoryCleanupHook::cleanup( 1 );
+
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
+			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
+			MemoryCleanupHook::cleanup( 1 );
+
+			// Save metas for matched posts.
+			foreach ( $matched_posts as $match ) {
+				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			}
+
+			$total_attributed += count( $matched_posts );
+			$total_local      += count( $results_local_posts );
+
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d posts attributed out of %d local.', count( $matched_posts ), count( $results_local_posts ) ) );
+			MemoryCleanupHook::cleanup( 1 );
+		}
+
+		// Process attachments separately (like in cmd_search).
+		if ( $process_attachments ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
+
+			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+			MemoryCleanupHook::cleanup( 1 );
+
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
+			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
+			MemoryCleanupHook::cleanup( 1 );
+
+			// Save metas for matched attachments.
+			foreach ( $matched_attachments as $match ) {
+				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			}
+
+			$total_attributed += count( $matched_attachments );
+			$total_local      += count( $results_local_attachments );
+
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d attachments attributed out of %d local.', count( $matched_attachments ), count( $results_local_attachments ) ) );
+			MemoryCleanupHook::cleanup( 1 );
+		}
+
+		// Process users.
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
+
+		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
+		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
+		MemoryCleanupHook::cleanup( 1 );
+
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
+		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
+		MemoryCleanupHook::cleanup( 1 );
+
+		// Save metas for matched users.
+		foreach ( $matched_users as $match ) {
+			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
+		}
+
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d users attributed out of %d local.', count( $matched_users ), count( $results_local_users ) ) );
+
+		$this->logger->log(
+			Logger::OUTPUT_BOTH,
+			LogLevel::INFO,
+			sprintf(
+				'Done! Total: %d posts/attachments attributed out of %d. %d users attributed out of %d.',
+				$total_attributed,
+				$total_local,
+				count( $matched_users ),
+				count( $results_local_users )
+			)
+		);
+	}
+
+	/**
+	 * Callable for `newspack-content-migrator content-diff-search-new-content-on-live`.
+	 *
+	 * @param array $args       CLI args.
+	 * @param array $assoc_args CLI assoc args.
+	 * 
+	 * @throws \RuntimeException If file not found or empty.
+	 * @throws \Exception If error occurs.
+	 */
+	public function cmd_search_new_content_on_live( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		$data_dir          = $assoc_args['data-dir'] ?? false;
+		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
+		$source_hostname   = $assoc_args['source-hostname'] ?? false;
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'attachment' ];
+		
+		// Init logger.
+		$this->logger->init_loggers( __FUNCTION__ );
+		$this->logger->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
+
+		// Disable CAP's "guest-author" CPT.
+		if ( in_array( 'guest-author', $post_types ) ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
+			throw new \RuntimeException( "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
+		}
+
+
+		global $wpdb;
+		try {
+			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
+		} catch ( \RuntimeException $e ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " - about to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
+			$this->cmd_correct_collations_for_live_wp_tables(
+				[],
+				[
+					'live-table-prefix' => $live_table_prefix,
+					'mode'              => 'regular',
+					'skip-tables'       => 'options',
+				]
+			);
+		}
+
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		// phpcs:ignore -- table prefix string value was escaped.
 		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" );
-		WP_CLI::log( sprintf( 'These unique Post types exist in live DB:%s', "\n- " . implode( "\n- ", $cpts_live ) ) );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Following Post types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
 
 		// Validate selected post types.
 		array_walk(
 			$post_types,
 			function ( &$v, $k ) use ( $cpts_live ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 				if ( ! in_array( $v, $cpts_live ) ) {
-					WP_CLI::error( sprintf( 'Post type %s not found in live DB.', $v ) );
+					$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Selected post type %s is not found in live DB. It will not be migrated.', $v ) );
 				}
 			}
 		);
@@ -302,61 +478,73 @@ class ContentDiffMigrator {
 			$post_types_non_attachments = array_values( $post_types_non_attachments );
 		}
 
-		WP_CLI::log( sprintf( 'Now searching live DB for new Post types %s ...', implode( ', ', $post_types ) ) );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Searching live DB for new content...' );
 		try {
-			WP_CLI::log( sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s ...', implode( ',', $post_types_non_attachments ) ) );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			MemoryCleanupHook::cleanup( 1 );
 
-			WP_CLI::log( sprintf( 'Fetched %s total from live site. Searching new ones...', count( $results_live_posts ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_posts ) ) );
 			$new_live_ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
-			WP_CLI::success( sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
 			MemoryCleanupHook::cleanup( 1 );
 
-			WP_CLI::log( 'Searching for records more recently modified on live...' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
 			$modified_live_ids = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
-			WP_CLI::success( sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
 			MemoryCleanupHook::cleanup( 1 );
 
-			WP_CLI::log( 'Querying attachments...' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments ...' );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			MemoryCleanupHook::cleanup( 1 );
 
-			WP_CLI::log( sprintf( 'Fetched %s total from live site. Searching new ones...', count( $results_live_attachments ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_attachments ) ) );
 			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $results_local_attachments );
 			$new_live_ids            = array_merge( $new_live_ids, $new_live_attachment_ids );
-			WP_CLI::success( sprintf( '%d new IDs found.', count( $new_live_attachment_ids ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_attachment_ids ) ) );
 
 		} catch ( \Exception $e ) {
-			WP_CLI::error( $e->getMessage() );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
+			throw $e;
 		}
 
-		// Save logs and output results.
+		/**
+		 * Get run-state (with access to all the data that needs to be migrated, and keeps progress of the migration).
+		 * 
+		 * Run-state data is stored in formatted files in the subfolder:
+		 *      {--data-dir}/{--source-hostname}/run-state
+		 * And the regular logs are stored directly in:
+		 *      {--data-dir}/{--source-hostname}
+		 */
+		$run_state_dir = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
+		$run_state     = new RunState( $run_state_dir );
+
+		// Write new IDs to migrate.
 		if ( count( $new_live_ids ) > 0 ) {
-			$file = $export_dir . '/' . self::LOG_IDS_CSV;
-			file_put_contents( $file, implode( ',', $new_live_ids ) ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents.
-			WP_CLI::success( sprintf( 'New IDs exported to %s', $file ) );
+			$run_state->write_new_ids( $new_live_ids );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', $run_state->get_file_path( 'new_ids.json' ) ) );
 		}
+
+		// Write IDs which are modified and need to be reimported.
 		if ( count( $modified_live_ids ) > 0 ) {
-			$file_modified = $export_dir . '/' . self::LOG_IDS_MODIFIED;
-			if ( file_exists( $file_modified ) ) {
-				unlink( $file_modified ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_unlink.
-			}
-			foreach ( $modified_live_ids as $modified_live_id_pair ) {
-				$this->log(
-					$file_modified,
-					wp_json_encode(
-						[
-							'live_id'  => $modified_live_id_pair['live_id'],
-							'local_id' => $modified_live_id_pair['local_id'],
-						]
-					)
-				);
-			}
-			WP_CLI::success( sprintf( 'Modified IDs exported to %s', $file_modified ) );
+			$run_state->write_modified_ids( $modified_live_ids );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', $run_state->get_file_path( 'modified_ids.json' ) ) );
 		}
+
+		// Save manifest.json with migration TOC.
+		$manifest = [
+			'source_hostname'   => $source_hostname,
+			'live_table_prefix' => $live_table_prefix,
+			'created_at'        => gmdate( 'Y-m-d H:i:s' ),
+			'updated_at'        => gmdate( 'Y-m-d H:i:s' ),
+			'counts'            => [
+				'new_ids'      => count( $new_live_ids ),
+				'modified_ids' => count( $modified_live_ids ),
+			],
+		];
+		$run_state->write_manifest( $manifest );
 	}
 
 	/**
@@ -364,27 +552,37 @@ class ContentDiffMigrator {
 	 *
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
+	 * 
+	 * @throws \RuntimeException If file not found or empty.
 	 */
-	public function cmd_migrate_live_content( $args, $assoc_args ) {
+	public function cmd_migrate_live_content( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		global $wpdb;
 
-		$import_dir        = $assoc_args['import-dir'] ?? false;
+		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
+		$source_hostname   = $assoc_args['source-hostname'] ?? false;
+		
+		// Init logger.
+		$this->logger->init_loggers( __FUNCTION__ );
+		$this->logger->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-migrate-live-content...' );
 
 		// Default taxonomies which are migrated are defined here.
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 
-		// Validate all params.
-		$file_ids_csv      = $import_dir . '/' . self::LOG_IDS_CSV;
-		$file_ids_modified = $import_dir . '/' . self::LOG_IDS_MODIFIED;
-		if ( ! file_exists( $file_ids_csv ) ) {
-			WP_CLI::error( sprintf( 'File %s not found.', $file_ids_csv ) );
+		// Get run-state (with access to all the data that needs to be migrated, and keeps progress of the migration).
+		$run_state_dir = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
+		$run_state     = new RunState( $run_state_dir );
+
+		// Get new IDs which will be migrated.
+		$new_ids = $run_state->read_new_ids();
+		if ( null === $new_ids || empty( $new_ids ) ) {
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'File %s not found or empty.', $run_state->get_file_path( 'new_ids.json' ) ) );
+			throw new \RuntimeException( sprintf( 'File %s not found or empty.', esc_html( $run_state->get_file_path( 'new_ids.json' ) ) ) );
 		}
-		$all_live_posts_ids           = explode( ',', trim( file_get_contents( $file_ids_csv ) ) ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown.
-		$all_live_modified_posts_data = file_exists( $file_ids_modified ) ? $this->get_data_from_log( $file_ids_modified, [ 'live_id', 'local_id' ] ) : [];
-		if ( empty( $all_live_posts_ids ) ) {
-			WP_CLI::error( sprintf( 'File %s does not contain valid CSV IDs.', $file_ids_csv ) );
-		}
+		$all_live_posts_ids = array_map( 'intval', $new_ids );
+
+		// Get IDs which were modified, and need to be reimported.
+		$all_live_modified_posts_data = $run_state->read_modified_ids();
 
 		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
@@ -403,62 +601,50 @@ class ContentDiffMigrator {
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			WP_CLI::warning( $e->getMessage() );
-			WP_CLI::line( "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=generous --skip-tables=options` ..." );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
 					'live-table-prefix' => $live_table_prefix,
-					'mode'              => 'generous',
+					'mode'              => 'regular',
 					'skip-tables'       => 'options',
 				]
 			);
 		}
 
-		// Set constants.
-		$this->live_table_prefix                     = $live_table_prefix;
-		$this->log_error                             = $import_dir . '/' . self::LOG_ERROR;
-		$this->log_recreated_hierarchical_taxonomies = $import_dir . '/' . self::LOG_RECREATED_HIERARCHICAL_TAXONOMIES;
-		$this->log_inserted_wp_users                 = $import_dir . '/' . self::LOG_INSERTED_WP_USERS;
-		$this->log_imported_post_ids                 = $import_dir . '/' . self::LOG_IMPORTED_POST_IDS;
-		$this->log_updated_posts_parent_ids          = $import_dir . '/' . self::LOG_UPDATED_PARENT_IDS;
-		$this->log_deleted_modified_ids              = $import_dir . '/' . self::LOG_DELETED_MODIFIED_IDS;
-		$this->log_updated_featured_imgs_ids         = $import_dir . '/' . self::LOG_UPDATED_FEATURED_IMAGES_IDS;
-		$this->log_updated_blocks_ids                = $import_dir . '/' . self::LOG_UPDATED_BLOCKS_IDS;
+		// Set instance properties.
+		$this->live_table_prefix = $live_table_prefix;
+		$this->run_state         = $run_state;
 
-		// Timestamp the logs.
-		$ts = gmdate( 'Y-m-d h:i:s a', time() );
-		$this->log( $this->log_error, sprintf( 'Starting %s.', $ts ) );
-		$this->log( $this->log_recreated_hierarchical_taxonomies, sprintf( 'Starting %s.', $ts ) );
-		$this->log( $this->log_imported_post_ids, sprintf( 'Starting %s.', $ts ) );
-		$this->log( $this->log_updated_posts_parent_ids, sprintf( 'Starting %s.', $ts ) );
-		$this->log( $this->log_deleted_modified_ids, sprintf( 'Starting %s.', $ts ) );
-		$this->log( $this->log_updated_featured_imgs_ids, sprintf( 'Starting %s.', $ts ) );
-		$this->log( $this->log_updated_blocks_ids, sprintf( 'Starting %s.', $ts ) );
+		// Timestamp the debug log with source hostname for identification.
+		$ts            = gmdate( 'Y-m-d h:i:s a', time() );
+		$log_start_msg = sprintf( 'Starting %s | source hostname: %s', $ts, $source_hostname );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, $log_start_msg );
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$live_table_prefix_escaped}term_taxonomy ;" ); // phpcs:ignore -- table prefix string value was escaped.
-		WP_CLI::log( sprintf( 'Here is a list of all the taxonomies which exist in the live DB:%s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Here are all the taxonomies which exist in the live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
 
 		// Before we create hierarchical taxonomies, let's make sure all hierarchical taxonomies have valid parents. If they don't they should be fixed first.
-		WP_CLI::log( sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
 		$taxonomies_to_migrate = $this->validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 
 		// Recreate taxonomies but leave out (unused) tags.
 		$taxonomies_to_recreate = array_diff( $taxonomies_to_migrate, [ 'post_tag' ] );
-		WP_CLI::log( sprintf( 'Recreating taxonomies %s ...', "\n- " . implode( "\n- ", $taxonomies_to_recreate ) ) );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Recreating taxonomies: %s ...', "\n- " . implode( "\n- ", $taxonomies_to_recreate ) ) );
 		$hierarchical_taxonomy_term_id_updates = $this->recreate_hierarchical_taxonomies( $taxonomies_to_recreate );
 		MemoryCleanupHook::cleanup( 1 );
 
 		// Migrate all WP_Users (for WooComm data).
-		WP_CLI::log( 'Migrating all WP_Users...' );
-		$this->migrate_all_users( $live_table_prefix );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
+		$this->migrate_all_users( $live_table_prefix, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
 		if ( ! empty( $all_live_modified_posts_data ) ) {
-			WP_CLI::log( sprintf( 'Deleting %s modified posts before they are reimported...', count( $all_live_modified_posts_data ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $all_live_modified_posts_data ) ) );
 		}
 
 		/**
@@ -470,65 +656,41 @@ class ContentDiffMigrator {
 		$modified_live_ids  = array_keys( $modified_ids_map );
 		$modified_local_ids = array_values( $modified_ids_map );
 		/**
-		 * Importing modified IDS. Different kind of data could have been updated for a post (content, author, featured image, etc.),
+		 * Updating modified IDS. Different kind of data could have been updated for a post (content, author, featured image, etc.),
 		 * so the easiest way to refresh them is to:
-		 * 1. delete the existing post,
+		 * 1. delete the existing post (with all related data)
 		 * 2. reimport it
 		 */
 		// Delete outdated local Posts.
 		$this->delete_local_posts( $modified_local_ids );
-		$this->log( $this->log_deleted_modified_ids, implode( ',', $modified_local_ids ) );
+		foreach ( $modified_local_ids as $local_id ) {
+			$this->run_state->append_deleted_modified_id( [ 'local_id' => (int) $local_id ] );
+		}
 		// Merge modified posts IDs with $all_live_posts_ids for reimport.
 		$all_live_posts_ids = array_merge( $all_live_posts_ids, $modified_live_ids );
 
-		WP_CLI::log( sprintf( 'Importing %d objects, hold tight...', count( $all_live_posts_ids ) ) );
-		$imported_posts_data = $this->import_posts( $all_live_posts_ids, $hierarchical_taxonomy_term_id_updates );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $all_live_posts_ids ) ) );
+		$imported_posts_data = $this->import_posts( $all_live_posts_ids, $hierarchical_taxonomy_term_id_updates, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		WP_CLI::log( 'Updating Post parent IDs...' );
-		$this->update_post_parent_ids( $all_live_posts_ids, $imported_posts_data );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
+		$this->update_post_parent_ids( $all_live_posts_ids, $imported_posts_data, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		WP_CLI::log( 'Updating Featured images IDs...' );
-		$this->update_featured_image_ids( $imported_posts_data );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Featured images IDs...' );
+		$this->update_featured_image_ids( $imported_posts_data, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		WP_CLI::log( 'Updating attachment IDs in block content...' );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
 		$this->update_attachment_ids_in_blocks( $imported_posts_data );
 		MemoryCleanupHook::cleanup( 1 );
 
-		WP_CLI::success( 'All done migrating content! 🙌 ' );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
 
-		// Output info about all available logs.
-		$cli_output_logs_report = [];
-		if ( file_exists( $this->log_error ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - errors', $this->log_error );
-		}
-		if ( file_exists( $this->log_deleted_modified_ids ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - all modified post IDs', $this->log_deleted_modified_ids );
-		}
-		if ( file_exists( $this->log_imported_post_ids ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - all imported IDs', $this->log_imported_post_ids );
-		}
-		if ( file_exists( $this->log_recreated_hierarchical_taxonomies ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - created taxonomies', $this->log_recreated_hierarchical_taxonomies );
-		}
-		if ( file_exists( $this->log_inserted_wp_users ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - created WP_Users', $this->log_inserted_wp_users );
-		}
-		if ( file_exists( $this->log_updated_blocks_ids ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - detailed blocks IDs post content replacements', $this->log_updated_blocks_ids );
-		}
-		if ( file_exists( $this->log_updated_posts_parent_ids ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - post_parent IDs updates', $this->log_updated_posts_parent_ids );
-		}
-		if ( file_exists( $this->log_updated_featured_imgs_ids ) ) {
-			$cli_output_logs_report[] = sprintf( '%s - featured image IDs updates', $this->log_updated_featured_imgs_ids );
-		}
-		if ( ! empty( $cli_output_logs_report ) ) {
-			WP_CLI::success( 'Check the logs for more details:' );
-			WP_CLI::log( '- ' . implode( "\n- ", $cli_output_logs_report ) );
-		}
+		// Display info about available logs.
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Check the logs for more details:' );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', $this->logger->get_log_file_name() ) );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', $this->run_state->get_file_path( 'manifest.json' ) ) );
 
 		wp_cache_flush();
 	}
@@ -541,13 +703,13 @@ class ContentDiffMigrator {
 	 *
 	 * @return array $taxonomies_to_migrate Validated and filtered hierarchical taxonomies to migrate.
 	 */
-	public function validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies ): array {
+	public function validate_hierarchical_taxonomies( array $taxonomies_to_migrate, array $live_taxonomies ): array {
 		global $wpdb;
 
 		// Check if any of the taxonomies does not exist in the live DB.
 		foreach ( $taxonomies_to_migrate as $key_taxonomy_to_migrate => $taxonomy_to_migrate ) {
 			if ( ! in_array( $taxonomy_to_migrate, $live_taxonomies ) ) {
-				WP_CLI::warning( sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
+				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
 				unset( $taxonomies_to_migrate[ $key_taxonomy_to_migrate ] );
 			}
 		}
@@ -563,10 +725,8 @@ class ContentDiffMigrator {
 				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
 			}
 
-			WP_CLI::warning( 'The following local DB hierarchical taxonomies have invalid parent IDs which will be fixed first (their parents set to 0).' );
-			WP_CLI::log( $list );
-
-			WP_CLI::confirm( "OK to fix and set all these hierarchical taxonomies' parents to 0? in local site's DB tables" );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following local DB hierarchical taxonomies have invalid parent IDs which will be fixed first (their parents set to 0).' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
 			$this->logic->reset_hierarchical_taxonomies_parents( $wpdb->prefix, $term_taxonomy_ids );
 		}
 
@@ -580,10 +740,8 @@ class ContentDiffMigrator {
 				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
 			}
 
-			WP_CLI::warning( 'The following live DB hierarchical taxonomies have invalid parent IDs which must be fixed first (their parents set to 0 in live tables).' );
-			WP_CLI::log( $list );
-
-			WP_CLI::confirm( "OK to fix and set all these hierarchical taxonomies' parents to 0 in live DB tables?" );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following live DB hierarchical taxonomies have invalid parent IDs which must be fixed first (their parents set to 0 in live tables).' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
 			$this->logic->reset_hierarchical_taxonomies_parents( $this->live_table_prefix, $term_taxonomy_ids );
 		}
 
@@ -603,11 +761,8 @@ class ContentDiffMigrator {
 	public function recreate_hierarchical_taxonomies( $taxonomies_to_migrate ) {
 		$hierarchical_taxonomy_term_id_updates = $this->logic->recreate_hierarchical_taxonomies( $this->live_table_prefix, $taxonomies_to_migrate );
 
-		// Log taxonomy term_id updates.
-		$this->log(
-			$this->log_recreated_hierarchical_taxonomies,
-			wp_json_encode( [ 'hierarchical_taxonomy_term_id_updates' => $hierarchical_taxonomy_term_id_updates ] )
-		);
+		// Log taxonomy term_id updates to debug log.
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Recreated hierarchical taxonomies: ' . wp_json_encode( [ 'hierarchical_taxonomy_term_id_updates' => $hierarchical_taxonomy_term_id_updates ] ) );
 
 		return $hierarchical_taxonomy_term_id_updates;
 	}
@@ -616,16 +771,14 @@ class ContentDiffMigrator {
 	 * Migrates all WP_Users from Live to local.
 	 *
 	 * @param string $live_table_prefix Live table prefix.
+	 * @param string $source_hostname   Source hostname.
 	 * @return array Map of newly inserted WP_Users, keys are old Live IDs and values are new local IDs.
 	 */
-	public function migrate_all_users( $live_table_prefix ) {
-		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix );
+	public function migrate_all_users( string $live_table_prefix, string $source_hostname ): array {
+		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
 
-		// Log taxonomy term_id updates.
-		$this->log(
-			$this->log_inserted_wp_users,
-			wp_json_encode( [ 'inserted_wp_users_updates' => $inserted_wp_users_updates ] )
-		);
+		// Log inserted users to debug log.
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Inserted WP_Users: ' . wp_json_encode( [ 'inserted_wp_users_updates' => $inserted_wp_users_updates ] ) );
 
 		return $inserted_wp_users_updates;
 	}
@@ -646,9 +799,10 @@ class ContentDiffMigrator {
 	/**
 	 * Creates and imports posts and all related post data. Skips previously imported IDs found in $this->log_imported_post_ids.
 	 *
-	 * @param array $all_live_posts_ids       Live IDs to be imported to local.
-	 * @param array $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values
-	 *                                        are corresponding Taxonomies' term_ids on local (staging).
+	 * @param array  $all_live_posts_ids       Live IDs to be imported to local.
+	 * @param array  $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values
+	 *                                         are corresponding Taxonomies' term_ids on local (staging).
+	 * @param string $source_hostname          Source hostname.
 	 *
 	 * @return array $imported_posts_data {
 	 *     Array with subarray records for all the imported post objects.
@@ -660,26 +814,34 @@ class ContentDiffMigrator {
 	 *     }
 	 * }
 	 */
-	public function import_posts( $all_live_posts_ids, $hierarchical_taxonomy_term_id_updates ) {
+	public function import_posts( array $all_live_posts_ids, array $hierarchical_taxonomy_term_id_updates, string $source_hostname ): array {
 
 		$post_ids_for_import = $all_live_posts_ids;
 
 		// Skip previously imported posts.
-		$imported_posts_data = $this->get_data_from_log( $this->log_imported_post_ids, [ 'post_type', 'id_old', 'id_new' ] ) ?? [];
+		$imported_posts_data = $this->run_state->read_imported_posts();
+		$imported_ids_lookup = [];
 		foreach ( $imported_posts_data as $imported_post_data ) {
-			$id_old     = $imported_post_data['id_old'] ?? null;
+			$id_old = $imported_post_data['id_old'] ?? null;
+			if ( ! is_null( $id_old ) ) {
+				$imported_ids_lookup[ $id_old ] = $imported_post_data;
+			}
+		}
+
+		foreach ( $imported_ids_lookup as $id_old => $imported_post_data ) {
 			$key_id_old = array_search( $id_old, $post_ids_for_import );
-			if ( ! is_null( $id_old ) && false !== $key_id_old ) {
+			if ( false !== $key_id_old ) {
 				unset( $post_ids_for_import[ $key_id_old ] );
 			}
 		}
+
 		if ( empty( $post_ids_for_import ) ) {
-			WP_CLI::log( 'All posts were already imported, moving on.' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts were already imported, moving on.' );
 			return $imported_posts_data;
 		}
 		if ( $post_ids_for_import !== $all_live_posts_ids ) {
 			$post_ids_for_import = array_values( $post_ids_for_import );
-			WP_CLI::log( sprintf( '%s of total %d IDs were already imported, continuing from there. Hold tight..', count( $all_live_posts_ids ) - count( $post_ids_for_import ), count( $all_live_posts_ids ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d IDs were already imported, continuing from there. Hold tight..', count( $all_live_posts_ids ) - count( $post_ids_for_import ), count( $all_live_posts_ids ) ) );
 		}
 
 		// Import Posts.
@@ -706,38 +868,35 @@ class ContentDiffMigrator {
 					'id_new'    => (int) $post_id_new,
 				];
 			} catch ( \Exception $e ) {
-				$this->log( $this->log_error, sprintf( 'import_posts error while inserting post_type %s id_old=%d : %s', $post_type, $post_id_live, $e->getMessage() ) );
-				WP_CLI::warning( sprintf( 'Error inserting %s Live ID %d (details in log file)', $post_type, $post_id_live ) );
+				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'import_posts error while inserting post_type %s id_old=%d : %s', $post_type, $post_id_live, $e->getMessage() ) );
+				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Error inserting %s Live ID %d (details in log file)', $post_type, $post_id_live ) );
 
 				// Error is logged. Continue importing other posts.
 				continue;
 			}
 
 			// Now import all related Post data.
-			$import_errors = $this->logic->import_post_data( $post_id_new, $post_data, $hierarchical_taxonomy_term_id_updates );
+			$import_errors = $this->logic->import_post_data( $post_id_new, $post_data, $hierarchical_taxonomy_term_id_updates, $source_hostname );
 			if ( ! empty( $import_errors ) ) {
 				$msg = sprintf( 'Errors during import post_type=%s, id_old=%d, id_new=%d :', $post_type, $post_id_live, $post_id_new );
 				foreach ( $import_errors as $import_error ) {
 					$msg .= PHP_EOL . '- ' . $import_error;
 				}
-				$this->log( $this->log_error, $msg );
-				WP_CLI::warning( $msg );
+				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $msg );
 			}
 
-			// Log imported post.
-			$this->log(
-				$this->log_imported_post_ids,
-				wp_json_encode(
-					[
-						'post_type' => $post_type,
-						'id_old'    => (int) $post_id_live,
-						'id_new'    => (int) $post_id_new,
-					]
-				)
+			// Log imported post to JSONL.
+			$this->run_state->append_imported_post(
+				[
+					'post_type' => $post_type,
+					'id_old'    => (int) $post_id_live,
+					'id_new'    => (int) $post_id_new,
+				]
 			);
 
-			// Save some metas.
-			update_post_meta( $post_id_new, ContentDiffMigratorLogic::SAVED_META_LIVE_POST_ID, $post_id_live );
+			// Save source-specific old ID meta.
+			$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
+			update_post_meta( $post_id_new, $meta_key, $post_id_live );
 		}
 
 		// Flush the cache for `$wpdb::update`s to sink in.
@@ -749,8 +908,8 @@ class ContentDiffMigrator {
 	/**
 	 * Updates all Posts' post_parent IDs.
 	 *
-	 * @param array $all_live_posts_ids Old (Live) IDs to have their post_parent updated.
-	 * @param array $imported_posts_data {
+	 * @param array  $all_live_posts_ids Old (Live) IDs to have their post_parent updated.
+	 * @param array  $imported_posts_data {
 	 *     Return result from import_posts method, a map of all the imported post objects.
 	 *
 	 *     @type array $record {
@@ -759,27 +918,36 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
+	 * @param string $source_hostname Source hostname.
 	 */
-	public function update_post_parent_ids( $all_live_posts_ids, $imported_posts_data ) {
+	public function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname ): void {
 
 		$parent_ids_for_update = $all_live_posts_ids;
 
 		// Skip previously updated IDs.
-		$previously_updated_parent_ids_data = $this->get_data_from_log( $this->log_updated_posts_parent_ids, [ 'id_old' ] );
+		$previously_updated_parent_ids_data = $this->run_state->read_updated_parents();
+		$updated_ids_lookup                 = [];
 		foreach ( $previously_updated_parent_ids_data as $entry ) {
-			$id_old     = $entry['id_old'] ?? null;
+			$id_old = $entry['id_old'] ?? null;
+			if ( ! is_null( $id_old ) ) {
+				$updated_ids_lookup[ $id_old ] = true;
+			}
+		}
+
+		foreach ( $updated_ids_lookup as $id_old => $_ ) {
 			$key_id_old = array_search( $id_old, $parent_ids_for_update );
-			if ( ! is_null( $id_old ) && false !== $key_id_old ) {
+			if ( false !== $key_id_old ) {
 				unset( $parent_ids_for_update[ $key_id_old ] );
 			}
 		}
+
 		if ( empty( $parent_ids_for_update ) ) {
-			WP_CLI::log( 'All posts already had their post_parent updated, moving on.' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their post_parent updated, moving on.' );
 			return;
 		}
 		if ( $parent_ids_for_update !== $all_live_posts_ids ) {
 			$parent_ids_for_update = array_values( $parent_ids_for_update );
-			WP_CLI::log( sprintf( '%s post_parent IDs of total %d were already updated, continuing from there..', count( $all_live_posts_ids ) - count( $parent_ids_for_update ), count( $all_live_posts_ids ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s post_parent IDs of total %d were already updated, continuing from there..', count( $all_live_posts_ids ) - count( $parent_ids_for_update ), count( $all_live_posts_ids ) ) );
 		}
 
 		/**
@@ -832,9 +1000,10 @@ class ContentDiffMigrator {
 
 			// It's possible that this $post's post_parent already existed in local DB before the Content Diff import was run, so
 			// it won't be present in the list of the posts we imported. Let's try and search for the new ID directly in DB.
-			// First try searching by postmeta ContentDiffMigratorLogic::SAVED_META_LIVE_POST_ID -- in case a previous content diff imported it.
+			// First try searching by source-specific postmeta -- in case a previous content diff imported it.
 			if ( is_null( $parent_id_new ) ) {
-				$parent_id_new = $this->logic->get_current_post_id_by_custom_meta( $parent_id_old, ContentDiffMigratorLogic::SAVED_META_LIVE_POST_ID );
+				$meta_key      = $this->logic->get_old_id_meta_key( $source_hostname );
+				$parent_id_new = $this->logic->get_current_post_id_by_custom_meta( $parent_id_old, $meta_key );
 			}
 			// Next try searching for the new parent_id by joining local and live DB tables.
 			if ( is_null( $parent_id_new ) ) {
@@ -847,7 +1016,7 @@ class ContentDiffMigrator {
 				// If all attempts failed (possibly this parent does not exist in the live DB, or if this parent is of a post_type which was not imported), set that post_parent to 0.
 				$parent_id_new = 0;
 
-				$this->log( $this->log_error, sprintf( 'update_post_parent_ids error, $id_old=%s, $id_new=%s, $parent_id_old=%s, $parent_id_new is 0.', $id_old, $id_new, $parent_id_old ) );
+				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids error, $id_old=%s, $id_new=%s, $parent_id_old=%s, $parent_id_new is 0.', $id_old, $id_new, $parent_id_old ) );
 			}
 
 			// Update.
@@ -855,29 +1024,24 @@ class ContentDiffMigrator {
 				$this->logic->update_post_parent( $id_new, $parent_id_new );
 			}
 
-			// Log IDs of the Post.
+			// Log IDs of the Post to JSONL.
 			$log_entry = [
 				'id_old' => $id_old,
 				'id_new' => $id_new,
 			];
 			if ( 0 != $parent_id_old && ! is_null( $parent_id_new ) ) {
 				// Log, add IDs of post_parent.
-				$log_entry = array_merge(
-					$log_entry,
-					[
-						'parent_id_old' => $parent_id_old,
-						'parent_id_new' => $parent_id_new,
-					]
-				);
+				$log_entry['parent_id_old'] = $parent_id_old;
+				$log_entry['parent_id_new'] = $parent_id_new;
 			}
-			$this->log( $this->log_updated_posts_parent_ids, wp_json_encode( $log_entry ) );
+			$this->run_state->append_updated_parent( $log_entry );
 		}
 	}
 
 	/**
 	 * Updates all Featured Images IDs.
 	 *
-	 * @param array $imported_posts_data {
+	 * @param array  $imported_posts_data {
 	 *     Return result from import_posts method, a map of all the imported post objects.
 	 *
 	 *     @type array $record {
@@ -886,8 +1050,9 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
+	 * @param string $source_hostname Source hostname.
 	 */
-	public function update_featured_image_ids( $imported_posts_data ) {
+	public function update_featured_image_ids( array $imported_posts_data, string $source_hostname ): void {
 
 		/**
 		 * Map of all imported post types other than Attachments (Posts, Pages, etc).
@@ -901,12 +1066,30 @@ class ContentDiffMigrator {
 		 *
 		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
 		 */
-		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_mapping_from_db();
+		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_mapping_from_db( $source_hostname );
 
 		// Get new Post IDs from DB.
 		$new_post_ids = array_values( $imported_post_ids_map );
 
-		$this->logic->update_featured_images( $new_post_ids, $imported_attachment_ids_map, $this->log_updated_featured_imgs_ids );
+		// Read previously updated IDs for resume.
+		$updated_featured = $this->run_state->read_updated_featured();
+		$updated_ids      = [];
+		foreach ( $updated_featured as $entry ) {
+			$post_id = $entry['post_id'] ?? null;
+			if ( ! is_null( $post_id ) ) {
+				$updated_ids[ $post_id ] = true;
+			}
+		}
+		$new_post_ids = array_filter(
+			$new_post_ids,
+			function( $id ) use ( $updated_ids ) {
+				return ! isset( $updated_ids[ $id ] );
+			}
+		);
+
+		if ( ! empty( $new_post_ids ) ) {
+			$this->logic->update_featured_images( array_values( $new_post_ids ), $imported_attachment_ids_map, $this->log_debug );
+		}
 	}
 
 	/**
@@ -925,7 +1108,7 @@ class ContentDiffMigrator {
 	 *     }
 	 * }
 	 */
-	public function update_attachment_ids_in_blocks( $imported_posts_data ) {
+	public function update_attachment_ids_in_blocks( array $imported_posts_data ): void {
 
 		/**
 		 * Map of all imported post types other than Attachments (Posts, Pages, etc).
@@ -942,25 +1125,32 @@ class ContentDiffMigrator {
 		$imported_attachment_ids_map = $this->get_attachments_from_imported_posts_log( $imported_posts_data );
 
 		// Skip previously updated Posts.
-		$updated_post_ids               = $this->get_data_from_log( $this->log_updated_blocks_ids, [ 'id_new' ] ) ?? [];
-		$new_post_ids_for_blocks_update = array_values( $imported_post_ids_map );
-		foreach ( $updated_post_ids as $entry ) {
-			$id_new     = $entry['id_new'] ?? null;
-			$key_id_new = array_search( $id_new, $new_post_ids_for_blocks_update );
-			if ( ! is_null( $id_new ) && false !== $key_id_new ) {
-				unset( $new_post_ids_for_blocks_update[ $key_id_new ] );
+		$updated_blocks = $this->run_state->read_updated_blocks();
+		$updated_ids    = [];
+		foreach ( $updated_blocks as $entry ) {
+			$id_new = $entry['id_new'] ?? null;
+			if ( ! is_null( $id_new ) ) {
+				$updated_ids[ $id_new ] = true;
 			}
 		}
+
+		$new_post_ids_for_blocks_update = array_filter(
+			array_values( $imported_post_ids_map ),
+			function( $id ) use ( $updated_ids ) {
+				return ! isset( $updated_ids[ $id ] );
+			}
+		);
+
 		if ( empty( $new_post_ids_for_blocks_update ) ) {
-			WP_CLI::log( 'All posts already had their blocks\' att. IDs updated, moving on.' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their blocks\' attachment IDs updated, moving on.' );
 			return;
 		}
-		if ( array_values( $imported_post_ids_map ) !== $new_post_ids_for_blocks_update ) {
+		if ( count( $new_post_ids_for_blocks_update ) < count( $imported_post_ids_map ) ) {
 			$new_post_ids_for_blocks_update = array_values( $new_post_ids_for_blocks_update );
-			WP_CLI::log( sprintf( '%s of total %d posts already had their blocks\' IDs updated, continuing from there..', count( $imported_post_ids_map ) - count( $new_post_ids_for_blocks_update ), count( $imported_post_ids_map ) ) );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d posts already had their blocks\' IDs updated, continuing from there..', count( $imported_post_ids_map ) - count( $new_post_ids_for_blocks_update ), count( $imported_post_ids_map ) ) );
 		}
 
-		$this->logic->update_blocks_ids( $new_post_ids_for_blocks_update, $imported_attachment_ids_map, [], $this->log_updated_blocks_ids );
+		$this->logic->update_blocks_ids( array_values( $new_post_ids_for_blocks_update ), $imported_attachment_ids_map, [], $this->log_debug );
 	}
 
 	/**
@@ -969,10 +1159,13 @@ class ContentDiffMigrator {
 	 * @param array $args Positional arguments.
 	 * @param array $assoc_args Optional arguments.
 	 */
-	public function cmd_compare_collations_of_live_and_core_wp_tables( $args, $assoc_args ) {
+	public function cmd_compare_collations_of_live_and_core_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$live_table_prefix     = $assoc_args['live-table-prefix'];
 		$skip_tables           = [];
 		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
+
+		$this->logger->init_loggers( __FUNCTION__ );
+		$this->logger->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
 
 		if ( ! empty( $assoc_args['skip-tables'] ) ) {
 			$skip_tables = explode( ',', $assoc_args['skip-tables'] );
@@ -989,7 +1182,7 @@ class ContentDiffMigrator {
 		if ( ! empty( $tables ) ) {
 			WP_CLI\Utils\format_items( 'table', $tables, array_keys( $tables[0] ) );
 		} else {
-			WP_CLI::success( 'Live and Core WP DB table collations match!' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Live and Core WP DB table collations match.' );
 		}
 	}
 
@@ -1000,12 +1193,14 @@ class ContentDiffMigrator {
 	 * @param array $args Positional arguments.
 	 * @param array $assoc_args Optional arguments.
 	 */
-	public function cmd_correct_collations_for_live_wp_tables( $args, $assoc_args ) {
+	public function cmd_correct_collations_for_live_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$live_table_prefix = $assoc_args['live-table-prefix'];
 		$mode              = $assoc_args['mode'];
 		$backup_prefix     = isset( $assoc_args['backup-table-prefix'] ) ? $assoc_args['backup-table-prefix'] : 'collationbak_';
 		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
-
+		
+		$this->logger->init_loggers( __FUNCTION__ );
+		
 		$tables_with_differing_collations = $this->logic->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
 
 		if ( ! empty( $tables_with_differing_collations ) ) {
@@ -1014,26 +1209,26 @@ class ContentDiffMigrator {
 
 		switch ( $mode ) {
 			case 'aggressive':
-				$records_per_transaction = 15000;
+				$records_per_transaction = 50000;
 				$sleep_in_seconds        = 1;
 				break;
-			case 'generous':
+			case 'regular':
 				$records_per_transaction = 10000;
 				$sleep_in_seconds        = 2;
 				break;
-			case 'calm':
+			case 'slow':
 				$records_per_transaction = 1000;
 				$sleep_in_seconds        = 3;
 				break;
-			default: // Cautious.
-				$records_per_transaction = 5000;
+			default:
+				$records_per_transaction = 10000;
 				$sleep_in_seconds        = 2;
 				break;
 		}
 
-		WP_CLI::log( "Now fixing $live_table_prefix tables collations..." );
+		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
 		foreach ( $tables_with_differing_collations as $result ) {
-			WP_CLI::log( 'Addressing ' . $result['table'] . ' table...' );
+			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
 			$this->logic->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $records_per_transaction, $sleep_in_seconds, $backup_prefix );
 		}
 	}
@@ -1138,45 +1333,6 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Gets data from logs which contain JSON encoded arrays per line.
-	 *
-	 * @param string $log       Path to log.
-	 * @param array  $json_keys Keys to fetch from log lines.
-	 *
-	 * @return array|null Array with subarray elements with $json_keys keys and values pulled from the log, or null if file can't be found.
-	 */
-	private function get_data_from_log( $log, $json_keys ) {
-		$data = [];
-
-		// Read line by line.
-		$handle = fopen( $log, 'r' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fopen.
-		if ( $handle ) {
-			while ( ( $line = fgets( $handle ) ) !== false ) {
-				// Skip if not JSON data on line.
-				$line_decoded = json_decode( $line, true );
-				if ( ! is_array( $line_decoded ) ) {
-					continue;
-				}
-
-				// Get data if line contains these JSON keys.
-				$data_key          = count( $data );
-				$data[ $data_key ] = [];
-				foreach ( $json_keys as $json_key ) {
-					if ( isset( $line_decoded[ $json_key ] ) ) {
-						$data[ $data_key ] = array_merge( $data[ $data_key ], [ $json_key => $line_decoded[ $json_key ] ] );
-					}
-				}
-			}
-
-			fclose( $handle );
-		} else {
-			return null;
-		}
-
-		return $data;
-	}
-
-	/**
 	 * Validates DB tables.
 	 *
 	 * @param string $live_table_prefix Live table prefix.
@@ -1191,15 +1347,5 @@ class ContentDiffMigrator {
 		if ( ! $this->logic->are_table_collations_matching( $live_table_prefix, $skip_tables ) ) {
 			throw new \RuntimeException( 'Table collations do not match for some (or all) WP tables.' );
 		}
-	}
-
-	/**
-	 * Logs error message to file.
-	 *
-	 * @param string $file Full file path.
-	 * @param string $msg  Error message.
-	 */
-	public function log( $file, $msg ) {
-		file_put_contents( $file, $msg . "\n", FILE_APPEND ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents.
 	}
 }
