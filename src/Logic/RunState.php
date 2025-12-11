@@ -5,7 +5,7 @@
  * @package Newspack_Content_Diff_Migrator
  */
 
-namespace Newspack\ContentDiffMigrator\Utils;
+namespace Newspack\ContentDiffMigrator\Logic;
 
 /**
  * Manages migration run-state data. This data is kept in formatted files in $run_state_dir path.
@@ -84,15 +84,6 @@ class RunState {
 	}
 
 	/**
-	 * Reads migration manifest data.
-	 *
-	 * @return array|null Manifest data or null if file doesn't exist.
-	 */
-	public function read_manifest(): ?array {
-		return $this->read_json( self::FILE_MANIFEST );
-	}
-
-	/**
 	 * Writes migration manifest data.
 	 *
 	 * @param array $manifest Manifest data.
@@ -153,44 +144,12 @@ class RunState {
 	}
 
 	/**
-	 * Appends an updated featured image record.
-	 *
-	 * @param array $featured_data Featured data with 'post_id', 'id_old', 'id_new' keys.
-	 *
-	 * @return bool Success.
-	 */
-	public function append_updated_featured( array $featured_data ): bool {
-		return $this->append_jsonl( self::FILE_UPDATED_FEATURED, $featured_data );
-	}
-
-	/**
 	 * Gets updated block IDs.
 	 *
 	 * @return array Array of updated block records.
 	 */
 	public function read_updated_blocks(): array {
 		return $this->read_jsonl( self::FILE_UPDATED_BLOCKS );
-	}
-
-	/**
-	 * Appends an updated block record.
-	 *
-	 * @param array $block_data Block data with 'id_new' key.
-	 *
-	 * @return bool Success.
-	 */
-	public function append_updated_block( array $block_data ): bool {
-		return $this->append_jsonl( self::FILE_UPDATED_BLOCKS, $block_data );
-	}
-
-	/**
-	 * Gets modified IDs which were already deleted (modified posts are refreshed by being deleted
-	 * and then completely (re)imported).
-	 *
-	 * @return array Array of deleted modified ID records.
-	 */
-	public function read_deleted_modified_ids(): array {
-		return $this->read_jsonl( self::FILE_DELETED_MODIFIED_IDS );
 	}
 
 	/**
@@ -299,31 +258,5 @@ class RunState {
 		$path = $this->get_file_path( $filename );
 		$json = wp_json_encode( $data );
 		return false !== file_put_contents( $path, $json . "\n", FILE_APPEND ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
-	}
-
-	/**
-	 * Checks if a file exists.
-	 *
-	 * @param string $filename Filename.
-	 *
-	 * @return bool
-	 */
-	private function file_exists( string $filename ): bool {
-		return file_exists( $this->get_file_path( $filename ) );
-	}
-
-	/**
-	 * Deletes a file.
-	 *
-	 * @param string $filename Filename.
-	 *
-	 * @return bool Success.
-	 */
-	private function delete_file( string $filename ): bool {
-		$path = $this->get_file_path( $filename );
-		if ( file_exists( $path ) ) {
-			return unlink( $path ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_unlink
-		}
-		return true;
 	}
 }
