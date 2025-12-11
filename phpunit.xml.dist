@@ -8,9 +8,15 @@
 	convertWarningsToExceptions="true"
 	>
 	<testsuites>
-		<testsuite name="All Tests">
+		<testsuite name="Unit Tests">
+			<directory suffix="Test.php">./tests/unit/</directory>
+		</testsuite>
+		<testsuite name="Legacy Unit Tests">
 			<directory prefix="test-" suffix=".php">./tests/</directory>
 			<exclude>./tests/test-sample.php</exclude>
+		</testsuite>
+		<testsuite name="Integration Tests">
+			<directory suffix="Test.php">./tests/Integration/</directory>
 		</testsuite>
 	</testsuites>
 </phpunit>
