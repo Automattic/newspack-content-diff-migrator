@@ -158,7 +158,7 @@ class ContentDiffLogic {
 	 *
 	 * @return string The full meta key (e.g., 'newspackcontentdiff_live_id_www.example.com').
 	 */
-	public function get_old_id_meta_key( string $source_hostname ): string {
+	public static function get_old_id_meta_key( string $source_hostname ): string {
 		if ( empty( $source_hostname ) ) {
 			throw new \InvalidArgumentException( 'Source hostname is required.' );
 		}

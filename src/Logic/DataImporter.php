@@ -12,27 +12,12 @@ use wpdb;
 
 /**
  * Imports post-related data including meta, users, comments, and taxonomies.
+ *
+ * Note: This class references ContentDiffLogic::DATAKEY_* constants for data structure keys,
+ * and ContentDiffLogic::get_old_id_meta_key() for meta key generation,
+ * as ContentDiffLogic orchestrates the data structure and this class executes persistence.
  */
 class DataImporter {
-
-	/**
-	 * Prefix for meta key with the old ID.
-	 * Source hostname is appended, e.g. meta_key:
-	 *  'newspackcontentdiff_live_id_www.example.com'
-	 */
-	const SAVED_META_LIVE_ID_PREFIX = 'newspackcontentdiff_live_id_';
-
-	// Data array keys.
-	const DATAKEY_POST              = 'post';
-	const DATAKEY_POSTMETA          = 'postmeta';
-	const DATAKEY_COMMENTS          = 'comments';
-	const DATAKEY_COMMENTMETA       = 'commentmeta';
-	const DATAKEY_USERS             = 'users';
-	const DATAKEY_USERMETA          = 'usermeta';
-	const DATAKEY_TERMRELATIONSHIPS = 'term_relationships';
-	const DATAKEY_TERMTAXONOMY      = 'term_taxonomy';
-	const DATAKEY_TERMS             = 'terms';
-	const DATAKEY_TERMMETA          = 'termmeta';
 
 	/**
 	 * Global $wpdb.
@@ -82,7 +67,7 @@ class DataImporter {
 	private function import_post_meta( $data, $post_id ): array {
 		$error_messages = [];
 
-		foreach ( $data[ self::DATAKEY_POSTMETA ] as $postmeta_row ) {
+		foreach ( $data[ ContentDiffLogic::DATAKEY_POSTMETA ] as $postmeta_row ) {
 			try {
 				$this->insert_postmeta_row( $postmeta_row, $post_id );
 			} catch ( \Exception $e ) {
@@ -106,9 +91,9 @@ class DataImporter {
 		$error_messages = [];
 
 		// Get existing Author User or insert a new one.
-		$author_id_old = $data[ self::DATAKEY_POST ]['post_author'];
-		$author_row    = ! is_null( $author_id_old ) ? $this->filter_array_element( $data[ self::DATAKEY_USERS ], 'ID', $author_id_old ) : [];
-		$usermeta_rows = is_array( $author_row ) && array_key_exists( 'ID', $author_row ) ? $this->filter_array_elements( $data[ self::DATAKEY_USERMETA ], 'user_id', $author_row['ID'] ) : [];
+		$author_id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['post_author'];
+		$author_row    = ! is_null( $author_id_old ) ? $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $author_id_old ) : [];
+		$usermeta_rows = is_array( $author_row ) && array_key_exists( 'ID', $author_row ) ? $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $author_row['ID'] ) : [];
 		$user_existing = is_array( $author_row ) && array_key_exists( 'user_login', $author_row ) ? $this->get_user_by( 'login', $author_row['user_login'] ) : false;
 		$author_id_new = null;
 		if ( $user_existing instanceof WP_User ) {
@@ -154,7 +139,7 @@ class DataImporter {
 
 		// Insert Comments.
 		$comment_ids_updates = [];
-		foreach ( $data[ self::DATAKEY_COMMENTS ] as $comment_row ) {
+		foreach ( $data[ ContentDiffLogic::DATAKEY_COMMENTS ] as $comment_row ) {
 			$comment_id_old = (int) $comment_row['comment_ID'];
 
 			// Insert the Comment User.
@@ -164,10 +149,10 @@ class DataImporter {
 				$comment_user_id_new = 0;
 			} else {
 				// Get existing Comment User or insert a new one.
-				$comment_user_row      = $this->filter_array_element( $data[ self::DATAKEY_USERS ], 'ID', $comment_user_id_old );
+				$comment_user_row      = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment_user_id_old );
 				$comment_user_existing = null;
 				if ( ! is_null( $comment_user_row ) ) {
-					$comment_usermeta_rows = $this->filter_array_elements( $data[ self::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] );
+					$comment_usermeta_rows = $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] );
 					$comment_user_existing = $this->get_user_by( 'login', $comment_user_row['user_login'] );
 
 					if ( $comment_user_existing instanceof WP_User ) {
@@ -190,7 +175,7 @@ class DataImporter {
 			}
 
 			// Insert Comment and Comment Metas.
-			$commentmeta_rows = $this->filter_array_elements( $data[ self::DATAKEY_COMMENTMETA ], 'comment_id', $comment_id_old );
+			$commentmeta_rows = $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_id_old );
 			$comment_id_new   = null;
 			try {
 				$comment_id_new                         = $this->insert_comment( $comment_row, $post_id, $comment_user_id_new );
@@ -205,7 +190,7 @@ class DataImporter {
 
 		// Loop through all comments, and update their Parent IDs.
 		foreach ( $comment_ids_updates as $comment_id_old => $comment_id_new ) {
-			$comment_row        = $this->filter_array_element( $data[ self::DATAKEY_COMMENTS ], 'comment_ID', $comment_id_old );
+			$comment_row        = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_id_old );
 			$comment_parent_old = $comment_row['comment_parent'];
 			$comment_parent_new = $comment_ids_updates[ $comment_parent_old ] ?? null;
 			if ( ( $comment_parent_old > 0 ) && $comment_parent_new && ( $comment_parent_old != $comment_parent_new ) ) {
@@ -234,12 +219,12 @@ class DataImporter {
 
 		// Import taxonomies.
 		$inserted_term_taxonomy_ids = [];
-		foreach ( $data[ self::DATAKEY_TERMRELATIONSHIPS ] as $term_relationship_row ) {
+		foreach ( $data[ ContentDiffLogic::DATAKEY_TERMRELATIONSHIPS ] as $term_relationship_row ) {
 
 			$live_term_taxonomy_id  = $term_relationship_row['term_taxonomy_id'];
-			$live_term_taxonomy_row = $this->filter_array_element( $data[ self::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', $live_term_taxonomy_id );
+			$live_term_taxonomy_row = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', $live_term_taxonomy_id );
 			$live_term_id           = $live_term_taxonomy_row['term_id'];
-			$live_term_row          = $this->filter_array_element( $data[ self::DATAKEY_TERMS ], 'term_id', $live_term_id );
+			$live_term_row          = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $live_term_id );
 
 			// Validate live term row, it could be missing or invalid.
 			if ( is_null( $live_term_row ) ) {
@@ -388,7 +373,7 @@ class DataImporter {
 			$this->wpdb->usermeta,
 			[
 				'user_id'    => $new_user_id,
-				'meta_key'   => $this->get_old_id_meta_key( $source_hostname ),
+				'meta_key'   => ContentDiffLogic::get_old_id_meta_key( $source_hostname ),
 				'meta_value' => $old_user_id,
 			]
 		);
@@ -649,24 +634,5 @@ class DataImporter {
 		}
 
 		return $found;
-	}
-
-	/**
-	 * Gets the meta key for storing old ID.
-	 *
-	 * @param string $source_hostname Source hostname.
-	 *
-	 * @return string Meta key.
-	 * @throws \InvalidArgumentException If source hostname is empty.
-	 */
-	private function get_old_id_meta_key( string $source_hostname ): string {
-		if ( empty( $source_hostname ) ) {
-			throw new \InvalidArgumentException( 'Source hostname is required.' );
-		}
-
-		// Sanitize hostname.
-		$source_hostname = wp_parse_url( 'https://' . $source_hostname, PHP_URL_HOST );
-
-		return self::SAVED_META_LIVE_ID_PREFIX . $source_hostname;
 	}
 }
