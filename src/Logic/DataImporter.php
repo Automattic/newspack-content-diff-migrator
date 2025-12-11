@@ -1,0 +1,672 @@
+<?php
+/**
+ * Data Importer handles importing post-related data (meta, users, comments, taxonomies).
+ *
+ * @package Newspack_Content_Diff_Migrator
+ */
+
+namespace Newspack\ContentDiffMigrator\Logic;
+
+use WP_User;
+use wpdb;
+
+/**
+ * Imports post-related data including meta, users, comments, and taxonomies.
+ */
+class DataImporter {
+
+	/**
+	 * Prefix for meta key with the old ID.
+	 * Source hostname is appended, e.g. meta_key:
+	 *  'newspackcontentdiff_live_id_www.example.com'
+	 */
+	const SAVED_META_LIVE_ID_PREFIX = 'newspackcontentdiff_live_id_';
+
+	// Data array keys.
+	const DATAKEY_POST              = 'post';
+	const DATAKEY_POSTMETA          = 'postmeta';
+	const DATAKEY_COMMENTS          = 'comments';
+	const DATAKEY_COMMENTMETA       = 'commentmeta';
+	const DATAKEY_USERS             = 'users';
+	const DATAKEY_USERMETA          = 'usermeta';
+	const DATAKEY_TERMRELATIONSHIPS = 'term_relationships';
+	const DATAKEY_TERMTAXONOMY      = 'term_taxonomy';
+	const DATAKEY_TERMS             = 'terms';
+	const DATAKEY_TERMMETA          = 'termmeta';
+
+	/**
+	 * Global $wpdb.
+	 *
+	 * @var object $wpdb Global $wpdb.
+	 */
+	private $wpdb;
+
+	/**
+	 * DataImporter constructor.
+	 *
+	 * @param object $wpdb Global $wpdb.
+	 */
+	public function __construct( object $wpdb ) {
+		$this->wpdb = $wpdb;
+	}
+
+	/**
+	 * Imports all post-related data (meta, author, comments, taxonomies).
+	 *
+	 * @param int    $post_id                              Post ID.
+	 * @param array  $data                                 Post data array with keys: post, postmeta, comments, commentmeta, users, usermeta, term_relationships, term_taxonomy, terms, termmeta.
+	 * @param array  $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values are corresponding Taxonomies' term_ids on local (staging).
+	 * @param string $source_hostname                      Source hostname.
+	 *
+	 * @return array Array of error messages.
+	 */
+	public function import_post_data( $post_id, $data, $hierarchical_taxonomy_term_id_updates, string $source_hostname ): array {
+		$error_messages = [];
+
+		$error_messages = array_merge( $error_messages, $this->import_post_meta( $data, $post_id ) );
+		$error_messages = array_merge( $error_messages, $this->import_author( $data, $post_id, $source_hostname ) );
+		$error_messages = array_merge( $error_messages, $this->import_comments( $data, $post_id, $source_hostname ) );
+		$error_messages = array_merge( $error_messages, $this->import_taxonomies( $data, $post_id, $hierarchical_taxonomy_term_id_updates ) );
+
+		return $error_messages;
+	}
+
+	/**
+	 * Imports post meta.
+	 *
+	 * @param array $data    Post data array.
+	 * @param int   $post_id Post ID.
+	 *
+	 * @return array Array of error messages.
+	 */
+	private function import_post_meta( $data, $post_id ): array {
+		$error_messages = [];
+
+		foreach ( $data[ self::DATAKEY_POSTMETA ] as $postmeta_row ) {
+			try {
+				$this->insert_postmeta_row( $postmeta_row, $post_id );
+			} catch ( \Exception $e ) {
+				$error_messages[] = $e->getMessage();
+			}
+		}
+
+		return $error_messages;
+	}
+
+	/**
+	 * Imports author/user and updates post author.
+	 *
+	 * @param array  $data            Post data array.
+	 * @param int    $post_id         Post ID.
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return array Array of error messages.
+	 */
+	private function import_author( $data, $post_id, string $source_hostname ): array {
+		$error_messages = [];
+
+		// Get existing Author User or insert a new one.
+		$author_id_old = $data[ self::DATAKEY_POST ]['post_author'];
+		$author_row    = ! is_null( $author_id_old ) ? $this->filter_array_element( $data[ self::DATAKEY_USERS ], 'ID', $author_id_old ) : [];
+		$usermeta_rows = is_array( $author_row ) && array_key_exists( 'ID', $author_row ) ? $this->filter_array_elements( $data[ self::DATAKEY_USERMETA ], 'user_id', $author_row['ID'] ) : [];
+		$user_existing = is_array( $author_row ) && array_key_exists( 'user_login', $author_row ) ? $this->get_user_by( 'login', $author_row['user_login'] ) : false;
+		$author_id_new = null;
+		if ( $user_existing instanceof WP_User ) {
+			$author_id_new = (int) $user_existing->ID;
+		} elseif ( is_null( $author_row ) ) {
+			// Some source posts might have author value 0.
+			$author_id_new = 0;
+		} else {
+			// Insert a new Author User.
+			try {
+				$author_id_new = $this->insert_user( $author_row, $source_hostname );
+				foreach ( $usermeta_rows as $usermeta_row ) {
+					$this->insert_usermeta_row( $usermeta_row, $author_id_new );
+				}
+			} catch ( \Exception $e ) {
+				$error_messages[] = $e->getMessage();
+			}
+		}
+
+		// Update inserted Post's Author.
+		if ( ! is_null( $author_id_new ) && $author_id_new != $author_id_old ) {
+			try {
+				$this->update_post_author( $post_id, $author_id_new );
+			} catch ( \Exception $e ) {
+				$error_messages[] = $e->getMessage();
+			}
+		}
+
+		return $error_messages;
+	}
+
+	/**
+	 * Imports comments and comment meta, and updates comment parent IDs.
+	 *
+	 * @param array  $data            Post data array.
+	 * @param int    $post_id         Post ID.
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return array Array of error messages.
+	 */
+	private function import_comments( $data, $post_id, string $source_hostname ): array {
+		$error_messages = [];
+
+		// Insert Comments.
+		$comment_ids_updates = [];
+		foreach ( $data[ self::DATAKEY_COMMENTS ] as $comment_row ) {
+			$comment_id_old = (int) $comment_row['comment_ID'];
+
+			// Insert the Comment User.
+			$comment_user_id_old = (int) $comment_row['user_id'];
+			$comment_user_id_new = null;
+			if ( 0 === $comment_user_id_old ) {
+				$comment_user_id_new = 0;
+			} else {
+				// Get existing Comment User or insert a new one.
+				$comment_user_row      = $this->filter_array_element( $data[ self::DATAKEY_USERS ], 'ID', $comment_user_id_old );
+				$comment_user_existing = null;
+				if ( ! is_null( $comment_user_row ) ) {
+					$comment_usermeta_rows = $this->filter_array_elements( $data[ self::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] );
+					$comment_user_existing = $this->get_user_by( 'login', $comment_user_row['user_login'] );
+
+					if ( $comment_user_existing instanceof WP_User ) {
+						$comment_user_id_new = (int) $comment_user_existing->ID;
+					} else {
+						// Insert a new Comment User.
+						try {
+							$comment_user_id_new = $this->insert_user( $comment_user_row, $source_hostname );
+							foreach ( $comment_usermeta_rows as $comment_usermeta_row ) {
+								$this->insert_usermeta_row( $comment_usermeta_row, $comment_user_id_new );
+							}
+						} catch ( \Exception $e ) {
+							$error_messages[] = $e->getMessage();
+						}
+					}
+				} else {
+					// Handle exception when wp_comment.user_id is not found in wp_users.
+					$comment_user_id_new = 0;
+				}
+			}
+
+			// Insert Comment and Comment Metas.
+			$commentmeta_rows = $this->filter_array_elements( $data[ self::DATAKEY_COMMENTMETA ], 'comment_id', $comment_id_old );
+			$comment_id_new   = null;
+			try {
+				$comment_id_new                         = $this->insert_comment( $comment_row, $post_id, $comment_user_id_new );
+				$comment_ids_updates[ $comment_id_old ] = $comment_id_new;
+				foreach ( $commentmeta_rows as $commentmeta_row ) {
+					$this->insert_commentmeta_row( $commentmeta_row, $comment_id_new );
+				}
+			} catch ( \Exception $e ) {
+				$error_messages[] = $e->getMessage();
+			}
+		}
+
+		// Loop through all comments, and update their Parent IDs.
+		foreach ( $comment_ids_updates as $comment_id_old => $comment_id_new ) {
+			$comment_row        = $this->filter_array_element( $data[ self::DATAKEY_COMMENTS ], 'comment_ID', $comment_id_old );
+			$comment_parent_old = $comment_row['comment_parent'];
+			$comment_parent_new = $comment_ids_updates[ $comment_parent_old ] ?? null;
+			if ( ( $comment_parent_old > 0 ) && $comment_parent_new && ( $comment_parent_old != $comment_parent_new ) ) {
+				try {
+					$this->update_comment_parent( $comment_id_new, $comment_parent_new );
+				} catch ( \Exception $e ) {
+					$error_messages[] = $e->getMessage();
+				}
+			}
+		}
+
+		return $error_messages;
+	}
+
+	/**
+	 * Imports taxonomies and term relationships.
+	 *
+	 * @param array $data                                 Post data array.
+	 * @param int   $post_id                             Post ID.
+	 * @param array $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values are corresponding Taxonomies' term_ids on local (staging).
+	 *
+	 * @return array Array of error messages.
+	 */
+	private function import_taxonomies( $data, $post_id, $hierarchical_taxonomy_term_id_updates ): array {
+		$error_messages = [];
+
+		// Import taxonomies.
+		$inserted_term_taxonomy_ids = [];
+		foreach ( $data[ self::DATAKEY_TERMRELATIONSHIPS ] as $term_relationship_row ) {
+
+			$live_term_taxonomy_id  = $term_relationship_row['term_taxonomy_id'];
+			$live_term_taxonomy_row = $this->filter_array_element( $data[ self::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', $live_term_taxonomy_id );
+			$live_term_id           = $live_term_taxonomy_row['term_id'];
+			$live_term_row          = $this->filter_array_element( $data[ self::DATAKEY_TERMS ], 'term_id', $live_term_id );
+
+			// Validate live term row, it could be missing or invalid.
+			if ( is_null( $live_term_row ) ) {
+				$error_messages[] = sprintf( 'Faulty term relationship record in live DB, term skipped: posts.ID=%d > term_relationships has term_taxonomy_id=%d > term_taxonomy has term_id=%d >> term_id does not exist in live DB table.', $data['post']['ID'], $live_term_taxonomy_id, $live_term_taxonomy_row['term_id'] );
+				continue;
+			}
+
+			$live_term_name = $live_term_row['name'];
+
+			// These are the values we're going to get first, then update.
+			$local_term_id             = null;
+			$local_term_taxonomy_id    = null;
+			$local_term_taxonomy_count = null;
+			// Helper vars.
+			$local_term_taxonomy_data = null;
+
+			// If it's a hierarchical taxonomy, all of them have already been recreated on Staging -- see $hierarchical_taxonomy_term_id_updates. Now just get the local corresponding term_taxonomy_id for this $live_term_taxonomy_id.
+			if ( is_taxonomy_hierarchical( $live_term_taxonomy_row['taxonomy'] ) ) {
+
+				$local_term_id             = $hierarchical_taxonomy_term_id_updates[ $live_term_id ];
+				$local_term_taxonomy_data  = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_id' => $local_term_id ], $live_term_taxonomy_row['taxonomy'] );
+				$local_term_taxonomy_id    = $local_term_taxonomy_data['term_taxonomy_id'];
+				$local_term_taxonomy_count = $local_term_taxonomy_data['count'];
+
+			} else {
+
+				// Get or insert the taxonomy.
+				$local_term_taxonomy_data = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_name' => $live_term_name ], $live_term_taxonomy_row['taxonomy'] );
+				if ( is_null( $local_term_taxonomy_data ) || empty( $local_term_taxonomy_data ) ) {
+
+					// Create a new Term.
+					$term_insert_result = $this->wp_insert_term( $live_term_name, $live_term_taxonomy_row['taxonomy'], [ 'description' => $live_term_taxonomy_row['description'] ] );
+
+					if ( is_wp_error( $term_insert_result ) ) {
+						$error_messages[] = sprintf(
+							"Warning, could not insert term='%s' taxonomy='%s' live_term_id=%s for live_post_ID=%s . This is totally OK if you did not wish to migrate this term taxonomy. Message: %s",
+							$live_term_name,
+							$live_term_taxonomy_row['taxonomy'],
+							$live_term_id,
+							$post_id,
+							$term_insert_result->get_error_message()
+						);
+
+						continue;
+					}
+
+					/**
+					 * Update $hierarchical_taxonomy_term_id_updates which contains "old term ID" to "new term ID" (see this function's arguments in docblock for more info):
+					 *      - keys are old live hierarchical taxonomy term_ids
+					 *      - values are local (Staging) term_ids.
+					 */
+					$hierarchical_taxonomy_term_id_updates[ $live_term_taxonomy_row['term_id'] ] = $term_insert_result['term_id'];
+
+					$local_term_id             = $term_insert_result['term_id'];
+					$local_term_taxonomy_id    = $term_insert_result['term_taxonomy_id'];
+					$local_term_taxonomy_data  = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_id' => $local_term_id ], $live_term_taxonomy_row['taxonomy'] );
+					$local_term_taxonomy_count = $local_term_taxonomy_data['count'];
+
+				} else {
+
+					// Use the existing Tag.
+					$local_term_taxonomy_id    = $local_term_taxonomy_data['term_taxonomy_id'];
+					$local_term_id             = $local_term_taxonomy_data['term_id'];
+					$local_term_taxonomy_count = $local_term_taxonomy_data['count'];
+				}
+			}
+
+			/**
+			 * We need to check if the same $local_term_taxonomy_id has already been inserted. This can happen if there are two
+			 * terms which have the same name but different case, e.g. first term with name 'reseñas' and second with name 'Reseñas'.
+			 * WP distinguishes these Terms, but we should clean them up as we get the chance and merge them.
+			 */
+			$term_relationship_is_double = in_array( $local_term_taxonomy_id, $inserted_term_taxonomy_ids );
+
+			if ( ! is_null( $local_term_taxonomy_id ) && ! $term_relationship_is_double ) {
+				// Insert the Term Relationship record.
+				$this->insert_term_relationship( $post_id, $local_term_taxonomy_id );
+
+				// Increment wp_term_taxonomy.count, and update wp_term_taxonomy.description.
+				$this->wpdb->update(
+					$this->wpdb->term_taxonomy,
+					[
+						'count'       => ( (int) $local_term_taxonomy_count + 1 ),
+						'description' => $live_term_taxonomy_row['description'],
+					],
+					[ 'term_taxonomy_id' => $local_term_taxonomy_id ]
+				);
+
+				$inserted_term_taxonomy_ids[] = $local_term_taxonomy_id;
+			}
+		}
+
+		return $error_messages;
+	}
+
+	/**
+	 * Inserts Post Meta.
+	 *
+	 * @param array $postmeta_row `postmeta` row.
+	 * @param int   $post_id      Post ID.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted meta_id.
+	 */
+	private function insert_postmeta_row( $postmeta_row, $post_id ) {
+		$insert_postmeta_row = $postmeta_row;
+		unset( $insert_postmeta_row['meta_id'] );
+		$insert_postmeta_row['post_id'] = $post_id;
+
+		$inserted = $this->wpdb->insert( $this->wpdb->postmeta, $insert_postmeta_row );
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error in insert_postmeta_row, post_id %s, postmeta_row %s', $post_id, wp_json_encode( $postmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $this->wpdb->insert_id;
+	}
+
+	/**
+	 * Inserts a User.
+	 *
+	 * @param array  $user_row        `user` row.
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted User ID.
+	 */
+	private function insert_user( $user_row, string $source_hostname ) {
+		$old_user_id = $user_row['ID'];
+
+		$insert_user_row = $user_row;
+		unset( $insert_user_row['ID'] );
+
+		$inserted = $this->wpdb->insert( $this->wpdb->users, $insert_user_row );
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error inserting user, ID %d, user_row %s', $user_row['ID'], wp_json_encode( $user_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		// Last inserted ID.
+		$new_user_id = $this->wpdb->insert_id;
+
+		// Save original user ID as usermeta.
+		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+		$this->wpdb->insert(
+			$this->wpdb->usermeta,
+			[
+				'user_id'    => $new_user_id,
+				'meta_key'   => $this->get_old_id_meta_key( $source_hostname ),
+				'meta_value' => $old_user_id,
+			]
+		);
+		// phpcs:enable
+
+		return $new_user_id;
+	}
+
+	/**
+	 * Inserts User Meta.
+	 *
+	 * @param array $usermeta_row `usermeta` row.
+	 * @param int   $user_id      User ID.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted umeta_id.
+	 */
+	private function insert_usermeta_row( $usermeta_row, $user_id ) {
+		$insert_usermeta_row = $usermeta_row;
+		unset( $insert_usermeta_row['umeta_id'] );
+		$insert_usermeta_row['user_id'] = $user_id;
+
+		$inserted = $this->wpdb->insert( $this->wpdb->usermeta, $insert_usermeta_row );
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error inserting user meta, user_id %d, $usermeta_row %s', $user_id, wp_json_encode( $usermeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $this->wpdb->insert_id;
+	}
+
+	/**
+	 * Inserts a Comment with an updated post_id and user_id.
+	 *
+	 * @param array $comment_row `comment` row.
+	 * @param int   $new_post_id Post ID.
+	 * @param int   $new_user_id User ID.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted comment_id.
+	 */
+	private function insert_comment( $comment_row, $new_post_id, $new_user_id ) {
+		$insert_comment_row = $comment_row;
+		unset( $insert_comment_row['comment_ID'] );
+		$insert_comment_row['comment_post_ID'] = $new_post_id;
+		$insert_comment_row['user_id']         = $new_user_id;
+
+		$inserted = $this->wpdb->insert( $this->wpdb->comments, $insert_comment_row );
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error inserting comment, $new_post_id %d, $new_user_id %d, $comment_row %s', $new_post_id, $new_user_id, wp_json_encode( $comment_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $this->wpdb->insert_id;
+	}
+
+	/**
+	 * Inserts Comment Metas with an updated comment_id.
+	 *
+	 * @param array $commentmeta_row Comment Meta rows.
+	 * @param int   $new_comment_id  New Comment ID.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted meta_id.
+	 */
+	private function insert_commentmeta_row( $commentmeta_row, $new_comment_id ) {
+		$insert_commentmeta_row = $commentmeta_row;
+		unset( $insert_commentmeta_row['meta_id'] );
+		$insert_commentmeta_row['comment_id'] = $new_comment_id;
+
+		$inserted = $this->wpdb->insert( $this->wpdb->commentmeta, $insert_commentmeta_row );
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, wp_json_encode( $commentmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $this->wpdb->insert_id;
+	}
+
+	/**
+	 * Updates a Comment's parent ID.
+	 *
+	 * @param int $comment_id         Comment ID.
+	 * @param int $comment_parent_new new Comment Parent ID.
+	 *
+	 * @throws \RuntimeException In case update fails.
+	 *
+	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
+	 */
+	private function update_comment_parent( $comment_id, $comment_parent_new ) {
+		$updated = $this->wpdb->update( $this->wpdb->comments, [ 'comment_parent' => $comment_parent_new ], [ 'comment_ID' => $comment_id ] );
+		if ( 1 != $updated ) {
+			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $updated;
+	}
+
+	/**
+	 * Wrapper of WP's native \wp_insert_term. @see \wp_insert_term.
+	 *
+	 * @param string       $term_name The term name to add.
+	 * @param string       $taxonomy  The taxonomy to which to add the term.
+	 * @param array|string $args {
+	 *     Optional. Array or query string of arguments for inserting a term.
+	 *
+	 *     @type string $alias_of    Slug of the term to make this term an alias of.
+	 *                               Default empty string. Accepts a term slug.
+	 *     @type string $description The term description. Default empty string.
+	 *     @type int    $parent      The id of the parent term. Default 0.
+	 *     @type string $slug        The term slug to use. Default empty string.
+	 * }
+	 *
+	 * @return array|WP_Error {
+	 *     An array of the new term data, WP_Error otherwise.
+	 *
+	 *     @type int        $term_id          The new term ID.
+	 *     @type int|string $term_taxonomy_id The new term taxonomy ID. Can be a numeric string.
+	 * }
+	 */
+	private function wp_insert_term( $term_name, $taxonomy, $args = [] ) {
+		return \wp_insert_term( $term_name, $taxonomy, $args );
+	}
+
+	/**
+	 * Inserts into `term_relationships` table.
+	 *
+	 * @param int $object_id        `object_id` column.
+	 * @param int $term_taxonomy_id `term_taxonomy_id` column.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted object_id.
+	 */
+	private function insert_term_relationship( $object_id, $term_taxonomy_id ) {
+		$inserted = $this->wpdb->insert(
+			$this->wpdb->term_relationships,
+			[
+				'object_id'        => $object_id,
+				'term_taxonomy_id' => $term_taxonomy_id,
+			]
+		);
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error inserting term relationship, $object_id %d, $term_taxonomy_id %d', $object_id, $term_taxonomy_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $this->wpdb->insert_id;
+	}
+
+	/**
+	 * Updates a Post's Author.
+	 *
+	 * @param int $post_id       Post ID.
+	 * @param int $new_author_id New Author ID.
+	 *
+	 * @throws \RuntimeException In case update fails.
+	 *
+	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
+	 */
+	private function update_post_author( $post_id, $new_author_id ) {
+		$updated = $this->wpdb->update( $this->wpdb->posts, [ 'post_author' => $new_author_id ], [ 'ID' => $post_id ] );
+		if ( 1 != $updated ) {
+			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $updated;
+	}
+
+	/**
+	 * Gets a term and taxonomy array from database.
+	 *
+	 * @param string $table_prefix Table prefix.
+	 * @param array  $where        Where clause conditions.
+	 * @param string $taxonomy     Taxonomy name.
+	 *
+	 * @return array|null Term and taxonomy data, or null if not found.
+	 */
+	private function get_term_and_taxonomy_array( $table_prefix, array $where, $taxonomy ) {
+
+		$table_terms         = esc_sql( $table_prefix . 'terms' );
+		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+
+		$query_and_clause    = '';
+		$query_and_parameter = null;
+		if ( isset( $where['term_id'] ) ) {
+			$query_and_clause    = ' AND t.term_id = %s ';
+			$query_and_parameter = $where['term_id'];
+		} elseif ( isset( $where['term_name'] ) ) {
+			$query_and_clause    = ' AND t.name = %s ';
+			$query_and_parameter = $where['term_name'];
+		} else {
+			return null;
+		}
+
+		// phpcs:disable -- wpdb::prepare used by wrapper.
+		$term_taxonomy_data = $this->wpdb->get_row(
+			$this->wpdb->prepare(
+				"SELECT t.term_id, tt.taxonomy, tt.term_taxonomy_id, t.name, t.slug, tt.parent, tt.description, tt.count
+				FROM {$table_terms} AS t
+				INNER JOIN {$table_term_taxonomy} AS tt ON t.term_id = tt.term_id
+				WHERE tt.taxonomy = %s {$query_and_clause}",
+				$taxonomy,
+				$query_and_parameter
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		return $term_taxonomy_data;
+	}
+
+	/**
+	 * Gets user by field and value.
+	 *
+	 * @param string $field Field to search by.
+	 * @param string $value Value to search for.
+	 *
+	 * @return WP_User|false User object or false if not found.
+	 */
+	private function get_user_by( $field, $value ) {
+		return get_user_by( $field, $value );
+	}
+
+	/**
+	 * Filters a multidimensional array and searches for a subarray element containing a key and value.
+	 *
+	 * @param array $data  Array being searched and filtered.
+	 * @param mixed $key   Array key to search for.
+	 * @param mixed $value Array value to search for.
+	 *
+	 * @return array|null An array which matches the $key $value filter, or null if nothing is found.
+	 */
+	private function filter_array_element( $data, $key, $value ) {
+		foreach ( $data as $subarray ) {
+			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
+				return $subarray;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Filters a multidimensional array and searches for all subarray elemens containing a key and value.
+	 *
+	 * @param array $data  Array being searched and filtered.
+	 * @param mixed $key   Array key to search for.
+	 * @param mixed $value Array value to search for.
+	 *
+	 * @return array An array with sub-arrays which match the $key $value filter, or an empty array if nothing is found.
+	 */
+	private function filter_array_elements( $data, $key, $value ) {
+		$found = [];
+		foreach ( $data as $subarray ) {
+			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
+				$found[] = $subarray;
+			}
+		}
+
+		return $found;
+	}
+
+	/**
+	 * Gets the meta key for storing old ID.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return string Meta key.
+	 * @throws \InvalidArgumentException If source hostname is empty.
+	 */
+	private function get_old_id_meta_key( string $source_hostname ): string {
+		if ( empty( $source_hostname ) ) {
+			throw new \InvalidArgumentException( 'Source hostname is required.' );
+		}
+
+		// Sanitize hostname.
+		$source_hostname = wp_parse_url( 'https://' . $source_hostname, PHP_URL_HOST );
+
+		return self::SAVED_META_LIVE_ID_PREFIX . $source_hostname;
+	}
+}
