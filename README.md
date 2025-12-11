@@ -158,17 +158,19 @@ wp newspack-content-migrator content-diff-attribute-initial-content \
 
 If you have previously used this plugin **before** the multiple source hostname feature was introduced, you need to clean up legacy metadata before using the new functionality.
 
-### What Changed
+### What Changed in v2.0.0
 
 Previous versions stored old IDs using a single meta key:
 - `newspackcontentdiff_live_id` (for posts, attachments, and users)
 
 The new version uses source-namespaced meta keys:
-- `newspackcontentdiff_live_id_{source-hostname}` (e.g., `newspackcontentdiff_live_id_www.example-1.com`)
+- `newspackcontentdiff_oldid_{source-hostname}` (e.g., `newspackcontentdiff_oldid_www.example-1.com`)
 
 The old meta keys are no longer recognized and must be removed before running attribution.
 
 ### Step 1: Delete Legacy Metadata
+
+*Note: This step is only necessary if you have used the plugin version < 2.0.0 on your site, and are upgrading to v2.0.0 or later.*
 
 Run these SQL commands to remove all legacy Content Diff metadata. **Always backup your database first.**
 
@@ -184,7 +186,7 @@ DELETE FROM wp_usermeta WHERE meta_key = 'newspackcontentdiff_live_id';
 
 ### Step 2: Attribute Existing Content
 
-After cleaning legacy metadata, attribute your existing content to its source hostname with new metas:
+After cleaning legacy metadata, attribute the existing content on site the source hostname you are migrating:
 
 ```bash
 wp newspack-content-migrator content-diff-attribute-initial-content \

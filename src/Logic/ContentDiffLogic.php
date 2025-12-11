@@ -24,9 +24,9 @@ class ContentDiffLogic {
 	/**
 	 * Prefix for meta key with the old ID.
 	 * Source hostname is appended, e.g. meta_key:
-	 *  'newspackcontentdiff_live_id_www.example.com'
+	 *  'newspackcontentdiff_oldid_www.example.com'
 	 */
-	const SAVED_META_LIVE_ID_PREFIX = 'newspackcontentdiff_live_id_';
+	const SAVED_META_LIVE_ID_PREFIX = 'newspackcontentdiff_oldid_';
 
 	// Data array keys.
 	const DATAKEY_POST              = 'post';
@@ -156,7 +156,7 @@ class ContentDiffLogic {
 	 *
 	 * @throws \InvalidArgumentException If source hostname is empty.
 	 *
-	 * @return string The full meta key (e.g., 'newspackcontentdiff_live_id_www.example.com').
+	 * @return string The full meta key (e.g., 'newspackcontentdiff_oldid_www.example.com').
 	 */
 	public static function get_old_id_meta_key( string $source_hostname ): string {
 		if ( empty( $source_hostname ) ) {
