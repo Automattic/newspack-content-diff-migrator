@@ -8,9 +8,11 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
+use Psr\Log\LogLevel;
 use RuntimeException;
 use WP_CLI;
 use WP_User;
@@ -1156,14 +1158,11 @@ class ContentDiffLogic {
 	/**
 	 * Updates Posts' Thumbnail IDs with new Thumbnail IDs after insertion.
 	 *
-	 * @param array  $imported_post_ids           Imported local Post IDs.
-	 * @param array  $imported_attachment_ids_map Keys are IDs on Live Site, values are IDs of imported posts on Local Site.
-	 * @param string $log_file_path               Optional. Full path to a log file. If provided, the method will save and append
-	 *                                            a detailed output of all the changes made.
-	 * @param bool   $dry_run                     If true, will not make changes to DB, and will output changes to CLI instead of
-	 *                                            saving them to $log_file_path.
+	 * @param array $imported_post_ids           Imported local Post IDs.
+	 * @param array $imported_attachment_ids_map Keys are IDs on Live Site, values are IDs of imported posts on Local Site.
+	 * @param bool  $dry_run                     If true, will not make changes to DB, and will output changes to CLI.
 	 */
-	public function update_featured_images( $imported_post_ids, $imported_attachment_ids_map, $log_file_path, $dry_run = false ) {
+	public function update_featured_images( array $imported_post_ids, array $imported_attachment_ids_map, bool $dry_run = false ): void {
 		if ( empty( $imported_post_ids ) || empty( $imported_attachment_ids_map ) ) {
 			return;
 		}
@@ -1223,7 +1222,7 @@ class ContentDiffLogic {
 			}
 
 			// Log.
-			if ( false != $updated && $updated > 0 && ! is_null( $log_file_path ) ) {
+			if ( false != $updated && $updated > 0 ) {
 				$msg = wp_json_encode(
 					[
 						'post_id' => (int) $new_post_id,
@@ -1232,9 +1231,9 @@ class ContentDiffLogic {
 					]
 				);
 				if ( $dry_run ) {
-					WP_CLI::line( 'Updating _thubnail_id id_old=>id_new ' . $msg );
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, 'Updating _thumbnail_id id_old=>id_new ' . $msg );
 				} else {
-					$this->log( $log_file_path, $msg );
+					Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, $msg );
 				}
 			}
 		}
@@ -1243,23 +1242,19 @@ class ContentDiffLogic {
 	/**
 	 * Updates Gutenberg Blocks' attachment IDs with new attachment IDs in created `post_content` and `post_excerpt` fields.
 	 *
-	 * @param array  $imported_post_ids            An array of newly imported Post IDs. Will only fetch an do replacements in these.
-	 * @param array  $known_attachment_ids_updates An array of known Attachment IDs which were updated; keys are old IDs, values are
-	 *                                             new IDs.
-	 * @param array  $local_hostname_aliases       An array of image hostnames to be looked up as local. Explanation and example --
-	 *                                             let's take hostname.com and a local image https://hostname.com/wp-content/2022/09/22/a.jpg
-	 *                                             as local image. Searching for this image's attachment ID will work just fine using
-	 *                                             the full URL. But perhaps if this site is using an S3 bucket, and if some of
-	 *                                             the URLs in post_content use https://hostname.s3.amazonaws.com/wp-content/uploads/2022/09/22/a.jpg
-	 *                                             we should then add value 'hostname.s3.amazonaws.com' in this array here, so that
-	 *                                             \attachment_url_to_postid can query the attachment ID by treating this S3 hostname
-	 *                                             as an alias of the local one.
-	 * @param string $log_file_path                Optional. Full path to a log file. If provided, will save and append a detailed
-	 *                                             output of all the changes made.
-	 *
-	 * @return void
+	 * @param array $imported_post_ids            An array of newly imported Post IDs. Will only fetch an do replacements in these.
+	 * @param array $known_attachment_ids_updates An array of known Attachment IDs which were updated; keys are old IDs, values are
+	 *                                            new IDs.
+	 * @param array $local_hostname_aliases       An array of image hostnames to be looked up as local. Explanation and example --
+	 *                                            let's take hostname.com and a local image https://hostname.com/wp-content/2022/09/22/a.jpg
+	 *                                            as local image. Searching for this image's attachment ID will work just fine using
+	 *                                            the full URL. But perhaps if this site is using an S3 bucket, and if some of
+	 *                                            the URLs in post_content use https://hostname.s3.amazonaws.com/wp-content/uploads/2022/09/22/a.jpg
+	 *                                            we should then add value 'hostname.s3.amazonaws.com' in this array here, so that
+	 *                                            \attachment_url_to_postid can query the attachment ID by treating this S3 hostname
+	 *                                            as an alias of the local one.
 	 */
-	public function update_blocks_ids( $imported_post_ids, array $known_attachment_ids_updates, array $local_hostname_aliases = [], $log_file_path = null ) {
+	public function update_blocks_ids( array $imported_post_ids, array $known_attachment_ids_updates, array $local_hostname_aliases = [] ): void {
 
 		// Filter the $local_hostname_aliases argument -- remove the local host if the user entered it, just leaving additional hostname aliases here.
 		if ( ! empty( $local_hostname_aliases ) ) {
@@ -1309,33 +1304,30 @@ class ContentDiffLogic {
 			}
 
 			// Log updates.
-			if ( ! is_null( $log_file_path ) ) {
-				// Log the post ID that was checked.
-				$log_entry = [ 'id_new' => $id ];
+			$log_entry = [ 'id_new' => $id ];
 
-				// And if any updates were made, log them fully.
-				if ( $content_before != $content_updated ) {
-					$log_entry = array_merge(
-						$log_entry,
-						[
-							'post_content_before' => $content_before,
-							'post_content_after'  => $content_updated,
-						]
-					);
-				}
-
-				if ( $excerpt_before != $excerpt_updated ) {
-					$log_entry = array_merge(
-						$log_entry,
-						[
-							'post_excerpt_before' => $excerpt_before,
-							'post_excerpt_after'  => $excerpt_updated,
-						]
-					);
-				}
-
-				$this->log( $log_file_path, wp_json_encode( $log_entry ) );
+			// And if any updates were made, log them fully.
+			if ( $content_before != $content_updated ) {
+				$log_entry = array_merge(
+					$log_entry,
+					[
+						'post_content_before' => $content_before,
+						'post_content_after'  => $content_updated,
+					]
+				);
 			}
+
+			if ( $excerpt_before != $excerpt_updated ) {
+				$log_entry = array_merge(
+					$log_entry,
+					[
+						'post_excerpt_before' => $excerpt_before,
+						'post_excerpt_after'  => $excerpt_updated,
+					]
+				);
+			}
+
+			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, wp_json_encode( $log_entry ) );
 		}
 	}
 
@@ -2351,15 +2343,5 @@ class ContentDiffLogic {
 		$subject_escaped = str_replace( ' ', '\s', $subject_escaped );
 
 		return $subject_escaped;
-	}
-
-	/**
-	 * Logs error message to file.
-	 *
-	 * @param string $file Path to log file.
-	 * @param string $msg  Error message.
-	 */
-	public function log( $file, $msg ) {
-		file_put_contents( $file, $msg . "\n", FILE_APPEND ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
 	}
 }

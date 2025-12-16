@@ -44,23 +44,11 @@ class ContentDiffMigrator {
 	private ?RunState $run_state = null;
 
 	/**
-	 * Logger utility.
-	 *
-	 * @var Logger
-	 */
-	private Logger $logger;
-
-	/**
 	 * Constructor.
-	 * 
-	 * @param bool $enable_logging Whether to enable logging (useful for testing environment).
-	 * 
-	 * @return void
 	 */
-	public function __construct( bool $enable_logging = true ) {
+	public function __construct() {
 		global $wpdb;
-		$this->logic  = new ContentDiffLogic( $wpdb );
-		$this->logger = new Logger( $enable_logging );
+		$this->logic = new ContentDiffLogic( $wpdb );
 	}
 
 	/**
@@ -262,18 +250,18 @@ class ContentDiffMigrator {
 	 * @param array $assoc_args CLI assoc args.
 	 */
 	public function cmd_list_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		$this->logger->init_loggers( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ );
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
 
 		if ( empty( $source_sites ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No source hostnames found.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No source hostnames found.' );
 			return;
 		}
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrated source hostnames:' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrated source hostnames:' );
 		foreach ( $source_sites as $site ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '  - %s', $site ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '  - %s', $site ) );
 		}
 	}
 
@@ -293,22 +281,22 @@ class ContentDiffMigrator {
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
 		
-		$this->logger->init_loggers( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ );
 
 		// Show existing source hostnames.
 		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
 		if ( ! empty( $existing_source_sites ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
 		} else {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
 		}
 
 		// Validate DBs.
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'About to run command correct-collations-for-live-wp-tables ...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'About to run command correct-collations-for-live-wp-tables ...' );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
@@ -319,7 +307,7 @@ class ContentDiffMigrator {
 			);
 		}
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing local users and CPTs %s to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing local users and CPTs %s to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
 		
 		// Post statuses by type.
 		$statuses_regular    = [ 'publish', 'future', 'draft', 'pending', 'private' ];
@@ -336,13 +324,13 @@ class ContentDiffMigrator {
 
 		// Process non-attachment post types.
 		if ( ! empty( $post_types_non_attachments ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
 
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			MemoryCleanupHook::cleanup( 1 );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
 			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
 			MemoryCleanupHook::cleanup( 1 );
 
@@ -354,19 +342,19 @@ class ContentDiffMigrator {
 			$total_attributed += count( $matched_posts );
 			$total_local      += count( $results_local_posts );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d posts attributed out of %d local.', count( $matched_posts ), count( $results_local_posts ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d posts attributed out of %d local.', count( $matched_posts ), count( $results_local_posts ) ) );
 			MemoryCleanupHook::cleanup( 1 );
 		}
 
 		// Process attachments separately (like in cmd_search).
 		if ( $process_attachments ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
 
 			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 			MemoryCleanupHook::cleanup( 1 );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
 			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
 			MemoryCleanupHook::cleanup( 1 );
 
@@ -378,18 +366,18 @@ class ContentDiffMigrator {
 			$total_attributed += count( $matched_attachments );
 			$total_local      += count( $results_local_attachments );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d attachments attributed out of %d local.', count( $matched_attachments ), count( $results_local_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d attachments attributed out of %d local.', count( $matched_attachments ), count( $results_local_attachments ) ) );
 			MemoryCleanupHook::cleanup( 1 );
 		}
 
 		// Process users.
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
 
 		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
 		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
 		MemoryCleanupHook::cleanup( 1 );
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
 		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
 		MemoryCleanupHook::cleanup( 1 );
 
@@ -398,9 +386,9 @@ class ContentDiffMigrator {
 			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
 		}
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d users attributed out of %d local.', count( $matched_users ), count( $results_local_users ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d users attributed out of %d local.', count( $matched_users ), count( $results_local_users ) ) );
 
-		$this->logger->log(
+		Logger::instance()->log(
 			Logger::OUTPUT_BOTH,
 			LogLevel::INFO,
 			sprintf(
@@ -429,12 +417,12 @@ class ContentDiffMigrator {
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'attachment' ];
 		
 		// Init logger.
-		$this->logger->init_loggers( __FUNCTION__ );
-		$this->logger->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
+		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
 
 		// Disable CAP's "guest-author" CPT.
 		if ( in_array( 'guest-author', $post_types ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
 			throw new \RuntimeException( "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
 		}
 
@@ -443,7 +431,7 @@ class ContentDiffMigrator {
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " - about to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " - about to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
@@ -458,14 +446,14 @@ class ContentDiffMigrator {
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		// phpcs:ignore -- table prefix string value was escaped.
 		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" );
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Following Post types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Following Post types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
 
 		// Validate selected post types.
 		array_walk(
 			$post_types,
 			function ( &$v, $k ) use ( $cpts_live ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 				if ( ! in_array( $v, $cpts_live ) ) {
-					$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Selected post type %s is not found in live DB. It will not be migrated.', $v ) );
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Selected post type %s is not found in live DB. It will not be migrated.', $v ) );
 				}
 			}
 		);
@@ -478,35 +466,35 @@ class ContentDiffMigrator {
 			$post_types_non_attachments = array_values( $post_types_non_attachments );
 		}
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Searching live DB for new content...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Searching live DB for new content...' );
 		try {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s ...', implode( ',', $post_types_non_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s ...', implode( ',', $post_types_non_attachments ) ) );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			MemoryCleanupHook::cleanup( 1 );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_posts ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_posts ) ) );
 			$new_live_ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
 			MemoryCleanupHook::cleanup( 1 );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
 			$modified_live_ids = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
 			MemoryCleanupHook::cleanup( 1 );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments ...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments ...' );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			MemoryCleanupHook::cleanup( 1 );
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_attachments ) ) );
 			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $results_local_attachments );
 			$new_live_ids            = array_merge( $new_live_ids, $new_live_attachment_ids );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_attachment_ids ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_attachment_ids ) ) );
 
 		} catch ( \Exception $e ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
 			throw $e;
 		}
 
@@ -524,13 +512,13 @@ class ContentDiffMigrator {
 		// Write new IDs to migrate.
 		if ( count( $new_live_ids ) > 0 ) {
 			$run_state->write_new_ids( $new_live_ids );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', $run_state->get_file_path( 'new_ids.json' ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', $run_state->get_file_path( 'new_ids.json' ) ) );
 		}
 
 		// Write IDs which are modified and need to be reimported.
 		if ( count( $modified_live_ids ) > 0 ) {
 			$run_state->write_modified_ids( $modified_live_ids );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', $run_state->get_file_path( 'modified_ids.json' ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', $run_state->get_file_path( 'modified_ids.json' ) ) );
 		}
 
 		// Save manifest.json with migration TOC.
@@ -563,8 +551,8 @@ class ContentDiffMigrator {
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
 		
 		// Init logger.
-		$this->logger->init_loggers( __FUNCTION__ );
-		$this->logger->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-migrate-live-content...' );
+		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-migrate-live-content...' );
 
 		// Default taxonomies which are migrated are defined here.
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
@@ -576,7 +564,7 @@ class ContentDiffMigrator {
 		// Get new IDs which will be migrated.
 		$new_ids = $run_state->read_new_ids();
 		if ( null === $new_ids || empty( $new_ids ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'File %s not found or empty.', $run_state->get_file_path( 'new_ids.json' ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'File %s not found or empty.', $run_state->get_file_path( 'new_ids.json' ) ) );
 			throw new \RuntimeException( sprintf( 'File %s not found or empty.', esc_html( $run_state->get_file_path( 'new_ids.json' ) ) ) );
 		}
 		$all_live_posts_ids = array_map( 'intval', $new_ids );
@@ -601,8 +589,8 @@ class ContentDiffMigrator {
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
@@ -620,31 +608,31 @@ class ContentDiffMigrator {
 		// Timestamp the debug log with source hostname for identification.
 		$ts            = gmdate( 'Y-m-d h:i:s a', time() );
 		$log_start_msg = sprintf( 'Starting %s | source hostname: %s', $ts, $source_hostname );
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, $log_start_msg );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, $log_start_msg );
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$live_table_prefix_escaped}term_taxonomy ;" ); // phpcs:ignore -- table prefix string value was escaped.
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Here are all the taxonomies which exist in the live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Here are all the taxonomies which exist in the live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
 
 		// Before we create hierarchical taxonomies, let's make sure all hierarchical taxonomies have valid parents. If they don't they should be fixed first.
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
 		$taxonomies_to_migrate = $this->validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 
 		// Recreate taxonomies but leave out (unused) tags.
 		$taxonomies_to_recreate = array_diff( $taxonomies_to_migrate, [ 'post_tag' ] );
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Recreating taxonomies: %s ...', "\n- " . implode( "\n- ", $taxonomies_to_recreate ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Recreating taxonomies: %s ...', "\n- " . implode( "\n- ", $taxonomies_to_recreate ) ) );
 		$hierarchical_taxonomy_term_id_updates = $this->recreate_hierarchical_taxonomies( $taxonomies_to_recreate );
 		MemoryCleanupHook::cleanup( 1 );
 
 		// Migrate all WP_Users (for WooComm data).
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
 		$this->migrate_all_users( $live_table_prefix, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
 		if ( ! empty( $all_live_modified_posts_data ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $all_live_modified_posts_data ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $all_live_modified_posts_data ) ) );
 		}
 
 		/**
@@ -669,28 +657,28 @@ class ContentDiffMigrator {
 		// Merge modified posts IDs with $all_live_posts_ids for reimport.
 		$all_live_posts_ids = array_merge( $all_live_posts_ids, $modified_live_ids );
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $all_live_posts_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $all_live_posts_ids ) ) );
 		$imported_posts_data = $this->import_posts( $all_live_posts_ids, $hierarchical_taxonomy_term_id_updates, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
 		$this->update_post_parent_ids( $all_live_posts_ids, $imported_posts_data, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Featured images IDs...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Featured images IDs...' );
 		$this->update_featured_image_ids( $imported_posts_data, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
 		$this->update_attachment_ids_in_blocks( $imported_posts_data );
 		MemoryCleanupHook::cleanup( 1 );
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
 
 		// Display info about available logs.
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Check the logs for more details:' );
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', $this->logger->get_log_file_name() ) );
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', $this->run_state->get_file_path( 'manifest.json' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Check the logs for more details:' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', Logger::instance()->get_log_file_name() ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', $this->run_state->get_file_path( 'manifest.json' ) ) );
 
 		wp_cache_flush();
 	}
@@ -709,7 +697,7 @@ class ContentDiffMigrator {
 		// Check if any of the taxonomies does not exist in the live DB.
 		foreach ( $taxonomies_to_migrate as $key_taxonomy_to_migrate => $taxonomy_to_migrate ) {
 			if ( ! in_array( $taxonomy_to_migrate, $live_taxonomies ) ) {
-				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
 				unset( $taxonomies_to_migrate[ $key_taxonomy_to_migrate ] );
 			}
 		}
@@ -725,8 +713,8 @@ class ContentDiffMigrator {
 				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
 			}
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following local DB hierarchical taxonomies have invalid parent IDs which will be fixed first (their parents set to 0).' );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following local DB hierarchical taxonomies have invalid parent IDs which will be fixed first (their parents set to 0).' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
 			$this->logic->reset_hierarchical_taxonomies_parents( $wpdb->prefix, $term_taxonomy_ids );
 		}
 
@@ -740,8 +728,8 @@ class ContentDiffMigrator {
 				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
 			}
 
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following live DB hierarchical taxonomies have invalid parent IDs which must be fixed first (their parents set to 0 in live tables).' );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following live DB hierarchical taxonomies have invalid parent IDs which must be fixed first (their parents set to 0 in live tables).' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
 			$this->logic->reset_hierarchical_taxonomies_parents( $this->live_table_prefix, $term_taxonomy_ids );
 		}
 
@@ -762,7 +750,7 @@ class ContentDiffMigrator {
 		$hierarchical_taxonomy_term_id_updates = $this->logic->recreate_hierarchical_taxonomies( $this->live_table_prefix, $taxonomies_to_migrate );
 
 		// Log taxonomy term_id updates to debug log.
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Recreated hierarchical taxonomies: ' . wp_json_encode( [ 'hierarchical_taxonomy_term_id_updates' => $hierarchical_taxonomy_term_id_updates ] ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Recreated hierarchical taxonomies: ' . wp_json_encode( [ 'hierarchical_taxonomy_term_id_updates' => $hierarchical_taxonomy_term_id_updates ] ) );
 
 		return $hierarchical_taxonomy_term_id_updates;
 	}
@@ -778,7 +766,7 @@ class ContentDiffMigrator {
 		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
 
 		// Log inserted users to debug log.
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Inserted WP_Users: ' . wp_json_encode( [ 'inserted_wp_users_updates' => $inserted_wp_users_updates ] ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Inserted WP_Users: ' . wp_json_encode( [ 'inserted_wp_users_updates' => $inserted_wp_users_updates ] ) );
 
 		return $inserted_wp_users_updates;
 	}
@@ -836,12 +824,12 @@ class ContentDiffMigrator {
 		}
 
 		if ( empty( $post_ids_for_import ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts were already imported, moving on.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts were already imported, moving on.' );
 			return $imported_posts_data;
 		}
 		if ( $post_ids_for_import !== $all_live_posts_ids ) {
 			$post_ids_for_import = array_values( $post_ids_for_import );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d IDs were already imported, continuing from there. Hold tight..', count( $all_live_posts_ids ) - count( $post_ids_for_import ), count( $all_live_posts_ids ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d IDs were already imported, continuing from there. Hold tight..', count( $all_live_posts_ids ) - count( $post_ids_for_import ), count( $all_live_posts_ids ) ) );
 		}
 
 		// Import Posts.
@@ -868,8 +856,8 @@ class ContentDiffMigrator {
 					'id_new'    => (int) $post_id_new,
 				];
 			} catch ( \Exception $e ) {
-				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'import_posts error while inserting post_type %s id_old=%d : %s', $post_type, $post_id_live, $e->getMessage() ) );
-				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Error inserting %s Live ID %d (details in log file)', $post_type, $post_id_live ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'import_posts error while inserting post_type %s id_old=%d : %s', $post_type, $post_id_live, $e->getMessage() ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Error inserting %s Live ID %d (details in log file)', $post_type, $post_id_live ) );
 
 				// Error is logged. Continue importing other posts.
 				continue;
@@ -882,7 +870,7 @@ class ContentDiffMigrator {
 				foreach ( $import_errors as $import_error ) {
 					$msg .= PHP_EOL . '- ' . $import_error;
 				}
-				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $msg );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $msg );
 			}
 
 			// Log imported post to JSONL.
@@ -942,12 +930,12 @@ class ContentDiffMigrator {
 		}
 
 		if ( empty( $parent_ids_for_update ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their post_parent updated, moving on.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their post_parent updated, moving on.' );
 			return;
 		}
 		if ( $parent_ids_for_update !== $all_live_posts_ids ) {
 			$parent_ids_for_update = array_values( $parent_ids_for_update );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s post_parent IDs of total %d were already updated, continuing from there..', count( $all_live_posts_ids ) - count( $parent_ids_for_update ), count( $all_live_posts_ids ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s post_parent IDs of total %d were already updated, continuing from there..', count( $all_live_posts_ids ) - count( $parent_ids_for_update ), count( $all_live_posts_ids ) ) );
 		}
 
 		/**
@@ -1016,7 +1004,7 @@ class ContentDiffMigrator {
 				// If all attempts failed (possibly this parent does not exist in the live DB, or if this parent is of a post_type which was not imported), set that post_parent to 0.
 				$parent_id_new = 0;
 
-				$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids error, $id_old=%s, $id_new=%s, $parent_id_old=%s, $parent_id_new is 0.', $id_old, $id_new, $parent_id_old ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids error, $id_old=%s, $id_new=%s, $parent_id_old=%s, $parent_id_new is 0.', $id_old, $id_new, $parent_id_old ) );
 			}
 
 			// Update.
@@ -1088,7 +1076,7 @@ class ContentDiffMigrator {
 		);
 
 		if ( ! empty( $new_post_ids ) ) {
-			$this->logic->update_featured_images( array_values( $new_post_ids ), $imported_attachment_ids_map, $this->log_debug );
+			$this->logic->update_featured_images( array_values( $new_post_ids ), $imported_attachment_ids_map );
 		}
 	}
 
@@ -1142,15 +1130,15 @@ class ContentDiffMigrator {
 		);
 
 		if ( empty( $new_post_ids_for_blocks_update ) ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their blocks\' attachment IDs updated, moving on.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their blocks\' attachment IDs updated, moving on.' );
 			return;
 		}
 		if ( count( $new_post_ids_for_blocks_update ) < count( $imported_post_ids_map ) ) {
 			$new_post_ids_for_blocks_update = array_values( $new_post_ids_for_blocks_update );
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d posts already had their blocks\' IDs updated, continuing from there..', count( $imported_post_ids_map ) - count( $new_post_ids_for_blocks_update ), count( $imported_post_ids_map ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d posts already had their blocks\' IDs updated, continuing from there..', count( $imported_post_ids_map ) - count( $new_post_ids_for_blocks_update ), count( $imported_post_ids_map ) ) );
 		}
 
-		$this->logic->update_blocks_ids( array_values( $new_post_ids_for_blocks_update ), $imported_attachment_ids_map, [], $this->log_debug );
+		$this->logic->update_blocks_ids( array_values( $new_post_ids_for_blocks_update ), $imported_attachment_ids_map );
 	}
 
 	/**
@@ -1164,8 +1152,8 @@ class ContentDiffMigrator {
 		$skip_tables           = [];
 		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
 
-		$this->logger->init_loggers( __FUNCTION__ );
-		$this->logger->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
+		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
 
 		if ( ! empty( $assoc_args['skip-tables'] ) ) {
 			$skip_tables = explode( ',', $assoc_args['skip-tables'] );
@@ -1182,7 +1170,7 @@ class ContentDiffMigrator {
 		if ( ! empty( $tables ) ) {
 			WP_CLI\Utils\format_items( 'table', $tables, array_keys( $tables[0] ) );
 		} else {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Live and Core WP DB table collations match.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Live and Core WP DB table collations match.' );
 		}
 	}
 
@@ -1199,7 +1187,7 @@ class ContentDiffMigrator {
 		$backup_prefix     = isset( $assoc_args['backup-table-prefix'] ) ? $assoc_args['backup-table-prefix'] : 'collationbak_';
 		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 		
-		$this->logger->init_loggers( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ );
 		
 		$tables_with_differing_collations = $this->logic->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
 
@@ -1226,9 +1214,9 @@ class ContentDiffMigrator {
 				break;
 		}
 
-		$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
 		foreach ( $tables_with_differing_collations as $result ) {
-			$this->logger->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
 			$this->logic->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $records_per_transaction, $sleep_in_seconds, $backup_prefix );
 		}
 	}

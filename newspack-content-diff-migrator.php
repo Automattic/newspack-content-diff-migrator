@@ -14,6 +14,7 @@ namespace Newspack\ContentDiffMigrator;
 
 use Newspack\ContentDiffMigrator\PluginSetup;
 use Newspack\ContentDiffMigrator\Command\ContentDiffMigrator;
+use Newspack\ContentDiffMigrator\Utils\Logger;
 
 // Don't do anything outside WP CLI.
 if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
@@ -26,5 +27,7 @@ require __DIR__ . '/vendor/autoload.php';
 $error_reporting_level = false !== defined( 'NEWSPACK_CUSTOM_CONTENT_MIGRATOR_ERROR_REPORTING_LEVEL' ) ? NEWSPACK_CUSTOM_CONTENT_MIGRATOR_ERROR_REPORTING_LEVEL : 'dev';
 PluginSetup::configure_error_reporting( $error_reporting_level );
 PluginSetup::register_ticker();
+
+Logger::configure( true );
 
 ContentDiffMigrator::register_commands();
