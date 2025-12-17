@@ -37,7 +37,9 @@ class BlockUpdaterTest extends TestCase {
 	 */
 	protected function setUp(): void {
 		parent::setUp();
-		$this->updater      = new BlockUpdater();
+		$this->updater      = new BlockUpdater( function ( string $url ) {
+			return 999;
+		} );
 		$this->fixtures_dir = dirname( __DIR__, 2 ) . '/fixtures/blocks';
 	}
 
@@ -328,7 +330,7 @@ HTML;
 	public function image_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first image and a different ID for the second image.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/image1.jpg' === $url ) {
 						return 99999;
@@ -491,7 +493,7 @@ HTML;
 	public function audio_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first audio and a different ID for the second audio.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/audio1.mp3' === $url ) {
 						return 99999;
@@ -647,7 +649,7 @@ HTML;
 	public function video_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first video and a different ID for the second video.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/video1.mp4' === $url ) {
 						return 99999;
@@ -779,7 +781,7 @@ HTML;
 	public function file_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first file and a different ID for the second file.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/file1.pdf' === $url ) {
 						return 99999;
@@ -915,7 +917,7 @@ HTML;
 	public function cover_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first cover and a different ID for the second cover.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/cover1.jpg' === $url ) {
 						return 99999;
@@ -1062,7 +1064,7 @@ HTML;
 	public function media_text_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first media-text and a different ID for the second media-text.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/media1.jpg' === $url ) {
 						return 99999;
@@ -1227,7 +1229,7 @@ HTML;
 	public function jetpack_tiled_gallery_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first image and a different ID for the second image.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/gallery1.jpg' === $url ) {
 						return 99999;
@@ -1386,7 +1388,7 @@ HTML;
 	public function jetpack_slideshow_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
 		// Create a resolver that returns a specific ID for the first image and a different ID for the second image.
-		$this->updater->set_attachment_url_resolver(
+		$this->updater->set_attachment_url_to_postid_resolver(
 			function ( string $url ) {
 				if ( 'https://example.com/slide1.jpg' === $url ) {
 						return 99999;
