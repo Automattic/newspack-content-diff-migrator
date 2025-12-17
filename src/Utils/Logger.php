@@ -142,6 +142,20 @@ class Logger {
 	}
 
 	/**
+	 * Logs to both CLI and FILE, sends a brief output to CLI (just message, no context)
+	 * and a full output to FILE (message, with context data).
+	 * The CLI message gets "; see debug log for context." appended.
+	 *
+	 * @param string $level   PSR-3 log level (debug, info, warning, error, etc).
+	 * @param string $message Log message.
+	 * @param array  $context Log context (only gets logged to file).
+	 */
+	public function log_both_brief_and_verbose( string $level, string $message, array $context ): void {
+		$this->log( self::OUTPUT_FILE, $level, $message, $context );
+		$this->log( self::OUTPUT_CLI, $level, $message . '; see debug log for context.' );
+	}
+
+	/**
 	 * Log to CLI, FILE, or both.
 	 *
 	 * @param string $output  One of the self::OUTOUT_* constants: OUTPUT_CLI, OUTPUT_FILE, or OUTPUT_BOTH.
