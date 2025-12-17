@@ -7,6 +7,8 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\ContentDiffMigrator\Utils\Logger;
+use Psr\Log\LogLevel;
 use WP_User;
 use wpdb;
 
@@ -27,6 +29,14 @@ class DataImporter {
 	private $wpdb;
 
 	/**
+	 * Map of live term_id to local term_id for hierarchical taxonomies.
+	 * Populated on-the-fly during import by getting/creating, shared by all posts which use the same taxonomies.
+	 *
+	 * @var array<int, int>
+	 */
+	private array $hierarchical_taxonomy_term_id_map = [];
+
+	/**
 	 * DataImporter constructor.
 	 *
 	 * @param object $wpdb Global $wpdb.
@@ -38,63 +48,60 @@ class DataImporter {
 	/**
 	 * Imports all post-related data (meta, author, comments, taxonomies).
 	 *
-	 * @param int    $post_id                              Post ID.
-	 * @param array  $data                                 Post data array with keys: post, postmeta, comments, commentmeta, users, usermeta, term_relationships, term_taxonomy, terms, termmeta.
-	 * @param array  $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values are corresponding Taxonomies' term_ids on local (staging).
-	 * @param string $source_hostname                      Source hostname.
-	 *
-	 * @return array Array of error messages.
+	 * @param int    $post_id               Post ID.
+	 * @param array  $data                  Post data array with keys: post, postmeta, comments, commentmeta, users, usermeta, term_relationships, term_taxonomy, terms, termmeta.
+	 * @param string $live_table_prefix     Live database table prefix.
+	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
+	 * @param string $source_hostname       Source hostname.
 	 */
-	public function import_post_data( $post_id, $data, $hierarchical_taxonomy_term_id_updates, string $source_hostname ): array {
-		$error_messages = [];
-
-		$error_messages = array_merge( $error_messages, $this->import_post_meta( $data, $post_id ) );
-		$error_messages = array_merge( $error_messages, $this->import_author( $data, $post_id, $source_hostname ) );
-		$error_messages = array_merge( $error_messages, $this->import_comments( $data, $post_id, $source_hostname ) );
-		$error_messages = array_merge( $error_messages, $this->import_taxonomies( $data, $post_id, $hierarchical_taxonomy_term_id_updates ) );
-
-		return $error_messages;
+	public function import_post_data( int $post_id, array $data, string $live_table_prefix, array $taxonomies_to_migrate, string $source_hostname ): void {
+		$this->import_post_meta( $data, $post_id );
+		$this->import_author( $data, $post_id, $source_hostname );
+		$this->import_comments( $data, $post_id, $source_hostname );
+		$this->import_taxonomies( $data, $post_id, $live_table_prefix, $taxonomies_to_migrate );
 	}
 
 	/**
 	 * Imports post meta.
 	 *
 	 * @param array $data    Post data array.
-	 * @param int   $post_id Post ID.
-	 *
-	 * @return array Array of error messages.
+	 * @param int   $post_id New post ID.
 	 */
-	private function import_post_meta( $data, $post_id ): array {
-		$error_messages = [];
-
+	private function import_post_meta( array $data, int $post_id ): void {
+		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
 		foreach ( $data[ ContentDiffLogic::DATAKEY_POSTMETA ] as $postmeta_row ) {
 			try {
 				$this->insert_postmeta_row( $postmeta_row, $post_id );
 			} catch ( \Exception $e ) {
-				$error_messages[] = $e->getMessage();
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'import_post_meta error: %s', $e->getMessage() ),
+					[
+						'id_old'       => $id_old,
+						'id_new'       => $post_id,
+						'postmeta_row' => $postmeta_row,
+					] 
+				);
 			}
 		}
-
-		return $error_messages;
 	}
 
 	/**
 	 * Imports author/user and updates post author.
 	 *
 	 * @param array  $data            Post data array.
-	 * @param int    $post_id         Post ID.
+	 * @param int    $post_id         New post ID.
 	 * @param string $source_hostname Source hostname.
-	 *
-	 * @return array Array of error messages.
 	 */
-	private function import_author( $data, $post_id, string $source_hostname ): array {
-		$error_messages = [];
+	private function import_author( array $data, int $post_id, string $source_hostname ): void {
+		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
 
 		// Get existing Author User or insert a new one.
 		$author_id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['post_author'];
 		$author_row    = ! is_null( $author_id_old ) ? $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $author_id_old ) : [];
 		$usermeta_rows = is_array( $author_row ) && array_key_exists( 'ID', $author_row ) ? $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $author_row['ID'] ) : [];
-		$user_existing = is_array( $author_row ) && array_key_exists( 'user_login', $author_row ) ? $this->get_user_by( 'login', $author_row['user_login'] ) : false;
+		$user_existing = is_array( $author_row ) && array_key_exists( 'user_login', $author_row ) ? $this->wp_get_user_by( 'login', $author_row['user_login'] ) : false;
 		$author_id_new = null;
 		if ( $user_existing instanceof WP_User ) {
 			$author_id_new = (int) $user_existing->ID;
@@ -109,7 +116,17 @@ class DataImporter {
 					$this->insert_usermeta_row( $usermeta_row, $author_id_new );
 				}
 			} catch ( \Exception $e ) {
-				$error_messages[] = $e->getMessage();
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'import_author error: %s', $e->getMessage() ),
+					[
+						'id_old'        => $id_old,
+						'id_new'        => $post_id,
+						'author_row'    => $author_row,
+						'usermeta_rows' => $usermeta_rows,
+					] 
+				);
 			}
 		}
 
@@ -118,24 +135,29 @@ class DataImporter {
 			try {
 				$this->update_post_author( $post_id, $author_id_new );
 			} catch ( \Exception $e ) {
-				$error_messages[] = $e->getMessage();
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'import_author author update error: %s', $e->getMessage() ),
+					[
+						'id_old'        => $id_old,
+						'id_new'        => $post_id,
+						'author_id_new' => $author_id_new,
+					] 
+				);
 			}
 		}
-
-		return $error_messages;
 	}
 
 	/**
 	 * Imports comments and comment meta, and updates comment parent IDs.
 	 *
 	 * @param array  $data            Post data array.
-	 * @param int    $post_id         Post ID.
+	 * @param int    $post_id         New post ID.
 	 * @param string $source_hostname Source hostname.
-	 *
-	 * @return array Array of error messages.
 	 */
-	private function import_comments( $data, $post_id, string $source_hostname ): array {
-		$error_messages = [];
+	private function import_comments( array $data, int $post_id, string $source_hostname ): void {
+		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
 
 		// Insert Comments.
 		$comment_ids_updates = [];
@@ -153,7 +175,7 @@ class DataImporter {
 				$comment_user_existing = null;
 				if ( ! is_null( $comment_user_row ) ) {
 					$comment_usermeta_rows = $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] );
-					$comment_user_existing = $this->get_user_by( 'login', $comment_user_row['user_login'] );
+					$comment_user_existing = $this->wp_get_user_by( 'login', $comment_user_row['user_login'] );
 
 					if ( $comment_user_existing instanceof WP_User ) {
 						$comment_user_id_new = (int) $comment_user_existing->ID;
@@ -165,7 +187,18 @@ class DataImporter {
 								$this->insert_usermeta_row( $comment_usermeta_row, $comment_user_id_new );
 							}
 						} catch ( \Exception $e ) {
-							$error_messages[] = $e->getMessage();
+							Logger::instance()->log(
+								Logger::OUTPUT_BOTH,
+								LogLevel::ERROR,
+								sprintf( 'import_comments insert_usermeta_row error: %s', $e->getMessage() ),
+								[
+									'id_old'           => $id_old,
+									'id_new'           => $post_id,
+									'comment_id_old'   => $comment_id_old,
+									'comment_user_row' => $comment_user_row,
+									'comment_usermeta_rows' => $comment_usermeta_rows,
+								] 
+							);
 						}
 					}
 				} else {
@@ -184,7 +217,19 @@ class DataImporter {
 					$this->insert_commentmeta_row( $commentmeta_row, $comment_id_new );
 				}
 			} catch ( \Exception $e ) {
-				$error_messages[] = $e->getMessage();
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'import_comments insert_comment error: %s', $e->getMessage() ),
+					[
+						'id_old'              => $id_old,
+						'id_new'              => $post_id,
+						'comment_id_old'      => $comment_id_old,
+						'comment_user_id_new' => $comment_user_id_new,
+						'comment_row'         => $comment_row,
+						'commentmeta_rows'    => $commentmeta_rows,
+					] 
+				);
 			}
 		}
 
@@ -197,26 +242,33 @@ class DataImporter {
 				try {
 					$this->update_comment_parent( $comment_id_new, $comment_parent_new );
 				} catch ( \Exception $e ) {
-					$error_messages[] = $e->getMessage();
+					Logger::instance()->log(
+						Logger::OUTPUT_BOTH,
+						LogLevel::ERROR,
+						sprintf( 'import_comments update_comment_parent error: %s', $e->getMessage() ),
+						[
+							'id_old'             => $id_old,
+							'id_new'             => $post_id,
+							'comment_id_new'     => $comment_id_new,
+							'comment_parent_new' => $comment_parent_new,
+						] 
+					);
 				}
 			}
 		}
-
-		return $error_messages;
 	}
 
 	/**
 	 * Imports taxonomies and term relationships.
 	 *
-	 * @param array $data                                 Post data array.
-	 * @param int   $post_id                             Post ID.
-	 * @param array $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values are corresponding Taxonomies' term_ids on local (staging).
-	 *
-	 * @return array Array of error messages.
+	 * @param array  $data                  Post data array.
+	 * @param int    $post_id               New post ID.
+	 * @param string $live_table_prefix     Live database table prefix.
+	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
 	 */
-	private function import_taxonomies( $data, $post_id, $hierarchical_taxonomy_term_id_updates ): array {
-		$error_messages = [];
-
+	private function import_taxonomies( array $data, int $post_id, string $live_table_prefix, array $taxonomies_to_migrate ): void {
+		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
+		
 		// Import taxonomies.
 		$inserted_term_taxonomy_ids = [];
 		foreach ( $data[ ContentDiffLogic::DATAKEY_TERMRELATIONSHIPS ] as $term_relationship_row ) {
@@ -226,9 +278,24 @@ class DataImporter {
 			$live_term_id           = $live_term_taxonomy_row['term_id'];
 			$live_term_row          = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $live_term_id );
 
+			// Skip taxonomies not in the allowed list.
+			if ( ! in_array( $live_term_taxonomy_row['taxonomy'], $taxonomies_to_migrate, true ) ) {
+				continue;
+			}
+
 			// Validate live term row, it could be missing or invalid.
 			if ( is_null( $live_term_row ) ) {
-				$error_messages[] = sprintf( 'Faulty term relationship record in live DB, term skipped: posts.ID=%d > term_relationships has term_taxonomy_id=%d > term_taxonomy has term_id=%d >> term_id does not exist in live DB table.', $data['post']['ID'], $live_term_taxonomy_id, $live_term_taxonomy_row['term_id'] );
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					'import_taxonomies faulty term relationship: term_id does not exist in live DB',
+					[
+						'id_old'                 => $id_old,
+						'id_new'                 => $post_id,
+						'live_term_taxonomy_id'  => $live_term_taxonomy_id,
+						'live_term_taxonomy_row' => $live_term_taxonomy_row,
+					] 
+				);
 				continue;
 			}
 
@@ -241,10 +308,37 @@ class DataImporter {
 			// Helper vars.
 			$local_term_taxonomy_data = null;
 
-			// If it's a hierarchical taxonomy, all of them have already been recreated on Staging -- see $hierarchical_taxonomy_term_id_updates. Now just get the local corresponding term_taxonomy_id for this $live_term_taxonomy_id.
+			// If it's a hierarchical taxonomy, get or create it on-the-fly.
 			if ( is_taxonomy_hierarchical( $live_term_taxonomy_row['taxonomy'] ) ) {
 
-				$local_term_id             = $hierarchical_taxonomy_term_id_updates[ $live_term_id ];
+				// Create taxonomy term if not already in map.
+				if ( ! isset( $this->hierarchical_taxonomy_term_id_map[ $live_term_id ] ) ) {
+					try {
+						// Register taxonomy if not registered (init action not executed at this point).
+						if ( ! taxonomy_exists( $live_term_taxonomy_row['taxonomy'] ) ) {
+							register_taxonomy( $live_term_taxonomy_row['taxonomy'], 'post', [ 'hierarchical' => true ] );
+						}
+						$live_tree    = $this->get_hierarchical_taxonomy_tree( $live_table_prefix, $live_term_taxonomy_row );
+						$created_tree = $this->get_or_create_hierarchical_taxonomy_tree( $this->wpdb->prefix, $live_tree );
+						$this->hierarchical_taxonomy_term_id_map[ $live_term_id ] = $created_tree['term_id'];
+					} catch ( \Exception $e ) {
+						Logger::instance()->log(
+							Logger::OUTPUT_BOTH,
+							LogLevel::ERROR,
+							'import_taxonomies hierarchical taxonomy creation error',
+							[
+								'id_old'       => $id_old,
+								'id_new'       => $post_id,
+								'live_term_id' => $live_term_id,
+								'taxonomy'     => $live_term_taxonomy_row['taxonomy'],
+								'error'        => $e->getMessage(),
+							] 
+						);
+						continue;
+					}
+				}
+
+				$local_term_id             = $this->hierarchical_taxonomy_term_id_map[ $live_term_id ];
 				$local_term_taxonomy_data  = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_id' => $local_term_id ], $live_term_taxonomy_row['taxonomy'] );
 				$local_term_taxonomy_id    = $local_term_taxonomy_data['term_taxonomy_id'];
 				$local_term_taxonomy_count = $local_term_taxonomy_data['count'];
@@ -257,17 +351,21 @@ class DataImporter {
 
 					// Create a new Term.
 					$term_insert_result = $this->wp_insert_term( $live_term_name, $live_term_taxonomy_row['taxonomy'], [ 'description' => $live_term_taxonomy_row['description'] ] );
-
 					if ( is_wp_error( $term_insert_result ) ) {
-						$error_messages[] = sprintf(
-							"Warning, could not insert term='%s' taxonomy='%s' live_term_id=%s for live_post_ID=%s . This is totally OK if you did not wish to migrate this term taxonomy. Message: %s",
-							$live_term_name,
-							$live_term_taxonomy_row['taxonomy'],
-							$live_term_id,
-							$post_id,
-							$term_insert_result->get_error_message()
+						Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'Term insert error id_old=%d', $id_old ) );
+						Logger::instance()->log(
+							Logger::OUTPUT_FILE,
+							LogLevel::WARNING,
+							sprintf(
+								"Could not insert term='%s' taxonomy='%s' live_term_id=%s id_old=%d id_new=%d: %s",
+								$live_term_name,
+								$live_term_taxonomy_row['taxonomy'],
+								$live_term_id,
+								$id_old,
+								$post_id,
+								$term_insert_result->get_error_message()
+							)
 						);
-
 						continue;
 					}
 
@@ -316,8 +414,6 @@ class DataImporter {
 				$inserted_term_taxonomy_ids[] = $local_term_taxonomy_id;
 			}
 		}
-
-		return $error_messages;
 	}
 
 	/**
@@ -353,7 +449,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted User ID.
 	 */
-	private function insert_user( $user_row, string $source_hostname ) {
+	public function insert_user( $user_row, string $source_hostname ) {
 		$old_user_id = $user_row['ID'];
 
 		$insert_user_row = $user_row;
@@ -392,7 +488,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted umeta_id.
 	 */
-	private function insert_usermeta_row( $usermeta_row, $user_id ) {
+	public function insert_usermeta_row( $usermeta_row, $user_id ) {
 		$insert_usermeta_row = $usermeta_row;
 		unset( $insert_usermeta_row['umeta_id'] );
 		$insert_usermeta_row['user_id'] = $user_id;
@@ -593,7 +689,7 @@ class DataImporter {
 	 *
 	 * @return WP_User|false User object or false if not found.
 	 */
-	private function get_user_by( $field, $value ) {
+	private function wp_get_user_by( $field, $value ) {
 		return get_user_by( $field, $value );
 	}
 
@@ -634,5 +730,290 @@ class DataImporter {
 		}
 
 		return $found;
+	}
+
+	/**
+	 * Fixes hierarchical taxonomies which have invalid/nonexistent parent term_ids by setting them to 0.
+	 *
+	 * @param string $table_prefix        DB table prefix.
+	 * @param array  $taxonomies_to_check Taxonomies to check for invalid parents.
+	 *
+	 * @return array List of term_taxonomy_ids that were fixed, empty if none.
+	 */
+	public function fix_hierarchical_taxonomies_parents( string $table_prefix, array $taxonomies_to_check ): array {
+		// Get taxonomies with invlid/nonexistent parents.
+		$terms         = esc_sql( $table_prefix . 'terms' );
+		$term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
+		$taxonomy_format = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
+		$hierarchical_taxonomies = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
+				FROM {$terms} t
+				JOIN {$term_taxonomy} tt
+					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_format) AND parent <> 0
+				LEFT JOIN {$terms} ttparent
+					ON ttparent.term_id = tt.parent
+				WHERE ttparent.term_id IS NULL;",
+				$taxonomies_to_check
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+		if ( empty( $hierarchical_taxonomies ) ) {
+			return [];
+		}
+
+		// Reset their parents to 0.
+		$term_taxonomy_ids = array_column( $hierarchical_taxonomies, 'term_taxonomy_id' );
+		$placeholders      = implode( ',', array_fill( 0, count( $term_taxonomy_ids ), '%d' ) );
+		$term_taxonomy     = esc_sql( $table_prefix . 'term_taxonomy' );
+		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
+		$this->wpdb->query(
+			$this->wpdb->prepare(
+				"UPDATE {$term_taxonomy} SET parent = 0 WHERE term_taxonomy_ID IN ( {$placeholders} );",
+				$term_taxonomy_ids
+			)
+		);
+		// phpcs:enable
+
+		return $hierarchical_taxonomies;
+	}
+
+	/**
+	 * Recreates all hierarchical taxonomies from live to local.
+	 *
+	 * @param string $live_table_prefix                    Live DB table prefix.
+	 * @param array  $hierarchical_taxonomies_to_migrate Taxonomies to migrate.
+	 *
+	 * @return array Map of live to local term_ids. Keys are live term_ids, values are local term_ids.
+	 * 
+	 * @throws \RuntimeException If taxonomy registration fails.
+	 */
+	public function recreate_hierarchical_taxonomies( string $live_table_prefix, array $hierarchical_taxonomies_to_migrate ): array {
+		$table_prefix             = $this->wpdb->prefix;
+		$live_terms_table         = esc_sql( $live_table_prefix . 'terms' );
+		$live_termstaxonomy_table = esc_sql( $live_table_prefix . 'term_taxonomy' );
+
+		// Get all live site's hierarchical taxonomies, ordered by parent for easy hierarchical reconstruction.
+		// phpcs:disable -- wpdb::prepare is used.
+		$taxonomy_format = implode( ', ', array_fill( 0, count( $hierarchical_taxonomies_to_migrate ), '%s' ) );
+		$live_hierarchical_taxonomies = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
+				FROM $live_terms_table t
+				JOIN $live_termstaxonomy_table tt ON t.term_id = tt.term_id
+				WHERE tt.taxonomy IN ($taxonomy_format)
+				ORDER BY tt.parent;",
+				$hierarchical_taxonomies_to_migrate
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		// Go through all taxonomies and get or create them on local.
+		$hierarchical_taxonomy_term_id_updates = [];
+		foreach ( $live_hierarchical_taxonomies as $live_hierarchical_taxonomy ) {
+			$live_hierarchical_taxonomy_tree = $this->get_hierarchical_taxonomy_tree( $live_table_prefix, $live_hierarchical_taxonomy );
+
+			// Register taxonomy if not already registered.
+			if ( ! taxonomy_exists( $live_hierarchical_taxonomy_tree['taxonomy'] ) ) {
+				$registered_taxonomy = register_taxonomy(
+					$live_hierarchical_taxonomy_tree['taxonomy'],
+					'post',
+					[
+						'taxonomy'     => $live_hierarchical_taxonomy_tree['taxonomy'],
+						'description'  => $live_hierarchical_taxonomy_tree['taxonomy'],
+						'count'        => $live_hierarchical_taxonomy_tree['count'],
+						'public'       => true,
+						'hierarchical' => true,
+					]
+				);
+				if ( is_wp_error( $registered_taxonomy ) ) {
+					throw new \RuntimeException( 'Failed to register taxonomy ' . esc_html( $live_hierarchical_taxonomy_tree['taxonomy'] ) . ' error: ' . esc_html( $registered_taxonomy->get_error_message() ) );
+				}
+			}
+
+			$created_hierarchical_taxonomy_tree = $this->get_or_create_hierarchical_taxonomy_tree( $table_prefix, $live_hierarchical_taxonomy_tree );
+			$hierarchical_taxonomy_term_id_updates[ $live_hierarchical_taxonomy['term_id'] ] = $created_hierarchical_taxonomy_tree['term_id'];
+		}
+
+		return $hierarchical_taxonomy_term_id_updates;
+	}
+
+	/**
+	 * Fetches the hierarchical taxonomy's tree by retrieving all parent taxonomies down to the top parent.
+	 *
+	 * @param string $table_prefix          DB table prefix.
+	 * @param array  $hierarchical_taxonomy Taxonomy data array.
+	 *
+	 * @return array Nested array of taxonomies where 'parent' is either another taxonomy array or '0'.
+	 */
+	private function get_hierarchical_taxonomy_tree( string $table_prefix, array $hierarchical_taxonomy ): array {
+		$hierarchical_taxonomy_tree = $hierarchical_taxonomy;
+
+		$table_terms         = esc_sql( $table_prefix . 'terms' );
+		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+
+		$parent_term_id = $hierarchical_taxonomy['parent'];
+		if ( 0 != $parent_term_id ) {
+			// phpcs:disable -- wpdb::prepare used.
+			$parent_row = $this->wpdb->get_row(
+				$this->wpdb->prepare(
+					"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
+					FROM {$table_terms} t
+					JOIN {$table_term_taxonomy} tt ON t.term_id = tt.term_id
+					WHERE tt.taxonomy = %s
+					AND t.term_id = %s
+					ORDER BY tt.parent;",
+					[ $hierarchical_taxonomy['taxonomy'], $parent_term_id ]
+				),
+				ARRAY_A
+			);
+			// phpcs:enable
+
+			if ( 0 == $parent_row['parent'] ) {
+				$hierarchical_taxonomy_tree['parent'] = $parent_row;
+			} else {
+				$hierarchical_taxonomy_tree['parent'] = $this->get_hierarchical_taxonomy_tree( $table_prefix, $parent_row );
+			}
+		}
+
+		return $hierarchical_taxonomy_tree;
+	}
+
+	/**
+	 * Rebuilds the full tree of a hierarchical taxonomy. Gets existing or creates new.
+	 *
+	 * @param string $table_prefix               DB table prefix.
+	 * @param array  $hierarchical_taxonomy_tree Nested taxonomy array to rebuild.
+	 *
+	 * @return array Rebuilt taxonomy tree.
+	 */
+	private function get_or_create_hierarchical_taxonomy_tree( string $table_prefix, array $hierarchical_taxonomy_tree ): array {
+		// If this is the top parent taxonomy, get or create it.
+		if ( 0 == $hierarchical_taxonomy_tree['parent'] ) {
+			$hierarchical_taxonomy_top_parent_row     = $this->get_hierarchical_taxonomy_array_by_name_and_parent( $table_prefix, $hierarchical_taxonomy_tree['name'], $hierarchical_taxonomy_tree['taxonomy'], 0 );
+			$hierarchical_taxonomy_top_parent_term_id = $hierarchical_taxonomy_top_parent_row['term_id'] ?? null;
+			if ( ! $hierarchical_taxonomy_top_parent_term_id ) {
+				$hierarchical_taxonomy_top_parent_term_id = $this->wp_insert_or_update_term(
+					$hierarchical_taxonomy_tree['name'],
+					$hierarchical_taxonomy_tree['description'],
+					0,
+					$hierarchical_taxonomy_tree['taxonomy']
+				);
+			}
+			return $this->get_term_and_taxonomy_array(
+				$table_prefix,
+				[ 'term_id' => $hierarchical_taxonomy_top_parent_term_id ],
+				$hierarchical_taxonomy_tree['taxonomy']
+			);
+		}
+
+		// Recursively build parent tree first.
+		$current_parent_tree = $this->get_or_create_hierarchical_taxonomy_tree( $table_prefix, $hierarchical_taxonomy_tree['parent'] );
+
+		// Get or create this taxonomy.
+		$taxonomy_row     = $this->get_hierarchical_taxonomy_array_by_name_and_parent( $table_prefix, $hierarchical_taxonomy_tree['name'], $hierarchical_taxonomy_tree['taxonomy'], $current_parent_tree['term_id'] );
+		$taxonomy_term_id = $taxonomy_row['term_id'] ?? null;
+		if ( ! $taxonomy_term_id ) {
+			$taxonomy_term_id = $this->wp_insert_or_update_term(
+				$hierarchical_taxonomy_tree['name'],
+				$hierarchical_taxonomy_tree['description'],
+				$current_parent_tree['term_id'],
+				$hierarchical_taxonomy_tree['taxonomy']
+			);
+		}
+		$taxonomy = $this->get_term_and_taxonomy_array(
+			$table_prefix,
+			[ 'term_id' => $taxonomy_term_id ],
+			$hierarchical_taxonomy_tree['taxonomy']
+		);
+
+		$rebuilt_hierarchical_taxonomy_tree           = $taxonomy;
+		$rebuilt_hierarchical_taxonomy_tree['parent'] = $current_parent_tree;
+
+		return $rebuilt_hierarchical_taxonomy_tree;
+	}
+
+	/**
+	 * Gets hierarchical taxonomy by name and parent.
+	 *
+	 * @param string $table_prefix    DB table prefix.
+	 * @param string $taxonomy_name   Taxonomy name.
+	 * @param string $taxonomy        Taxonomy type.
+	 * @param string $taxonomy_parent Parent term_id.
+	 *
+	 * @return array|null Taxonomy data or null.
+	 */
+	private function get_hierarchical_taxonomy_array_by_name_and_parent( string $table_prefix, string $taxonomy_name, string $taxonomy, $taxonomy_parent ): ?array {
+		$table_terms         = esc_sql( $table_prefix . 'terms' );
+		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+
+		// phpcs:disable -- wpdb::prepare used.
+		$hierarchical_taxonomy = $this->wpdb->get_row(
+			$this->wpdb->prepare(
+				"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
+				FROM $table_terms t
+				JOIN $table_term_taxonomy tt ON t.term_id = tt.term_id
+				WHERE tt.taxonomy = %s
+				AND tt.parent = %s
+				AND t.name = %s;",
+				$taxonomy,
+				$taxonomy_parent,
+				$taxonomy_name
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		return $hierarchical_taxonomy;
+	}
+
+	/**
+	 * Creates or updates a term in a taxonomy.
+	 *
+	 * @param string $term_name        Term name.
+	 * @param string $term_description Term description.
+	 * @param int    $term_parent      Parent term_id.
+	 * @param string $taxonomy         Taxonomy name.
+	 *
+	 * @return int|\WP_Error Term ID on success, WP_Error on failure.
+	 */
+	private function wp_insert_or_update_term( string $term_name, string $term_description, $term_parent, string $taxonomy ) {
+		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.term_exists_term_exists
+		$term_exists = term_exists( $term_name, $taxonomy, $term_parent );
+
+		if ( ! $term_exists ) {
+			$term_id = wp_insert_term(
+				$term_name,
+				$taxonomy,
+				[
+					'description' => $term_description,
+					'parent'      => $term_parent,
+				]
+			);
+
+			if ( is_wp_error( $term_id ) ) {
+				return $term_id;
+			}
+			return $term_id['term_id'];
+		}
+
+		$term_id     = $term_exists['term_id'];
+		$term_update = wp_update_term(
+			$term_id,
+			$taxonomy,
+			[
+				'description' => $term_description,
+				'parent'      => $term_parent,
+			]
+		);
+
+		if ( is_wp_error( $term_update ) ) {
+			return $term_update;
+		}
+
+		return $term_id;
 	}
 }
