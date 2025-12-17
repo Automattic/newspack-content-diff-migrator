@@ -34,19 +34,19 @@ class BlockUpdater {
 	/**
 	 * Callback for resolving attachment URL to post ID.
 	 *
-	 * @var callable|null
+	 * @var callable|null Callback that takes (url, aliases) and returns post ID.
 	 */
-	private $attachment_url_resolver;
+	private $attachment_url_to_postid_resolver = null;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param callable|null $attachment_url_resolver Optional callback that takes (url, aliases) and returns post ID.
+	 * @param callable $attachment_url_to_postid_resolver Optional callback that takes (url, aliases) and returns post ID.
 	 */
-	public function __construct( ?callable $attachment_url_resolver = null ) {
-		$this->wp_block_manipulator     = new WpBlockManipulator();
-		$this->html_element_manipulator = new HtmlElementManipulator();
-		$this->attachment_url_resolver  = $attachment_url_resolver;
+	public function __construct( callable $attachment_url_to_postid_resolver ) {
+		$this->wp_block_manipulator              = new WpBlockManipulator();
+		$this->html_element_manipulator          = new HtmlElementManipulator();
+		$this->attachment_url_to_postid_resolver = $attachment_url_to_postid_resolver;
 	}
 
 	/**
@@ -54,8 +54,8 @@ class BlockUpdater {
 	 *
 	 * @param callable $resolver Callback that takes (url, aliases) and returns post ID.
 	 */
-	public function set_attachment_url_resolver( callable $resolver ): void {
-		$this->attachment_url_resolver = $resolver;
+	public function set_attachment_url_to_postid_resolver( callable $resolver ): void {
+		$this->attachment_url_to_postid_resolver = $resolver;
 	}
 
 	/**
@@ -866,10 +866,10 @@ class BlockUpdater {
 		}
 
 		// Try to resolve via URL lookup.
-		if ( $src && $this->attachment_url_resolver ) {
+		if ( $src && $this->attachment_url_to_postid_resolver ) {
 			if ( $this->should_url_be_queried_as_local_attachment( $src, $local_hostname_aliases ) ) {
 				$src_cleaned = $this->clean_attachment_url_for_query( $src );
-				$new_att_id  = call_user_func( $this->attachment_url_resolver, $src_cleaned, $local_hostname_aliases );
+				$new_att_id  = call_user_func( $this->attachment_url_to_postid_resolver, $src_cleaned, $local_hostname_aliases );
 
 				if ( $new_att_id && $new_att_id > 0 && $new_att_id != $att_id ) {
 					$known_attachment_ids_updates[ $att_id ] = $new_att_id;
@@ -910,12 +910,14 @@ class BlockUpdater {
 	private function clean_attachment_url_for_query( string $url ): string {
 		$parsed_url = wp_parse_url( $url );
 
-		return sprintf(
+		$cleaned_url = sprintf(
 			'%s://%s%s',
 			$parsed_url['scheme'] ?? 'https',
 			$parsed_url['host'] ?? '',
 			$parsed_url['path'] ?? ''
 		);
+
+		return $cleaned_url;
 	}
 
 	/**
