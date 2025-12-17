@@ -11,7 +11,7 @@ namespace Newspack\ContentDiffMigrator\Command;
 use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
 use Newspack\ContentDiffMigrator\Logic\RunState;
 use Newspack\ContentDiffMigrator\Utils\Logger;
-use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
+use Newspack\ContentDiffMigrator\Utils\Progress;
 use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
 use Psr\Log\LogLevel;
 use WP_CLI;
@@ -251,9 +251,9 @@ class ContentDiffMigrator {
 	 */
 	public function cmd_list_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__' ) );
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
-
 		if ( empty( $source_sites ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No source hostnames found.' );
 			return;
@@ -281,7 +281,9 @@ class ContentDiffMigrator {
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
 		
+		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__ | source hostname: %s', $source_hostname ) );
 
 		// Show existing source hostnames.
 		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
@@ -420,13 +422,16 @@ class ContentDiffMigrator {
 		Logger::instance()->init( __FUNCTION__ );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
 
+		// Set instance properties.
+		global $wpdb;
+		$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+
 		// Disable CAP's "guest-author" CPT.
 		if ( in_array( 'guest-author', $post_types ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
 			throw new \RuntimeException( "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
 		}
 
-		global $wpdb;
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
@@ -497,35 +502,23 @@ class ContentDiffMigrator {
 			throw $e;
 		}
 
-		/**
-		 * Get run-state (with access to all the data that needs to be migrated, and keeps progress of the migration).
-		 * 
-		 * Run-state data is stored in formatted files in the subfolder:
-		 *      {--data-dir}/{--source-hostname}/run-state
-		 * And the regular logs are stored directly in:
-		 *      {--data-dir}/{--source-hostname}
-		 */
-		$run_state_dir   = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
-		$this->run_state = new RunState( $run_state_dir );
-
 		// Write new IDs to migrate.
 		if ( count( $new_live_ids ) > 0 ) {
 			$this->run_state->write_new_ids( $new_live_ids );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', $this->run_state->get_file_path( 'new_ids.json' ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', RunState::FILE_NEW_IDS ) );
 		}
 
 		// Write IDs which are modified and need to be reimported.
 		if ( count( $modified_live_ids ) > 0 ) {
 			$this->run_state->write_modified_ids( $modified_live_ids );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', $this->run_state->get_file_path( 'modified_ids.json' ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', RunState::FILE_MODIFIED_IDS ) );
 		}
 
 		// Save manifest.json with migration TOC.
 		$manifest = [
+			'created_at'        => gmdate( 'Y-m-d H:i:s' ),
 			'source_hostname'   => $source_hostname,
 			'live_table_prefix' => $live_table_prefix,
-			'created_at'        => gmdate( 'Y-m-d H:i:s' ),
-			'updated_at'        => gmdate( 'Y-m-d H:i:s' ),
 			'counts'            => [
 				'new_ids'      => count( $new_live_ids ),
 				'modified_ids' => count( $modified_live_ids ),
@@ -551,26 +544,14 @@ class ContentDiffMigrator {
 		
 		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-migrate-live-content...' );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__ | source hostname: %s', $source_hostname ) );
+
+		// Set instance properties.
+		$this->run_state         = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+		$this->live_table_prefix = $live_table_prefix;
 
 		// Default taxonomies which are migrated are defined here.
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
-
-		// Set instance properties.
-		$run_state_dir           = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
-		$this->run_state         = new RunState( $run_state_dir );
-		$this->live_table_prefix = $live_table_prefix;
-
-		// Get new IDs which will be migrated.
-		$new_live_ids = $this->run_state->read_new_ids();
-		if ( null === $new_live_ids ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS ) );
-			exit;
-		} elseif ( empty( $new_live_ids ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new posts to migrate.' );
-			exit;
-		}
-
 		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
 			if ( ! in_array( 'category', $taxonomies_to_migrate ) ) {
@@ -600,46 +581,47 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// Timestamp the debug log with source hostname for identification.
-		$ts            = gmdate( 'Y-m-d h:i:s a', time() );
-		$log_start_msg = sprintf( 'Starting %s | source hostname: %s', $ts, $source_hostname );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, $log_start_msg );
-
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$live_table_prefix_escaped}term_taxonomy ;" ); // phpcs:ignore -- table prefix string value was escaped.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Here are all the taxonomies which exist in the live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
 
-		// Before we create hierarchical taxonomies, let's make sure all hierarchical taxonomies have valid parents. If they don't they should be fixed first.
+		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
 		$taxonomies_to_migrate = $this->validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 
-		// Recreate taxonomies but leave out (unused) tags.
-		$taxonomies_to_recreate = array_diff( $taxonomies_to_migrate, [ 'post_tag' ] );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Recreating taxonomies: %s ...', "\n- " . implode( "\n- ", $taxonomies_to_recreate ) ) );
-		$hierarchical_taxonomy_term_id_updates = $this->recreate_hierarchical_taxonomies( $taxonomies_to_recreate );
-		MemoryCleanupHook::cleanup( 1 );
-
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
-		$this->migrate_all_users( $live_table_prefix, $source_hostname );
+		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ), $inserted_wp_users_updates );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ) );
 		MemoryCleanupHook::cleanup( 1 );
 
-		// Process modified IDs.
+		// Get new IDs which will be migrated.
+		$new_live_ids = $this->run_state->get_new_ids();
+		if ( null === $new_live_ids ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS ) );
+			exit;
+		} elseif ( empty( $new_live_ids ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new posts to migrate.' );
+			// Continue to allow modified IDs to be processed.
+		}
+
+		// Process modified IDs -- delete them, then reimport.
 		// Get map (old => new) modified IDs.
 		$modified_ids_map = $this->run_state->get_modified_ids_map();
 		if ( null !== $modified_ids_map && ! empty( $modified_ids_map ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $modified_ids_map ) ) );
 			
-			// Get list of (already) deleted modified IDs.
-			$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
-
-			// Get local IDs which still need to be deleted (subtract modified local IDs from already deleted local IDs), and delete them.
-			$local_ids_to_delete = array_diff( array_values( $modified_ids_map ), array_values( $deleted_modified_ids_map ) );
+			// Get list of already deleted modified IDs, and IDs which still need to be deleted.
+			$already_deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
+			$local_ids_to_delete              = array_values( array_diff( array_values( $modified_ids_map ), array_values( $already_deleted_modified_ids_map ) ) );
+			
+			// Delete modified posts so they can be reimported.
 			$this->delete_local_posts( $local_ids_to_delete );
 
-			// Append to run-state that these modified IDs were deleted.
+			// Save in run-state that these modified IDs were deleted.
 			foreach ( $local_ids_to_delete as $id ) {
 				$this->run_state->append_deleted_modified_id(
 					[
@@ -653,8 +635,14 @@ class ContentDiffMigrator {
 			$new_live_ids = array_merge( $new_live_ids, array_keys( $modified_ids_map ) );
 		}
 
+		// If no new/modified posts to migrate, exit.
+		if ( empty( $new_live_ids ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new/modified posts to migrate.' );
+			exit;
+		}
+
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $new_live_ids ) ) );
-		$imported_posts_data = $this->import_posts( $new_live_ids, $hierarchical_taxonomy_term_id_updates, $source_hostname );
+		$imported_posts_data = $this->import_posts( $new_live_ids, $taxonomies_to_migrate, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
@@ -674,7 +662,7 @@ class ContentDiffMigrator {
 		// Display info about available logs.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Check the logs for more details:' );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', Logger::instance()->get_log_file_name() ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', $this->run_state->get_file_path( 'manifest.json' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', RunState::FILE_MANIFEST ) );
 
 		wp_cache_flush();
 	}
@@ -699,72 +687,19 @@ class ContentDiffMigrator {
 		}
 		$taxonomies_to_migrate = array_values( $taxonomies_to_migrate );
 
-		// Check if any of the local taxonomies have nonexistent wp_term_taxonomy.parent, and fix those before continuing by setting their parents to 0.
-		$hierarchical_taxonomies = $this->logic->get_taxonomies_with_nonexistent_parents( $wpdb->prefix, $taxonomies_to_migrate );
-		if ( ! empty( $hierarchical_taxonomies ) ) {
-			$list              = '';
-			$term_taxonomy_ids = [];
-			foreach ( $hierarchical_taxonomies as $hierarchical_taxonomy ) {
-				$list               .= ( empty( $list ) ? '' : "\n" ) . '  ' . wp_json_encode( $hierarchical_taxonomy );
-				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
-			}
-
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following local DB hierarchical taxonomies have invalid parent IDs which will be fixed first (their parents set to 0).' );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
-			$this->logic->reset_hierarchical_taxonomies_parents( $wpdb->prefix, $term_taxonomy_ids );
+		// Fix local taxonomies with nonexistent parent term_ids.
+		$fixed_local = $this->logic->get_data_importer()->fix_hierarchical_taxonomies_parents( $wpdb->prefix, $taxonomies_to_migrate );
+		if ( ! empty( $fixed_local ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Fixed %d local DB hierarchical taxonomies with invalid parent IDs (set to 0).', count( $fixed_local ) ) );
 		}
 
-		// Check the same for Live DB's hierarchical taxonomies, and fix those before continuing by setting their parents to 0.
-		$hierarchical_taxonomies = $this->logic->get_taxonomies_with_nonexistent_parents( $this->live_table_prefix, $taxonomies_to_migrate );
-		if ( ! empty( $hierarchical_taxonomies ) ) {
-			$list              = '';
-			$term_taxonomy_ids = [];
-			foreach ( $hierarchical_taxonomies as $hierarchical_taxonomy ) {
-				$list               .= ( empty( $list ) ? '' : "\n" ) . '  ' . wp_json_encode( $hierarchical_taxonomy );
-				$term_taxonomy_ids[] = $hierarchical_taxonomy['term_taxonomy_id'];
-			}
-
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'The following live DB hierarchical taxonomies have invalid parent IDs which must be fixed first (their parents set to 0 in live tables).' );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $list );
-			$this->logic->reset_hierarchical_taxonomies_parents( $this->live_table_prefix, $term_taxonomy_ids );
+		// Fix live taxonomies with nonexistent parent term_ids.
+		$fixed_live = $this->logic->get_data_importer()->fix_hierarchical_taxonomies_parents( $this->live_table_prefix, $taxonomies_to_migrate );
+		if ( ! empty( $fixed_live ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Fixed %d live DB hierarchical taxonomies with invalid parent IDs (set to 0).', count( $fixed_live ) ) );
 		}
 
 		return $taxonomies_to_migrate;
-	}
-
-	/**
-	 * Recreates all hierarchical taxonomies from Live to local.
-	 *
-	 * If hierarchical cats are used, their whole structure should be in place when they get assigned to posts.
-	 *
-	 * @param array $taxonomies_to_migrate Hierarchical taxonomies to migrate.
-	 *
-	 * @return array Map of taxonomy term_id udpdates. Keys are hierarchical taxonomies' term_ids on Live and values are corresponding
-	 *               hierarchical taxonomies' term_ids on local (staging).
-	 */
-	public function recreate_hierarchical_taxonomies( $taxonomies_to_migrate ) {
-		$hierarchical_taxonomy_term_id_updates = $this->logic->recreate_hierarchical_taxonomies( $this->live_table_prefix, $taxonomies_to_migrate );
-
-		// Log taxonomy term_id updates to debug log.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Recreated hierarchical taxonomies: ' . wp_json_encode( [ 'hierarchical_taxonomy_term_id_updates' => $hierarchical_taxonomy_term_id_updates ] ) );
-
-		return $hierarchical_taxonomy_term_id_updates;
-	}
-
-	/**
-	 * Migrates all WP_Users from Live to local.
-	 *
-	 * @param string $live_table_prefix Live table prefix.
-	 * @param string $source_hostname   Source hostname.
-	 * @return array Map of newly inserted WP_Users, keys are old Live IDs and values are new local IDs.
-	 */
-	public function migrate_all_users( string $live_table_prefix, string $source_hostname ): array {
-		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
-
-		// Log inserted users to debug log.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Inserted WP_Users: ' . wp_json_encode( [ 'inserted_wp_users_updates' => $inserted_wp_users_updates ] ) );
-
-		return $inserted_wp_users_updates;
 	}
 
 	/**
@@ -783,10 +718,9 @@ class ContentDiffMigrator {
 	/**
 	 * Creates and imports posts and all related post data. Skips previously imported IDs found in $this->log_imported_post_ids.
 	 *
-	 * @param array  $all_live_posts_ids       Live IDs to be imported to local.
-	 * @param array  $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values
-	 *                                         are corresponding Taxonomies' term_ids on local (staging).
-	 * @param string $source_hostname          Source hostname.
+	 * @param array  $new_live_ids          New Live IDs to be imported.
+	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
+	 * @param string $source_hostname       Source hostname.
 	 *
 	 * @return array $imported_posts_data {
 	 *     Array with subarray records for all the imported post objects.
@@ -798,92 +732,54 @@ class ContentDiffMigrator {
 	 *     }
 	 * }
 	 */
-	public function import_posts( array $all_live_posts_ids, array $hierarchical_taxonomy_term_id_updates, string $source_hostname ): array {
+	public function import_posts( array $new_live_ids, array $taxonomies_to_migrate, string $source_hostname ): array {
+		$imported_posts_data = [];
 
-		$post_ids_for_import = $all_live_posts_ids;
+		// Get already imported IDs to skip (for resume capability).
+		$already_imported_ids_map = $this->run_state->get_imported_post_ids_map() ?? [];
+		$live_ids_to_import       = array_values( array_diff( $new_live_ids, array_keys( $already_imported_ids_map ) ) );
 
-		// Skip previously imported posts.
-		$imported_posts_data = $this->run_state->read_imported_posts();
-		$imported_ids_lookup = [];
-		foreach ( $imported_posts_data as $imported_post_data ) {
-			$id_old = $imported_post_data['id_old'] ?? null;
-			if ( ! is_null( $id_old ) ) {
-				$imported_ids_lookup[ $id_old ] = $imported_post_data;
-			}
-		}
-
-		foreach ( $imported_ids_lookup as $id_old => $imported_post_data ) {
-			$key_id_old = array_search( $id_old, $post_ids_for_import );
-			if ( false !== $key_id_old ) {
-				unset( $post_ids_for_import[ $key_id_old ] );
-			}
-		}
-
-		if ( empty( $post_ids_for_import ) ) {
+		// Log resume progress.
+		if ( empty( $live_ids_to_import ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts were already imported, moving on.' );
 			return $imported_posts_data;
 		}
-		if ( $post_ids_for_import !== $all_live_posts_ids ) {
-			$post_ids_for_import = array_values( $post_ids_for_import );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d IDs were already imported, continuing from there. Hold tight..', count( $all_live_posts_ids ) - count( $post_ids_for_import ), count( $all_live_posts_ids ) ) );
+		if ( count( $already_imported_ids_map ) > 0 ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d IDs were already imported, continuing from there...', count( $already_imported_ids_map ) ) );
 		}
 
-		// Import Posts.
-		$percent_progress = null;
-		foreach ( $post_ids_for_import as $key_post_id => $post_id_live ) {
-
-			// Get and output progress meter by 10%.
-			$last_percent_progress = $percent_progress;
-			$this->logic->get_progress_percentage( count( $post_ids_for_import ), $key_post_id + 1, 10, $percent_progress );
-			if ( $last_percent_progress !== $percent_progress ) {
-				PHPUtil::echo_stdout( $percent_progress . '%' . ( ( $percent_progress < 100 ) ? '... ' : ".\n" ) );
+		// Import posts.
+		$progress = new Progress( count( $live_ids_to_import ) );
+		foreach ( $live_ids_to_import as $key_live_id => $id_live ) {
+			// Output progress by 10%.
+			$progress_milestone = $progress->tick( $key_live_id + 1 );
+			if ( $progress_milestone ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
-			// Get all Post data from DB.
-			$post_data = $this->logic->get_post_data( (int) $post_id_live, $this->live_table_prefix );
-			$post_type = $post_data[ $this->logic::DATAKEY_POST ]['post_type'];
-
-			// First just insert a new blank `wp_posts` record to get the new ID.
+			// Import single post via Logic.
 			try {
-				$post_id_new           = $this->logic->insert_post( $post_data[ $this->logic::DATAKEY_POST ] );
-				$imported_posts_data[] = [
-					'post_type' => $post_type,
-					'id_old'    => (int) $post_id_live,
-					'id_new'    => (int) $post_id_new,
-				];
+				$result                = $this->logic->import_single_post(
+					(int) $id_live,
+					$this->live_table_prefix,
+					$taxonomies_to_migrate,
+					$source_hostname
+				);
+				$imported_posts_data[] = $result;
+
+				// Log imported post to run-state for resume capability.
+				$this->run_state->append_imported_post( $result );
 			} catch ( \Exception $e ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'import_posts error while inserting post_type %s id_old=%d : %s', $post_type, $post_id_live, $e->getMessage() ) );
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Error inserting %s Live ID %d (details in log file)', $post_type, $post_id_live ) );
-
-				// Error is logged. Continue importing other posts.
-				continue;
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::ERROR, sprintf( 'import_posts error id_old=%d : %s', $id_live, $e->getMessage() ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'Error importing Live ID %d (details in log file)', $id_live ) );
+				// Continue importing other posts.
 			}
-
-			// Now import all related Post data.
-			$import_errors = $this->logic->import_post_data( $post_id_new, $post_data, $hierarchical_taxonomy_term_id_updates, $source_hostname );
-			if ( ! empty( $import_errors ) ) {
-				$msg = sprintf( 'Errors during import post_type=%s, id_old=%d, id_new=%d :', $post_type, $post_id_live, $post_id_new );
-				foreach ( $import_errors as $import_error ) {
-					$msg .= PHP_EOL . '- ' . $import_error;
-				}
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $msg );
-			}
-
-			// Log imported post to JSONL.
-			$this->run_state->append_imported_post(
-				[
-					'post_type' => $post_type,
-					'id_old'    => (int) $post_id_live,
-					'id_new'    => (int) $post_id_new,
-				]
-			);
-
-			// Save source-specific old ID meta.
-			$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
-			update_post_meta( $post_id_new, $meta_key, $post_id_live );
+		}
+		if ( $progress->finish() ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
 		}
 
-		// Flush the cache for `$wpdb::update`s to sink in.
+		// Flush the cache for DB updates to take effect.
 		wp_cache_flush();
 
 		return $imported_posts_data;
@@ -955,14 +851,13 @@ class ContentDiffMigrator {
 
 		// Update parent IDs.
 		global $wpdb;
-		$percent_progress = null;
+		$progress = new Progress( count( $parent_ids_for_update ) );
 		foreach ( $parent_ids_for_update as $key_id_old => $id_old ) {
 
-			// Get and output progress meter by 10%.
-			$last_percent_progress = $percent_progress;
-			$this->logic->get_progress_percentage( count( $parent_ids_for_update ), $key_id_old + 1, 10, $percent_progress );
-			if ( $last_percent_progress !== $percent_progress ) {
-				PHPUtil::echo_stdout( $percent_progress . '%' . ( ( $percent_progress < 100 ) ? '... ' : ".\n" ) );
+			// Output progress by 10%.
+			$progress_milestone = $progress->tick( $key_id_old + 1 );
+			if ( $progress_milestone ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
 			// Get new local Post ID.
@@ -1020,6 +915,9 @@ class ContentDiffMigrator {
 			}
 			$this->run_state->append_updated_parent( $log_entry );
 		}
+		if ( $progress->finish() ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+		}
 	}
 
 	/**
@@ -1050,7 +948,7 @@ class ContentDiffMigrator {
 		 *
 		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
 		 */
-		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_mapping_from_db( $source_hostname );
+		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
 
 		// Get new Post IDs from DB.
 		$new_post_ids = array_values( $imported_post_ids_map );
