@@ -9,7 +9,7 @@
 namespace Newspack\ContentDiffMigrator\Logic;
 
 use Newspack\ContentDiffMigrator\Utils\Logger;
-use Newspack\ContentDiffMigrator\Utils\PHP as PHPUtil;
+use Newspack\ContentDiffMigrator\Utils\Progress;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
 use Psr\Log\LogLevel;
@@ -108,8 +108,37 @@ class ContentDiffLogic {
 		$this->wpdb                     = $wpdb;
 		$this->wp_block_manipulator     = new WpBlockManipulator();
 		$this->html_element_manipulator = new HtmlElementManipulator();
-		$this->block_updater            = new BlockUpdater( [ $this, 'attachment_url_to_postid' ] );
+		$this->block_updater            = new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
 		$this->data_importer            = new DataImporter( $wpdb );
+	}
+
+	/**
+	 * Gets the DataImporter instance.
+	 *
+	 * @return DataImporter
+	 */
+	public function get_data_importer(): DataImporter {
+		return $this->data_importer;
+	}
+
+	/**
+	 * Gets the source-specific meta key for storing old IDs.
+	 *
+	 * @param string $source_hostname Source hostname (e.g., 'www.example.com').
+	 *
+	 * @throws \InvalidArgumentException If source hostname is empty.
+	 *
+	 * @return string The full meta key (e.g., 'newspackcontentdiff_oldid_www.example.com').
+	 */
+	public static function get_old_id_meta_key( string $source_hostname ): string {
+		if ( empty( $source_hostname ) ) {
+			throw new \InvalidArgumentException( 'Source hostname is required.' );
+		}
+
+		// Sanitize hostname.
+		$source_hostname = wp_parse_url( 'https://' . $source_hostname, PHP_URL_HOST );
+
+		return self::SAVED_META_LIVE_ID_PREFIX . $source_hostname;
 	}
 
 	/**
@@ -149,26 +178,6 @@ class ContentDiffLogic {
 		}
 
 		return $source_hostnames;
-	}
-
-	/**
-	 * Gets the source-specific meta key for storing old IDs.
-	 *
-	 * @param string $source_hostname Source hostname (e.g., 'www.example.com').
-	 *
-	 * @throws \InvalidArgumentException If source hostname is empty.
-	 *
-	 * @return string The full meta key (e.g., 'newspackcontentdiff_oldid_www.example.com').
-	 */
-	public static function get_old_id_meta_key( string $source_hostname ): string {
-		if ( empty( $source_hostname ) ) {
-			throw new \InvalidArgumentException( 'Source hostname is required.' );
-		}
-
-		// Sanitize hostname.
-		$source_hostname = wp_parse_url( 'https://' . $source_hostname, PHP_URL_HOST );
-
-		return self::SAVED_META_LIVE_ID_PREFIX . $source_hostname;
 	}
 
 	/**
@@ -266,7 +275,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Imported attachment IDs, keys are old/live IDs, values are new/local/Staging IDs.
 	 */
-	public function get_imported_attachment_id_mapping_from_db( string $source_hostname ): array {
+	public function get_imported_attachment_id_map_from_db( string $source_hostname ): array {
 
 		$attachment_ids_map = [];
 		$meta_key           = $this->get_old_id_meta_key( $source_hostname );
@@ -350,14 +359,12 @@ class ContentDiffLogic {
 			$local_posts_lookup[ $lookup_key ] = true;
 		}
 
-		$percent_progress = null;
+		$progress = new Progress( count( $results_live_posts ) );
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
-			// Output progress meter by 10% increments.
-			$last_percent_progress = $percent_progress;
-			$this->get_progress_percentage( count( $results_live_posts ), $key_live_post + 1, 10, $percent_progress );
-			if ( $last_percent_progress !== $percent_progress ) {
-				PHPUtil::echo_stdout( $percent_progress . '%' . ( ( $percent_progress < 100 ) ? '... ' : ".\n" ) );
+			// Output progress by 10%.
+			if ( $progress_milestone = $progress->tick( $key_live_post + 1 ) ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
 			// Use hash lookup instead of nested loop - O(1) instead of O(n).
@@ -368,6 +375,9 @@ class ContentDiffLogic {
 			if ( false === $found ) {
 				$ids[] = (int) $live_post['ID'];
 			}
+		}
+		if ( $progress->finish() ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
 		}
 
 		return $ids;
@@ -409,14 +419,12 @@ class ContentDiffLogic {
 			}
 		}
 
-		$percent_progress = null;
+		$progress = new Progress( count( $results_live_posts ) );
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
-			// Output progress meter by 10% increments.
-			$last_percent_progress = $percent_progress;
-			$this->get_progress_percentage( count( $results_live_posts ), $key_live_post + 1, 10, $percent_progress );
-			if ( $last_percent_progress !== $percent_progress ) {
-				PHPUtil::echo_stdout( $percent_progress . '%' . ( ( $percent_progress < 100 ) ? '... ' : ".\n" ) );
+			// Output progress by 10%.
+			if ( $progress_milestone = $progress->tick( $key_live_post + 1 ) ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
 			// Use hash lookup instead of nested loop - O(1) instead of O(n).
@@ -432,6 +440,9 @@ class ContentDiffLogic {
 					];
 				}
 			}
+		}
+		if ( $progress->finish() ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
 		}
 
 		return $ids_modified;
@@ -573,423 +584,6 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Checks local Hierarchical Taxonomies, and returns those which might have wrong parent term_ids that don't exist.
-	 *
-	 * @param string $table_prefix DB table prefix which is to be used for this query.
-	 * @param array  $taxonomies_to_check Hierarchical Taxonomies to check.
-	 *
-	 * @return array $args {
-	 *     Hierarchical Taxonomies which have nonexistent parent term_id.
-	 *
-	 *     @type string term_id          wp_terms.term_id.
-	 *     @type string name             wp_terms.name.
-	 *     @type string slug             wp_terms.slug.
-	 *     @type string term_taxonomy_id wp_termtaxonomy.term_taxonomy_id.
-	 *     @type string taxonomy         wp_termtaxonomy.taxonomy, will be 'category'.
-	 *     @type string parent           wp_termtaxonomy.parent which is not found in wp_terms and is wrong.
-	 * }
-	 */
-	public function get_taxonomies_with_nonexistent_parents( $table_prefix, $taxonomies_to_check ): array {
-
-		$terms         = esc_sql( $table_prefix . 'terms' );
-		$term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
-
-		// phpcs:disable -- wpdb::prepare used by wrapper and query fully sanitized.
-		$taxonomy_format = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
-		$taxonomies_with_nonexistent_parents = $this->wpdb->get_results(
-			$this->wpdb->prepare(
-				"SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
-				FROM {$terms} t
-				JOIN {$term_taxonomy} tt
-					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_format) AND parent <> 0
-				LEFT JOIN {$terms} ttparent
-					ON ttparent.term_id = tt.parent
-				WHERE ttparent.term_id IS NULL;",
-				$taxonomies_to_check
-			)
-			,
-			ARRAY_A
-		);
-		// phpcs:enable
-
-		return $taxonomies_with_nonexistent_parents;
-	}
-
-	/**
-	 * Sets these wp_term_taxnomy.term_taxonomy_ids' parents to 0.
-	 *
-	 * @param string $table_prefix      DB table prefix.
-	 * @param array  $term_taxonomy_ids term_taxonomy_ids.
-	 *
-	 * @return void
-	 */
-	public function reset_hierarchical_taxonomies_parents( string $table_prefix, array $term_taxonomy_ids ): void {
-		$placeholders  = implode( ',', array_fill( 0, count( $term_taxonomy_ids ), '%d' ) );
-		$term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
-		// phpcs:disable -- wpdb::prepare used by wrapper and query fully sanitized.
-		$this->wpdb->query(
-			$this->wpdb->prepare(
-				"UPDATE {$term_taxonomy} SET parent = 0 WHERE term_taxonomy_ID IN ( {$placeholders} );",
-				$term_taxonomy_ids
-			)
-		);
-		// phpcs:enable
-	}
-
-	/**
-	 * Recreates all hierarchical or non-hierarchical taxonomies from Live to local.
-	 *
-	 * @param string $live_table_prefix Live DB table prefix.
-	 * @param array  $hierarchical_taxonomies_to_migrate Hierarchical taxonomies to migrate.
-	 *
-	 * @return array Map of all live to local hierarchical taxonomies. Keys are live category term_ids, and values are their corresponding
-	 *               local category term_ids.
-	 */
-	public function recreate_hierarchical_taxonomies( $live_table_prefix, $hierarchical_taxonomies_to_migrate ) {
-		$table_prefix             = $this->wpdb->prefix;
-		$live_terms_table         = esc_sql( $live_table_prefix . 'terms' );
-		$live_termstaxonomy_table = esc_sql( $live_table_prefix . 'term_taxonomy' );
-
-		// Get all live site's hierarchical hierarchical taxonomies, ordered by parent for easy hierarchical reconstruction.
-		// phpcs:disable -- wpdb::prepare is used by wrapper.
-		$taxonomy_format = implode( ', ', array_fill( 0, count( $hierarchical_taxonomies_to_migrate ), '%s' ) );
-		$live_hierarchical_taxonomies = $this->wpdb->get_results(
-			$this->wpdb->prepare(
-				"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
-				FROM $live_terms_table t
-				JOIN $live_termstaxonomy_table tt ON t.term_id = tt.term_id
-				WHERE tt.taxonomy IN ($taxonomy_format)
-				ORDER BY tt.parent;",
-				$hierarchical_taxonomies_to_migrate
-			),
-			ARRAY_A
-		);
-		// phpcs:enable
-
-		// Go through all the $live_taxonomies and get or create them on local, and mark their term_id changes in $hierarchical_taxonomy_term_id_updates.
-		$hierarchical_taxonomy_term_id_updates = [];
-		foreach ( $live_hierarchical_taxonomies as $live_hierarchical_taxonomy ) {
-			$live_hierarchical_taxonomy_tree = $this->get_hierarchical_taxonomy_tree( $live_table_prefix, $live_hierarchical_taxonomy );
-
-			// Register taxonomy if not already registered needed (init action not executed at this point, and it just needs to be register it for the purpose of this plugin).
-			if ( ! taxonomy_exists( $live_hierarchical_taxonomy_tree['taxonomy'] ) ) {
-				$registered_taxonomy = register_taxonomy(
-					$live_hierarchical_taxonomy_tree['taxonomy'],
-					'post',
-					[
-						'taxonomy'     => $live_hierarchical_taxonomy_tree['taxonomy'],
-						'description'  => $live_hierarchical_taxonomy_tree['taxonomy'],
-						'count'        => $live_hierarchical_taxonomy_tree['count'],
-						'public'       => true,
-						'hierarchical' => true,
-					]
-				);
-				if ( is_wp_error( $registered_taxonomy ) ) {
-					WP_CLI::error( 'Failed to register taxonomy ' . $live_hierarchical_taxonomy_tree['taxonomy'] . ' error: ' . $registered_taxonomy->get_error_message() );
-				}
-			}
-
-			$created_hierarchical_taxonomy_tree = $this->get_or_create_hierarchical_taxonomy_tree( $table_prefix, $live_hierarchical_taxonomy_tree );
-
-			$hierarchical_taxonomy_term_id_updates[ $live_hierarchical_taxonomy['term_id'] ] = $created_hierarchical_taxonomy_tree['term_id'];
-		}
-
-		return $hierarchical_taxonomy_term_id_updates;
-	}
-
-	/**
-	 * Fetches the hierarchical taxonomy's tree by retrieving all the parent hierarchical taxonomies down to the top parent.
-	 *
-	 * @param string $table_prefix DB table prefix.
-	 * @param array  $hierarchical_taxonomy {
-	 *    Hierarchical taxonomy data array.
-	 *
-	 *     @type string term_id     Hierarchical taxonomy term_id.
-	 *     @type string taxonomy    Should always be a hierarchical taxonomy.
-	 *     @type string name        Hierarchical taxonomy name.
-	 *     @type string slug        Hierarchical taxonomy slug.
-	 *     @type string description Hierarchical taxonomy description.
-	 *     @type string count       Hierarchical taxonomy count.
-	 *     @type string parent      Hierarchical taxonomy parent term_id.
-	 * }
-	 *
-	 * @return array {
-	 *     A nested array of hierarchical taxonomies, where 'parent' key is either another subarray hierarchical taxonomy, or '0' if no parent.
-	 *
-	 *     @type string       term_id     Hierarchical taxonomy term_id.
-	 *     @type string       taxonomy    Should always be a hierarchical taxonomy.
-	 *     @type string       name        Hierarchical taxonomy name.
-	 *     @type string       slug        Hierarchical taxonomy slug.
-	 *     @type string       description Hierarchical taxonomy description.
-	 *     @type string       count       Hierarchical taxonomy count.
-	 *     @type string|array parent      Either nested parent subarray hierarchical taxonomy containing all the same keys and values, or '0'.
-	 * }
-	 */
-	public function get_hierarchical_taxonomy_tree( $table_prefix, $hierarchical_taxonomy ) {
-
-		$hierarchical_taxonomy_tree = $hierarchical_taxonomy;
-
-		$table_terms         = esc_sql( $table_prefix . 'terms' );
-		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
-
-		$parent_term_id = $hierarchical_taxonomy['parent'];
-		if ( 0 != $parent_term_id ) {
-			// phpcs:disable -- wpdb::prepare used by wrapper.
-			$parent_row = $this->wpdb->get_row(
-				$this->wpdb->prepare(
-					"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
-					FROM {$table_terms} t
-			        JOIN {$table_term_taxonomy} tt ON t.term_id = tt.term_id
-					WHERE tt.taxonomy = %s
-					AND t.term_id = %s
-					ORDER BY tt.parent;",
-					[ $hierarchical_taxonomy['taxonomy'], $parent_term_id ]
-				),
-				ARRAY_A
-			);
-			// phpcs:enable
-
-			// This is either root taxonomy, or go level up recursively.
-			if ( 0 == $parent_row['parent'] ) {
-				$hierarchical_taxonomy_tree['parent'] = $parent_row;
-			} else {
-				$hierarchical_taxonomy_tree['parent'] = $this->get_hierarchical_taxonomy_tree( $table_prefix, $parent_row );
-			}
-		}
-
-		return $hierarchical_taxonomy_tree;
-	}
-
-	/**
-	 * Rebuilds the full tree of a hierarchical taxonomy. Either taxes an existing hierarchical taxonomy, or creates it.
-	 *
-	 * @param string $table_prefix  DB table prefix.
-	 * @param array  $hierarchical_taxonomy_tree {
-	 *     A nested array of hierarchical taxonomies, where 'parent' key is either another subarray hierarchical taxonomy, or '0' if no parent.
-	 *     This is being read as a parameter and will be rebuilt node by node.
-	 *
-	 *     @type string       term_id     Hierarchical Taxonomy term_id.
-	 *     @type string       taxonomy    Should always be a hierarchical taxonomy.
-	 *     @type string       name        Hierarchical Taxonomy name.
-	 *     @type string       slug        Hierarchical Taxonomy slug.
-	 *     @type string       description Hierarchical Taxonomy description.
-	 *     @type string       count       Hierarchical Taxonomy count.
-	 *     @type string|array parent      Either nested parent subarray hierarchical taxonomy containing all the same keys and values, or '0'.
-	 * }
-	 *
-	 * @return array {
-	 *     A nested array of hierarchical taxonomies, where 'parent' key is either another subarray hierarchical taxonomy, or '0' if no parent.
-	 *     This is the resulting hierarchical taxonomy tree, either existing hierarchical taxonomies fetched or new ones created.
-	 *
-	 *     @type string       term_id     Hierarchical Taxonomy term_id.
-	 *     @type string       taxonomy    Should always be a hierarchical taxonomy.
-	 *     @type string       name        Hierarchical Taxonomy name.
-	 *     @type string       slug        Hierarchical Taxonomy slug.
-	 *     @type string       description Hierarchical Taxonomy description.
-	 *     @type string       count       Hierarchical Taxonomy count.
-	 *     @type string|array parent      Either nested parent subarray hierarchical taxonomy containing all the same keys and values, or '0'.
-	 * }
-	 */
-	public function get_or_create_hierarchical_taxonomy_tree( $table_prefix, $hierarchical_taxonomy_tree ) {
-		// If this is the top parent hierarchical taxonomy, get or create it.
-		if ( 0 == $hierarchical_taxonomy_tree['parent'] ) {
-
-			// Get or create this top parent hierarchical taxonomy.
-			$hierarchical_taxonomy_top_parent_row     = $this->get_hierarchical_taxonomy_array_by_name_and_parent( $table_prefix, $hierarchical_taxonomy_tree['name'], $hierarchical_taxonomy_tree['taxonomy'], 0 );
-			$hierarchical_taxonomy_top_parent_term_id = $hierarchical_taxonomy_top_parent_row['term_id'] ?? null;
-			if ( ! $hierarchical_taxonomy_top_parent_term_id ) {
-				// Insert it if it doesn't exist.
-				$hierarchical_taxonomy_top_parent_term_id = $this->wp_insert_or_update_term(
-					$hierarchical_taxonomy_tree['name'],
-					$hierarchical_taxonomy_tree['description'],
-					0,
-					$hierarchical_taxonomy_tree['taxonomy']
-				);
-			}
-			// Get this parent taxonomy's full array.
-			$hierarchical_taxonomy_top_parent = $this->get_term_and_taxonomy_array(
-				$table_prefix,
-				[ 'term_id' => $hierarchical_taxonomy_top_parent_term_id ],
-				$hierarchical_taxonomy_tree['taxonomy']
-			);
-
-			return $hierarchical_taxonomy_top_parent;
-		}
-
-		// If this is not top parent taxonomy, keep going deeper recursively until reaching it.
-		if ( 0 != $hierarchical_taxonomy_tree['parent'] ) {
-			$current_parent_tree = $this->get_or_create_hierarchical_taxonomy_tree( $table_prefix, $hierarchical_taxonomy_tree['parent'] );
-		}
-
-		// For a non-top-parent taxonomy, get or create its tree and return.
-		$taxonomy_row     = $this->get_hierarchical_taxonomy_array_by_name_and_parent( $table_prefix, $hierarchical_taxonomy_tree['name'], $hierarchical_taxonomy_tree['taxonomy'], $current_parent_tree['term_id'] );
-		$taxonomy_term_id = $taxonomy_row['term_id'] ?? null;
-		if ( ! $taxonomy_term_id ) {
-			$taxonomy_term_id = $this->wp_insert_or_update_term(
-				$hierarchical_taxonomy_tree['name'],
-				$hierarchical_taxonomy_tree['description'],
-				$current_parent_tree['term_id'],
-				$hierarchical_taxonomy_tree['taxonomy']
-			);
-		}
-		$taxonomy = $this->get_term_and_taxonomy_array(
-			$table_prefix,
-			[ 'term_id' => $taxonomy_term_id ],
-			$hierarchical_taxonomy_tree['taxonomy']
-		);
-
-		// This is the reubuilt taxonomy tree.
-		$rebuilt_hierarchical_taxonomy_tree           = $taxonomy;
-		$rebuilt_hierarchical_taxonomy_tree['parent'] = $current_parent_tree;
-
-		return $rebuilt_hierarchical_taxonomy_tree;
-	}
-
-	/**
-	 * Gets Term and Taxonomy data array by either term_id or Term name.
-	 *
-	 * @param string $table_prefix DB table prefix.
-	 * @param array  $where        Where clause. Must provide either 'term_id' or 'term_name' key and value.
-	 * @param string $taxonomy     Taxonomy.
-	 *
-	 * @return array|null {
-	 *     @type string term_id     Term term_id.
-	 *     @type string taxonomy    Term taxonomy, e.g. 'category' or 'post_tag' or 'author'.
-	 *     @type string name        Term name.
-	 *     @type string slug        Term slug.
-	 *     @type string description Taxonomy description.
-	 *     @type string count       Term count.
-	 *     @type string parent      Term parent's term_id.
-	 * }
-	 */
-	public function get_term_and_taxonomy_array( $table_prefix, array $where, $taxonomy ) {
-
-		$table_terms         = esc_sql( $table_prefix . 'terms' );
-		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
-
-		$query_and_clause    = '';
-		$query_and_parameter = null;
-		if ( isset( $where['term_id'] ) ) {
-			$query_and_clause    = ' AND t.term_id = %s ';
-			$query_and_parameter = $where['term_id'];
-		} elseif ( isset( $where['term_name'] ) ) {
-			$query_and_clause    = ' AND t.name = %s ';
-			$query_and_parameter = $where['term_name'];
-		} else {
-			return null;
-		}
-
-		// phpcs:disable -- wpdb::prepare used by wrapper.
-		$term_taxonomy_data = $this->wpdb->get_row(
-			$this->wpdb->prepare(
-				"SELECT t.term_id, tt.taxonomy, tt.term_taxonomy_id, t.name, t.slug, tt.parent, tt.description, tt.count
-				FROM $table_terms t
-		        JOIN $table_term_taxonomy tt ON t.term_id = tt.term_id
-				WHERE tt.taxonomy = %s
-				{$query_and_clause} ;",
-				$taxonomy,
-				$query_and_parameter
-			),
-			ARRAY_A
-		);
-		// phpcs:enable
-
-		return $term_taxonomy_data;
-	}
-
-	/**
-	 * Gets hierarchical taxonomy by its name and parent.
-	 *
-	 * @param string $table_prefix          DB table prefix.
-	 * @param string $taxonomy_name         Hierarchical Taxonomy name.
-	 * @param string $taxonomy              Hierarchical Taxonomy.
-	 * @param string $taxonomy_parent       Hierarchical Taxonomy parent's term_id.
-	 *
-	 * @return array {
-	 *     @type string term_id     Hierarchical Taxonomy term_id.
-	 *     @type string taxonomy    Should always be a hierarchical taxonomy.
-	 *     @type string name        Hierarchical Taxonomy name.
-	 *     @type string slug        Hierarchical Taxonomy slug.
-	 *     @type string description Hierarchical Taxonomy description.
-	 *     @type string count       Hierarchical Taxonomy count.
-	 *     @type string parent      Hierarchical Taxonomy parent's term_id.
-	 * }
-	 */
-	public function get_hierarchical_taxonomy_array_by_name_and_parent( $table_prefix, $taxonomy_name, $taxonomy, $taxonomy_parent ) {
-		$table_terms         = esc_sql( $table_prefix . 'terms' );
-		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
-
-		// phpcs:disable -- wpdb::prepare used by wrapper.
-		$hierarchical_taxonomy = $this->wpdb->get_row(
-			$this->wpdb->prepare(
-				"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
-					FROM $table_terms t
-			        JOIN $table_term_taxonomy tt ON t.term_id = tt.term_id
-					WHERE tt.taxonomy = %s
-					AND tt.parent = %s
-					AND t.name = %s;",
-				$taxonomy,
-				$taxonomy_parent,
-				$taxonomy_name
-			),
-			ARRAY_A
-		);
-		// phpcs:enable
-
-		return $hierarchical_taxonomy;
-	}
-
-	/**
-	 * Create a term in a hierarchical taxonomy, or update it if it already exists.
-	 *
-	 * @param string $term_name         Term name.
-	 * @param string $term_description  Term description.
-	 * @param string $term_parent       Term parent's term_id.
-	 * @param string $taxonomy          Taxonomy.
-	 *
-	 * @return int|\WP_Error The ID number of the new or updated Term on success. Zero or a WP_Error on failure,
-	 *                       depending on param `$wp_error`.
-	 */
-	public function wp_insert_or_update_term( $term_name, $term_description, $term_parent, $taxonomy ) {
-		// Check if the term already exists.
-		$term_exists = term_exists( $term_name, $taxonomy, $term_parent ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.term_exists_term_exists
-
-		// If the term doesn't exist, insert it.
-		if ( ! $term_exists ) {
-			$term_id = wp_insert_term(
-				$term_name,
-				$taxonomy,
-				[
-					'description' => $term_description,
-					'parent'      => $term_parent,
-				]
-			);
-
-			if ( is_wp_error( $term_id ) ) {
-				return $term_id;
-			}
-			return $term_id['term_id'];
-		}
-
-		// If the term exists, update it.
-		$term_id     = $term_exists['term_id'];
-		$term_update = wp_update_term(
-			$term_id,
-			$taxonomy,
-			[
-				'description' => $term_description,
-				'parent'      => $term_parent,
-			]
-		);
-
-		if ( is_wp_error( $term_update ) ) {
-			return $term_update;
-		}
-
-		return $term_id;
-	}
-
-	/**
 	 * Migrates all users from Live tables to local tables.
 	 *
 	 * @param string $live_table_prefix Live DB table prefix.
@@ -1006,19 +600,17 @@ class ContentDiffLogic {
 
 		$users_rows = $this->select( $live_table_prefix . 'users', [], $select_just_one_row = false );
 		foreach ( $users_rows as $user_row ) {
-			// Skip if user exists.
-			$user_existing = $this->get_user_by( 'login', $user_row['user_login'] );
+			// Skip if local user already exists with same user_login.
+			$user_existing = $this->wp_get_user_by( 'login', $user_row['user_login'] );
 			if ( $user_existing instanceof WP_User ) {
 				continue;
 			}
 
-			// Get user metas.
+			// Insert user.
 			$usermeta_rows = $this->select_usermeta_rows( $live_table_prefix, $user_row['ID'] );
-
-			// Insert user and user metas.
-			$user_id_new = $this->insert_user( $user_row, $source_hostname );
+			$user_id_new   = $this->data_importer->insert_user( $user_row, $source_hostname );
 			foreach ( $usermeta_rows as $usermeta_row ) {
-				$this->insert_usermeta_row( $usermeta_row, $user_id_new );
+				$this->data_importer->insert_usermeta_row( $usermeta_row, $user_id_new );
 			}
 
 			$inserted_users_map[ $user_row['ID'] ] = $user_id_new;
@@ -1119,30 +711,51 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Imports all the Post related data.
+	 * Imports a single post from the live database.
 	 *
-	 * @param int    $post_id                  Post Id.
-	 * @param array  $data                     Array containing all the data, @see
-	 *                                         \Newspack\ContentDiffMigrator\Logic\ContentDiffMigrator::get_post_data
-	 *                                         for structure.
-	 * @param array  $hierarchical_taxonomy_term_id_updates Hierarchical Taxonomy term_ids updates. Keys are old Live hierarchical taxonomy term_ids, and values are
-	 *                                         corresponding Hierarchical Taxonomies on local (Staging) term_ids.
-	 * @param string $source_hostname          Source hostname.
+	 * Fetches post data, inserts the post, imports all related data (meta, author, comments, taxonomies),
+	 * and saves the source-specific old ID meta.
 	 *
-	 * @return array List of errors which occurred.
+	 * @param int    $id_live                               Live post ID to import.
+	 * @param string $live_table_prefix     Live database table prefix.
+	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
+	 * @param string $source_hostname       Source hostname for meta key.
+	 *
+	 * @throws \RuntimeException If post insertion fails.
+	 *
+	 * @return array {
+	 *     Import result data.
+	 *
+	 *     @type string $post_type Post type of the imported post.
+	 *     @type int    $id_old    Original live post ID.
+	 *     @type int    $id_new    New local post ID.
+	 * }
 	 */
-	/**
-	 * Imports all post-related data (meta, author, comments, taxonomies).
-	 *
-	 * @param int    $post_id                              Post ID.
-	 * @param array  $data                                 Post data array with keys: post, postmeta, comments, commentmeta, users, usermeta, term_relationships, term_taxonomy, terms, termmeta.
-	 * @param array  $hierarchical_taxonomy_term_id_updates Map of updated hierarchical taxonomy term_ids. Keys are Taxonomies' term_ids on live, and values are corresponding Taxonomies' term_ids on local (staging).
-	 * @param string $source_hostname                      Source hostname.
-	 *
-	 * @return array Array of error messages.
-	 */
-	public function import_post_data( $post_id, $data, $hierarchical_taxonomy_term_id_updates, string $source_hostname ) {
-		return $this->data_importer->import_post_data( $post_id, $data, $hierarchical_taxonomy_term_id_updates, $source_hostname );
+	public function import_single_post(
+		int $id_live,
+		string $live_table_prefix,
+		array $taxonomies_to_migrate,
+		string $source_hostname
+	): array {
+		// Get all post data from live DB.
+		$post_data = $this->get_post_data( $id_live, $live_table_prefix );
+		$post_type = $post_data[ self::DATAKEY_POST ]['post_type'];
+
+		// Insert the post row to get the new ID.
+		$post_id_new = $this->insert_post( $post_data[ self::DATAKEY_POST ] );
+
+		// Import all related post data (meta, author, comments, taxonomies). Errors are logged directly by DataImporter.
+		$this->data_importer->import_post_data( $post_id_new, $post_data, $live_table_prefix, $taxonomies_to_migrate, $source_hostname );
+
+		// Save source-specific old ID meta.
+		$meta_key = self::get_old_id_meta_key( $source_hostname );
+		update_post_meta( $post_id_new, $meta_key, $id_live );
+
+		return [
+			'post_type' => $post_type,
+			'id_old'    => $id_live,
+			'id_new'    => $post_id_new,
+		];
 	}
 
 	/**
@@ -1589,68 +1202,6 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Inserts a User.
-	 *
-	 * @param array  $user_row         `user` row.
-	 * @param string $source_hostname  Source hostname.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted User ID.
-	 */
-	public function insert_user( $user_row, string $source_hostname ) {
-		$old_user_id = $user_row['ID'];
-
-		$insert_user_row = $user_row;
-		unset( $insert_user_row['ID'] );
-
-		$inserted = $this->wpdb->insert( $this->wpdb->users, $insert_user_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting user, ID %d, user_row %s', $user_row['ID'], wp_json_encode( $user_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		// Last inserted ID.
-		$new_user_id = $this->wpdb->insert_id;
-
-		// Save original user ID as usermeta.
-		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
-		$this->wpdb->insert(
-			$this->wpdb->usermeta,
-			[
-				'user_id'    => $new_user_id,
-				'meta_key'   => $this->get_old_id_meta_key( $source_hostname ),
-				'meta_value' => $old_user_id,
-			]
-		);
-		// phpcs:enable
-
-		return $new_user_id;
-	}
-
-	/**
-	 * Inserts User Meta.
-	 *
-	 * @param array $usermeta_row `usermeta` row.
-	 * @param int   $user_id       User ID.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted umeta_id.
-	 */
-	public function insert_usermeta_row( $usermeta_row, $user_id ) {
-		$insert_usermeta_row = $usermeta_row;
-		unset( $insert_usermeta_row['umeta_id'] );
-		$insert_usermeta_row['user_id'] = $user_id;
-
-		$inserted = $this->wpdb->insert( $this->wpdb->usermeta, $insert_usermeta_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting user meta, user_id %d, $usermeta_row %s', $user_id, wp_json_encode( $usermeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
 	 * Inserts a Comment with an updated post_id and user_id.
 	 *
 	 * @param array $comment_row      `comment` row.
@@ -1764,98 +1315,6 @@ class ContentDiffLogic {
 	 */
 	public function wp_insert_term( $term_name, $taxonomy, $args = [] ) {
 		return \wp_insert_term( $term_name, $taxonomy, $args );
-	}
-
-	/**
-	 * Inserts Term Meta.
-	 *
-	 * @param array $termmeta_row `usermeta` row.
-	 * @param int   $term_id      User ID.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted meta_id.
-	 */
-	public function insert_termmeta_row( $termmeta_row, $term_id ) {
-		$insert_termmeta_row = $termmeta_row;
-		unset( $insert_termmeta_row['meta_id'] );
-		$insert_termmeta_row['term_id'] = $term_id;
-
-		$inserted = $this->wpdb->insert( $this->wpdb->termmeta, $insert_termmeta_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term meta, $term_id %d, $termmeta_row %s', $term_id, wp_json_encode( $termmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Inserts into `term_taxonomy` table.
-	 *
-	 * @param array $term_taxonomy_row `term_taxonomy` row.
-	 * @param int   $new_term_id       New `term_id` value to be set.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted term_taxonomy_id.
-	 */
-	public function insert_term_taxonomy( $term_taxonomy_row, $new_term_id ) {
-		$insert_term_taxonomy_row = $term_taxonomy_row;
-		if ( isset( $insert_term_taxonomy_row['term_taxonomy_id'] ) ) {
-			unset( $insert_term_taxonomy_row['term_taxonomy_id'] );
-		}
-		$insert_term_taxonomy_row['term_id'] = $new_term_id;
-
-		$inserted = $this->wpdb->insert( $this->wpdb->term_taxonomy, $insert_term_taxonomy_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term_taxonomy, $new_term_id %d, term_taxonomy_id %s', $new_term_id, wp_json_encode( $term_taxonomy_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Inserts into `term_relationships` table.
-	 *
-	 * @param int $object_id        `object_id` column.
-	 * @param int $term_taxonomy_id `term_taxonomy_id` column.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted object_id.
-	 */
-	public function insert_term_relationship( $object_id, $term_taxonomy_id ) {
-		$inserted = $this->wpdb->insert(
-			$this->wpdb->term_relationships,
-			[
-				'object_id'        => $object_id,
-				'term_taxonomy_id' => $term_taxonomy_id,
-			]
-		);
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term relationship, $object_id %d, $term_taxonomy_id %d', $object_id, $term_taxonomy_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Updates a Post's Author.
-	 *
-	 * @throws \RuntimeException In case update fails.
-	 *
-	 * @param int $post_id       Post ID.
-	 * @param int $new_author_id New Author ID.
-	 *
-	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
-	 */
-	public function update_post_author( $post_id, $new_author_id ) {
-		$updated = $this->wpdb->update( $this->wpdb->posts, [ 'post_author' => $new_author_id ], [ 'ID' => $post_id ] );
-		if ( 1 != $updated ) {
-			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $updated;
 	}
 
 	/**
@@ -2059,8 +1518,8 @@ class ContentDiffLogic {
 	 *
 	 * @return WP_User|false WP_User object on success, false on failure.
 	 */
-	public function get_user_by( $field, $value ) {
-		return get_user_by( $field, $value );
+	public function wp_get_user_by( $field, $value ) {
+		return \get_user_by( $field, $value );
 	}
 
 	/**
@@ -2123,72 +1582,14 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Wrapper for WP's native \get_post(), for easier testing.
-	 *
-	 * @param int|WP_Post|null $post   Optional. Post ID or post object. `null`, `false`, `0` and other PHP falsey
-	 *                                 values return the current global post inside the loop. A numerically valid post
-	 *                                 ID that points to a non-existent post returns `null`. Defaults to global $post.
-	 * @param string           $output Optional. The required return type. One of OBJECT, ARRAY_A, or ARRAY_N, which
-	 *                                 correspond to a WP_Post object, an associative array, or a numeric array,
-	 *                                 respectively. Default OBJECT.
-	 * @param string           $filter Optional. Type of filter to apply. Accepts 'raw', 'edit', 'db',
-	 *                                 or 'display'. Default 'raw'.
-	 * @return WP_Post|array|null Type corresponding to $output on success or null on failure.
-	 *                            When $output is OBJECT, a `WP_Post` instance is returned.
-	 */
-	public function get_post( $post = null, $output = OBJECT, $filter = 'raw' ) {
-		return get_post( $post, $output, $filter );
-	}
-
-	/**
-	 * Cleans up the attachment file URL by just keeping scheme, host and path.
-	 *
-	 * @param string $url Attachment file URL.
-	 *
-	 * @return string Cleaned URL.
-	 */
-	public function clean_attachment_url_for_query( $url ) {
-		$parsed_url = wp_parse_url( $url );
-
-		$url_cleaned = sprintf(
-			'%s://%s%s',
-			$parsed_url['scheme'],
-			$parsed_url['host'],
-			$parsed_url['path'],
-		);
-
-		return $url_cleaned;
-	}
-
-	/**
-	 * Checks if this $url should be queried as local attachment -- does it have the same hostname as 'siteurl', or is the hostname
-	 * one of $local_hostname_aliases.
-	 *
-	 * @param string $url                    Attachment file URL.
-	 * @param array  $local_hostname_aliases Array of hostnames to use as local hostname aliases.
-	 *
-	 * @return bool Should this URL be queried as local attachment.
-	 */
-	public function should_url_be_queried_as_local_attachment( $url, $local_hostname_aliases ) {
-		$url_parsed = wp_parse_url( $url );
-		$url_host   = $url_parsed['host'];
-
-		$siteurl        = get_option( 'siteurl' );
-		$siteurl_parsed = wp_parse_url( $siteurl );
-		$siteurl_host   = $siteurl_parsed['host'];
-
-		return $siteurl_host == $url_host || in_array( $url_host, $local_hostname_aliases );
-	}
-
-	/**
-	 * Wrapper for WP's native \attachment_url_to_postid(), for easier testing.
+	 * Wrapper for WP's native \attachment_url_to_postid() with support for local hostname aliases.
 	 *
 	 * @param string $url                    The URL to resolve.
 	 * @param array  $local_hostname_aliases Array of hostnames to use as local hostname aliases.
 	 *
 	 * @return int The found post ID, or 0 on failure.
 	 */
-	public function attachment_url_to_postid( $url, $local_hostname_aliases = [] ) {
+	public function attachment_url_to_postid_resolver( $url, $local_hostname_aliases = [] ) {
 
 		// If $url hostname has one of the given aliases, substitute its hostname with the local hostname.
 		if ( ! empty( $local_hostname_aliases ) ) {
@@ -2202,7 +1603,7 @@ class ContentDiffLogic {
 		}
 
 		// phpcs:ignore
-		$post_id = attachment_url_to_postid( $url );
+		$post_id = \attachment_url_to_postid( $url );
 
 		return $post_id;
 	}
@@ -2247,49 +1648,6 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * A simple progress meter which updates percentage progress of a counter in terms of a given percentage number increment. You
-	 * get to tell it the percentage increment, for example, update the status progress by every "5%" change, then it
-	 * updates the $current_percent at 0%, 5%, 10%, 15%, 20%, ..., 100%.
-	 *
-	 * @param int $total_count       Total number of steps.
-	 * @param int $current_count     Current step, starting from 1.
-	 * @param int $percent_increment The percentage increment by which the progress update should be done.
-	 * @param int $current_percent   Current percentage progress.
-	 *
-	 * @return void
-	 */
-	public function get_progress_percentage( $total_count, $current_count, $percent_increment, &$current_percent = null ) {
-
-		// Initialize 0%.
-		if ( is_null( $current_percent ) ) {
-			$current_percent = 0;
-		}
-
-		// Get what the next regular increase in percentage will be.
-		$next_percent_increase = $current_percent + $percent_increment;
-		$next_percent_increase = $next_percent_increase >= 100 ? 100 : $next_percent_increase;
-
-		// Get actual precentage at this count.
-		$current_percent_actual = $current_count * 100 / $total_count;
-
-		// First check if $current_count ($current_percent_actual) has already exceeded the regular $next_percent_increase.
-		if ( $current_percent_actual > $next_percent_increase ) {
-			// Speed up to $current_percent_actual.
-			while ( ( $current_percent + $percent_increment ) <= $current_percent_actual ) {
-				$current_percent += $percent_increment;
-			}
-		} else {
-			// Get which "current count" number will make the percentage increase to the $next_percent_increase amount.
-			$required_current_count_for_increase = $next_percent_increase * $total_count / 100;
-
-			// Increase percentage if reached.
-			if ( $current_count >= $required_current_count_for_increase ) {
-				$current_percent = $next_percent_increase;
-			}
-		}
-	}
-
-	/**
 	 * Builds a hardened composite key from a post-like associative array and a list of fields.
 	 *
 	 * - Applies normalization: cast to string, trim whitespace, lowercase for case-insensitive match.
@@ -2323,25 +1681,5 @@ class ContentDiffLogic {
 	 */
 	private function build_post_composite_key_for_post( array $post ): string {
 		return $this->build_post_composite_key( $post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
-	}
-
-	/**
-	 * Escapes special characters in string to be used in PHP regex patterns/expressions.
-	 *
-	 * @param string $subject Subject.
-	 *
-	 * @return string
-	 */
-	private function escape_regex_pattern_string( string $subject ): string {
-		$special_chars   = [ '.', '\\', '+', '*', '?', '[', '^', ']', '$', '(', ')', '{', '}', '=', '!', '<', '>', '|', ':' ];
-		$subject_escaped = $subject;
-		foreach ( $special_chars as $special_char ) {
-			$subject_escaped = str_replace( $special_char, '\\' . $special_char, $subject_escaped );
-		}
-
-		// Space.
-		$subject_escaped = str_replace( ' ', '\s', $subject_escaped );
-
-		return $subject_escaped;
 	}
 }
