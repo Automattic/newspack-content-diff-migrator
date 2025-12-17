@@ -426,7 +426,6 @@ class ContentDiffMigrator {
 			throw new \RuntimeException( "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
 		}
 
-
 		global $wpdb;
 		try {
 			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
@@ -506,19 +505,19 @@ class ContentDiffMigrator {
 		 * And the regular logs are stored directly in:
 		 *      {--data-dir}/{--source-hostname}
 		 */
-		$run_state_dir = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
-		$run_state     = new RunState( $run_state_dir );
+		$run_state_dir   = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
+		$this->run_state = new RunState( $run_state_dir );
 
 		// Write new IDs to migrate.
 		if ( count( $new_live_ids ) > 0 ) {
-			$run_state->write_new_ids( $new_live_ids );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', $run_state->get_file_path( 'new_ids.json' ) ) );
+			$this->run_state->write_new_ids( $new_live_ids );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', $this->run_state->get_file_path( 'new_ids.json' ) ) );
 		}
 
 		// Write IDs which are modified and need to be reimported.
 		if ( count( $modified_live_ids ) > 0 ) {
-			$run_state->write_modified_ids( $modified_live_ids );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', $run_state->get_file_path( 'modified_ids.json' ) ) );
+			$this->run_state->write_modified_ids( $modified_live_ids );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', $this->run_state->get_file_path( 'modified_ids.json' ) ) );
 		}
 
 		// Save manifest.json with migration TOC.
@@ -532,7 +531,7 @@ class ContentDiffMigrator {
 				'modified_ids' => count( $modified_live_ids ),
 			],
 		];
-		$run_state->write_manifest( $manifest );
+		$this->run_state->write_manifest( $manifest );
 	}
 
 	/**
@@ -557,20 +556,20 @@ class ContentDiffMigrator {
 		// Default taxonomies which are migrated are defined here.
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 
-		// Get run-state (with access to all the data that needs to be migrated, and keeps progress of the migration).
-		$run_state_dir = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
-		$run_state     = new RunState( $run_state_dir );
+		// Set instance properties.
+		$run_state_dir           = rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state';
+		$this->run_state         = new RunState( $run_state_dir );
+		$this->live_table_prefix = $live_table_prefix;
 
 		// Get new IDs which will be migrated.
-		$new_ids = $run_state->read_new_ids();
-		if ( null === $new_ids || empty( $new_ids ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'File %s not found or empty.', $run_state->get_file_path( 'new_ids.json' ) ) );
-			throw new \RuntimeException( sprintf( 'File %s not found or empty.', esc_html( $run_state->get_file_path( 'new_ids.json' ) ) ) );
+		$new_live_ids = $this->run_state->read_new_ids();
+		if ( null === $new_live_ids ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS ) );
+			exit;
+		} elseif ( empty( $new_live_ids ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new posts to migrate.' );
+			exit;
 		}
-		$all_live_posts_ids = array_map( 'intval', $new_ids );
-
-		// Get IDs which were modified, and need to be reimported.
-		$all_live_modified_posts_data = $run_state->read_modified_ids();
 
 		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
@@ -601,10 +600,6 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// Set instance properties.
-		$this->live_table_prefix = $live_table_prefix;
-		$this->run_state         = $run_state;
-
 		// Timestamp the debug log with source hostname for identification.
 		$ts            = gmdate( 'Y-m-d h:i:s a', time() );
 		$log_start_msg = sprintf( 'Starting %s | source hostname: %s', $ts, $source_hostname );
@@ -631,38 +626,39 @@ class ContentDiffMigrator {
 		$this->migrate_all_users( $live_table_prefix, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
-		if ( ! empty( $all_live_modified_posts_data ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $all_live_modified_posts_data ) ) );
+		// Process modified IDs.
+		// Get map (old => new) modified IDs.
+		$modified_ids_map = $this->run_state->get_modified_ids_map();
+		if ( null !== $modified_ids_map && ! empty( $modified_ids_map ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $modified_ids_map ) ) );
+			
+			// Get list of (already) deleted modified IDs.
+			$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
+
+			// Get local IDs which still need to be deleted (subtract modified local IDs from already deleted local IDs), and delete them.
+			$local_ids_to_delete = array_diff( array_values( $modified_ids_map ), array_values( $deleted_modified_ids_map ) );
+			$this->delete_local_posts( $local_ids_to_delete );
+
+			// Append to run-state that these modified IDs were deleted.
+			foreach ( $local_ids_to_delete as $id ) {
+				$this->run_state->append_deleted_modified_id(
+					[
+						'live_id'  => array_search( $id, $modified_ids_map ),
+						'local_id' => $id,
+					] 
+				);
+			}
+
+			// Merge modified posts IDs with $all_live_posts_ids for reimport.
+			$new_live_ids = array_merge( $new_live_ids, array_keys( $modified_ids_map ) );
 		}
 
-		/**
-		 * Map of modified Post IDs.
-		 *
-		 * @var array $modified_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$modified_ids_map   = $this->get_ids_from_modified_posts_log( $all_live_modified_posts_data );
-		$modified_live_ids  = array_keys( $modified_ids_map );
-		$modified_local_ids = array_values( $modified_ids_map );
-		/**
-		 * Updating modified IDS. Different kind of data could have been updated for a post (content, author, featured image, etc.),
-		 * so the easiest way to refresh them is to:
-		 * 1. delete the existing post (with all related data)
-		 * 2. reimport it
-		 */
-		// Delete outdated local Posts.
-		$this->delete_local_posts( $modified_local_ids );
-		foreach ( $modified_local_ids as $local_id ) {
-			$this->run_state->append_deleted_modified_id( [ 'local_id' => (int) $local_id ] );
-		}
-		// Merge modified posts IDs with $all_live_posts_ids for reimport.
-		$all_live_posts_ids = array_merge( $all_live_posts_ids, $modified_live_ids );
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $all_live_posts_ids ) ) );
-		$imported_posts_data = $this->import_posts( $all_live_posts_ids, $hierarchical_taxonomy_term_id_updates, $source_hostname );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $new_live_ids ) ) );
+		$imported_posts_data = $this->import_posts( $new_live_ids, $hierarchical_taxonomy_term_id_updates, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
-		$this->update_post_parent_ids( $all_live_posts_ids, $imported_posts_data, $source_hostname );
+		$this->update_post_parent_ids( $new_live_ids, $imported_posts_data, $source_hostname );
 		MemoryCleanupHook::cleanup( 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Featured images IDs...' );
@@ -1302,22 +1298,6 @@ class ContentDiffMigrator {
 		}
 
 		return $imported_attachment_ids_map;
-	}
-
-	/**
-	 * Gets a map of live=>local IDs from the modified IDs log.
-	 *
-	 * @param array $modified_posts_log_data Modified post IDs log data.
-	 *
-	 * @return array IDs, keys are live IDs, values are local IDs.
-	 */
-	private function get_ids_from_modified_posts_log( array $modified_posts_log_data ): array {
-		$ids = [];
-		foreach ( $modified_posts_log_data as $entry ) {
-			$ids[ $entry['live_id'] ] = $entry['local_id'];
-		}
-
-		return $ids;
 	}
 
 	/**
