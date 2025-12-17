@@ -10,8 +10,6 @@ namespace Newspack\ContentDiffMigrator\Logic;
 
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
-use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
-use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
 use Psr\Log\LogLevel;
 use RuntimeException;
 use WP_CLI;
@@ -65,27 +63,6 @@ class ContentDiffLogic {
 	private $wpdb;
 
 	/**
-	 * WpBlockManipulator.
-	 *
-	 * @var WpBlockManipulator.
-	 */
-	private $wp_block_manipulator;
-
-	/**
-	 * HtmlElementManipulator.
-	 *
-	 * @var HtmlElementManipulator
-	 */
-	private $html_element_manipulator;
-
-	/**
-	 * Crawler.
-	 *
-	 * @var Crawler.
-	 */
-	private $dom_crawler;
-
-	/**
 	 * BlockUpdater instance.
 	 *
 	 * @var BlockUpdater
@@ -105,11 +82,9 @@ class ContentDiffLogic {
 	 * @param object $wpdb Global $wpdb.
 	 */
 	public function __construct( object $wpdb ) {
-		$this->wpdb                     = $wpdb;
-		$this->wp_block_manipulator     = new WpBlockManipulator();
-		$this->html_element_manipulator = new HtmlElementManipulator();
-		$this->block_updater            = new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
-		$this->data_importer            = new DataImporter( $wpdb );
+		$this->wpdb          = $wpdb;
+		$this->block_updater = new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
+		$this->data_importer = new DataImporter( $wpdb );
 	}
 
 	/**
@@ -594,29 +569,26 @@ class ContentDiffLogic {
 	 * @throws RuntimeException If user insertion fails, gets thrown by insert_usermeta_row and insert_user.
 	 */
 	public function migrate_all_users( $live_table_prefix, string $source_hostname ) {
-
-		// Keys are Live wp_user.IDs, and values are newly inserted user IDs.
-		$inserted_users_map = [];
+		// Keys are Live wp_user.IDs, and values are local user IDs (existing or newly inserted).
+		$users_map = [];
 
 		$users_rows = $this->select( $live_table_prefix . 'users', [], $select_just_one_row = false );
 		foreach ( $users_rows as $user_row ) {
-			// Skip if local user already exists with same user_login.
-			$user_existing = $this->wp_get_user_by( 'login', $user_row['user_login'] );
-			if ( $user_existing instanceof WP_User ) {
-				continue;
-			}
-
-			// Insert user.
 			$usermeta_rows = $this->select_usermeta_rows( $live_table_prefix, $user_row['ID'] );
-			$user_id_new   = $this->data_importer->insert_user( $user_row, $source_hostname );
-			foreach ( $usermeta_rows as $usermeta_row ) {
-				$this->data_importer->insert_usermeta_row( $usermeta_row, $user_id_new );
-			}
 
-			$inserted_users_map[ $user_row['ID'] ] = $user_id_new;
+			try {
+				$user_id_local = $this->data_importer->get_or_create_user( $user_row, $usermeta_rows, $source_hostname );
+				if ( ! is_null( $user_id_local ) ) {
+					$users_map[ $user_row['ID'] ] = $user_id_local;
+				} else {
+					Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, 'migrate_all_users live DB user row is invalid, skipping user', [ 'user_row' => $user_row ] );
+				}
+			} catch ( \Exception $e ) {
+				Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'migrate_all_users get_or_create_user error: %s', $e->getMessage() ), [ 'user_row' => $user_row, 'usermeta_rows' => $usermeta_rows ] );
+			}
 		}
 
-		return $inserted_users_map;
+		return $users_map;
 	}
 
 	/**
@@ -1292,32 +1264,6 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Wrapper of WP's native \wp_insert_term. @see \wp_insert_term.
-	 *
-	 * @param string       $term_name The term name to add.
-	 * @param string       $taxonomy  The taxonomy to which to add the term.
-	 * @param array|string $args {
-	 *     Optional. Array or query string of arguments for inserting a term.
-	 *
-	 *     @type string $alias_of    Slug of the term to make this term an alias of.
-	 *                               Default empty string. Accepts a term slug.
-	 *     @type string $description The term description. Default empty string.
-	 *     @type int    $parent      The id of the parent term. Default 0.
-	 *     @type string $slug        The term slug to use. Default empty string.
-	 * }
-	 *
-	 * @return array|WP_Error {
-	 *     An array of the new term data, WP_Error otherwise.
-	 *
-	 *     @type int        $term_id          The new term ID.
-	 *     @type int|string $term_taxonomy_id The new term taxonomy ID. Can be a numeric string.
-	 * }
-	 */
-	public function wp_insert_term( $term_name, $taxonomy, $args = [] ) {
-		return \wp_insert_term( $term_name, $taxonomy, $args );
-	}
-
-	/**
 	 * Gets a list of all the tables in the active DB.
 	 *
 	 * @return array List of all tables in DB.
@@ -1508,18 +1454,6 @@ class ContentDiffLogic {
 				sleep( $sleep_in_seconds );
 			}
 		}
-	}
-
-	/**
-	 * Wrapper for WP's native \get_user_by(), for easier testing.
-	 *
-	 * @param string     $field The field to retrieve the user with. id | ID | slug | email | login.
-	 * @param int|string $value A value for $field. A user ID, slug, email address, or login name.
-	 *
-	 * @return WP_User|false WP_User object on success, false on failure.
-	 */
-	public function wp_get_user_by( $field, $value ) {
-		return \get_user_by( $field, $value );
 	}
 
 	/**
