@@ -741,86 +741,62 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Updates Posts' Thumbnail IDs with new Thumbnail IDs after insertion.
+	 * Updates a single Post's featured image ID with new ID after insertion.
 	 *
-	 * @param array $imported_post_ids           Imported local Post IDs.
+	 * @param int   $post_id                     Local Post ID.
 	 * @param array $imported_attachment_ids_map Keys are IDs on Live Site, values are IDs of imported posts on Local Site.
-	 * @param bool  $dry_run                     If true, will not make changes to DB, and will output changes to CLI.
 	 */
-	public function update_featured_images( array $imported_post_ids, array $imported_attachment_ids_map, bool $dry_run = false ): void {
-		if ( empty( $imported_post_ids ) || empty( $imported_attachment_ids_map ) ) {
+	public function update_featured_image( int $post_id, array $imported_attachment_ids_map ): void {
+		if ( empty( $imported_attachment_ids_map ) ) {
 			return;
 		}
 
-		/**
-		 * This command will only update '_thumbnail_id's for Posts which were imported by the Content Diff (not any other Posts).
-		 *
-		 * Explanation why:
-		 * for example, we could have imported two different attachments:
-		 *      {"post_type":"attachment","id_old":1111,"id_new":999}
-		 *      {"post_type":"attachment","id_old":1223,"id_new":1111}
-		 * and let's say these two posts exist on Staging:
-		 *      - first with '_thumbnail_id' 1111
-		 *          --> this one needs to be updated from 1111 to 999
-		 *      - second with '_thumbnail_id' 1111, but let's say this post was created directly on Staging and it used the second attachment with Staging ID 1111
-		 *          --> this one's _thumbnail_id should be updated from 1111 to 999
-		 *
-		 * Therefore this command will only update '_thumbnail_id's for those Posts that were imported by the Content Diff.
-		 */
+		// Get Post's current _thumbnail_id.
+		// phpcs:disable
+		$current_thumbnail_id = $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT meta_value
+				FROM {$this->wpdb->postmeta}
+				WHERE meta_key = '_thumbnail_id'
+				AND post_id = %d",
+				$post_id
+			)
+		);
+		// phpcs:enable
+		if ( ! $current_thumbnail_id ) {
+			return;
+		}
 
-		// Loop through posts and update their _thumbnail_id if needed.
-		foreach ( $imported_post_ids as $new_post_id ) {
+		// Get the new _thumbnail_id.
+		$new_thumbnail_id = $imported_attachment_ids_map[ $current_thumbnail_id ] ?? null;
+		if ( is_null( $new_thumbnail_id ) ) {
+			return;
+		}
 
-			// Get Post's current _thumbnail_id.
-			// phpcs:disable
-			$current_thumbnail_id = $this->wpdb->get_var(
-				$this->wpdb->prepare(
-					"SELECT meta_value
-					FROM {$this->wpdb->postmeta}
-					WHERE meta_key = '_thumbnail_id'
-					AND post_id = %d",
-					$new_post_id
+		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+		$updated = $this->wpdb->update(
+			$this->wpdb->postmeta,
+			[ 'meta_value' => $new_thumbnail_id ],
+			[
+				'post_id'  => $post_id,
+				'meta_key' => '_thumbnail_id',
+			]
+		);
+		// phpcs:enable
+
+		// Log to file only.
+		if ( false != $updated && $updated > 0 ) {
+			Logger::instance()->log(
+				Logger::OUTPUT_FILE,
+				LogLevel::DEBUG,
+				wp_json_encode(
+					[
+						'post_id'           => $post_id,
+						'_thumbnail_id_old' => (int) $current_thumbnail_id,
+						'_thumbnail_id_new' => (int) $new_thumbnail_id,
+					]
 				)
 			);
-			// phpcs:enable
-
-			// Check if this _thumbnail_id is used as a key in $imported_attachment_ids_map (keys are "old_id"s, values are "new_id"s).
-			if ( ! $current_thumbnail_id || ! array_key_exists( $current_thumbnail_id, $imported_attachment_ids_map ) ) {
-				continue;
-			}
-
-			// Get the new _thumbnail_id and update it.
-			$new_thumbnail_id = $imported_attachment_ids_map[ $current_thumbnail_id ];
-			if ( $dry_run ) {
-				$updated = 1;
-			} else {
-				// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
-				$updated = $this->wpdb->update(
-					$this->wpdb->postmeta,
-					[ 'meta_value' => $new_thumbnail_id ],
-					[
-						'post_id'  => $new_post_id,
-						'meta_key' => '_thumbnail_id',
-					]
-				);
-				// phpcs:enable
-			}
-
-			// Log.
-			if ( false != $updated && $updated > 0 ) {
-				$msg = wp_json_encode(
-					[
-						'post_id' => (int) $new_post_id,
-						'id_old'  => (int) $current_thumbnail_id,
-						'id_new'  => (int) $new_thumbnail_id,
-					]
-				);
-				if ( $dry_run ) {
-					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, 'Updating _thumbnail_id id_old=>id_new ' . $msg );
-				} else {
-					Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, $msg );
-				}
-			}
 		}
 	}
 

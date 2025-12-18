@@ -891,43 +891,53 @@ class ContentDiffMigrator {
 	 */
 	public function update_featured_image_ids( array $imported_posts_data, string $source_hostname ): void {
 
-		/**
-		 * Map of all imported post types other than Attachments (Posts, Pages, etc).
-		 *
-		 * @var array $imported_post_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_post_ids_map = $this->get_non_attachments_from_imported_posts_log( $imported_posts_data );
+		// Get ID map of all imported post types other than Attachments (Posts, Pages, etc). Keys are old IDs, values are new IDs.
+		$imported_nonattachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
 
-		// Get new Post IDs from DB.
-		$new_post_ids = array_values( $imported_post_ids_map );
-
-		// Read previously updated IDs for resume.
-		$updated_featured = $this->run_state->read_updated_featured();
-		$updated_ids      = [];
-		foreach ( $updated_featured as $entry ) {
-			$post_id = $entry['post_id'] ?? null;
-			if ( ! is_null( $post_id ) ) {
-				$updated_ids[ $post_id ] = true;
-			}
+		// Get IDs which already had featured images updated, and skip them.
+		$already_updated_ids_map     = $this->run_state->get_updated_featured_image_post_ids_map();
+		$ids_map_for_featured_update = array_diff_key( $imported_nonattachment_ids_map, $already_updated_ids_map );
+		if ( empty( $ids_map_for_featured_update ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their featured images updated, moving on.' );
+			return;
 		}
-		$new_post_ids = array_filter(
-			$new_post_ids,
-			function( $id ) use ( $updated_ids ) {
-				return ! isset( $updated_ids[ $id ] );
+		if ( count( $already_updated_ids_map ) > 0 ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d featured image IDs were already updated, continuing from there...', count( $already_updated_ids_map ), count( $imported_nonattachment_ids_map ) ) );
+		}
+
+		/**
+		 * Get a map of all migrated Attachments from the DB, not from the run-state.
+		 * That's necessary because a newly imported post might use an old featured image attachment which existed in DB before this migration.
+		 * The RunState only contains the current batch of imported objects/attachments. Fetching from DB will get us all the migrated ones.
+		 * Note that it is also due performanc reasons to fetch all imported attachments in a single DB query, rather than fetching them one by one in logic's update_featured_image().
+		 *
+		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
+		 */
+		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
+
+		// Update featured images.
+		$progress = new Progress( count( $ids_map_for_featured_update ) );
+		$step     = 0;
+		foreach ( $ids_map_for_featured_update as $id_old => $id_new ) {
+			// Output progress by 10%.
+			++$step;
+			$progress_milestone = $progress->tick( $step );
+			if ( $progress_milestone ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
-		);
 
-		if ( ! empty( $new_post_ids ) ) {
-			/**
-			 * Get a map of all migrated Attachments from the DB, not from the run-state. 
-			 * That's necessary because a newly imported post might use a featured image attachment which existed in DB before this migration.
-			 * The RunState only contains the current batch of imported objects. Fetching from DB will get us all the migrated ones.
-			 *
-			 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
-			 */
-			$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
+			$this->logic->update_featured_image( $id_new, $imported_attachment_ids_map );
 
-			$this->logic->update_featured_images( array_values( $new_post_ids ), $imported_attachment_ids_map );
+			// Save to run-state for resume capability (even if post's featured image wasn't updated, it has still been processed).
+			$this->run_state->append_updated_featured_image_post(
+				[
+					'id_old' => $id_old,
+					'id_new' => $id_new,
+				]
+			);
+		}
+		if ( $progress->finish() ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
 		}
 	}
 
@@ -949,19 +959,9 @@ class ContentDiffMigrator {
 	 */
 	public function update_attachment_ids_in_blocks( array $imported_posts_data ): void {
 
-		/**
-		 * Map of all imported post types other than Attachments (Posts, Pages, etc).
-		 *
-		 * @var array $imported_post_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_post_ids_map = $this->get_non_attachments_from_imported_posts_log( $imported_posts_data );
-
-		/**
-		 * Map of imported Attachments.
-		 *
-		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_attachment_ids_map = $this->get_attachments_from_imported_posts_log( $imported_posts_data );
+		// Get ID maps of imported Attachments, and non-attachments (Posts, Pages, etc).
+		$imported_attachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment' );
+		$imported_post_ids_map       = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
 
 		// Skip previously updated Posts.
 		$updated_blocks = $this->run_state->read_updated_blocks();
@@ -1073,86 +1073,23 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Filters the log data array by where conditions.
+	 * Filters IDs of certain $post_type from the imported posts data array.
 	 *
-	 * @param array  $imported_posts_log_data Log data array, consists of subarrays with one or more multiple key=>values.
-	 * @param string $where_key               Search key.
-	 * @param array  $where_values            Search value.
-	 * @param string $where_operand           Search operand, can be '==' or '!='.
-	 * @param bool   $return_first            If true, return just the first matched entry, otherwise returns all matched entries.
+	 * @param array  $imported_posts_data Imported posts log data.
+	 * @param string $post_type           Post type to filter by (e.g., 'attachment').
+	 * @param bool   $exclude             If true, excludes the specified post type instead of including only it.
 	 *
-	 * @throws \RuntimeException In case an unsupported $where_operand was given.
-	 *
-	 * @return array Found results. Mind that if $return_first is true, it will return a one-dimensional array,
-	 *               and if $return_first is false, it will return two-dimensional array with all matched elements as subarrays.
+	 * @return array IDs map, keys are old/live IDs, values are new/local IDs.
 	 */
-	private function filter_imported_posts_log( array $imported_posts_log_data, string $where_key, array $where_values, string $where_operand, bool $return_first = true ): array {
-		$return                   = [];
-		$supported_where_operands = [ '==', '!=' ];
-
-		// Validate $where_operand.
-		if ( ! in_array( $where_operand, $supported_where_operands ) ) {
-			throw new \RuntimeException( sprintf( 'Where operand %s is not supported.', esc_textarea( $where_operand ) ) );
-		}
-
-		foreach ( $imported_posts_log_data as $entry ) {
-
-			// Check $where conditions.
-			foreach ( $where_values as $where_value ) {
-
-				$matched = false;
-				if ( '==' === $where_operand ) {
-					$matched = isset( $entry[ $where_key ] ) && $where_value == $entry[ $where_key ];
-				} elseif ( '!=' === $where_operand ) {
-					$matched = isset( $entry[ $where_key ] ) && $where_value != $entry[ $where_key ];
-				}
-
-				if ( true === $matched ) {
-					$return[] = $entry;
-
-					// Return the very first element matching $where.
-					if ( true === $return_first ) {
-						return $entry;
-					}
-				}
+	private function filter_post_type_from_imported_posts_data( array $imported_posts_data, string $post_type, bool $exclude = false ): array {
+		$map = [];
+		foreach ( $imported_posts_data as $entry ) {
+			$type_matches = ( $entry['post_type'] ?? '' ) === $post_type;
+			if ( $exclude ? ! $type_matches : $type_matches ) {
+				$map[ $entry['id_old'] ] = $entry['id_new'];
 			}
 		}
-
-		return $return;
-	}
-
-	/**
-	 * Gets IDs from the log for Posts, Pages and other post types which are not Attachments.
-	 *
-	 * @param array $imported_posts_data Imported posts log data.
-	 *
-	 * @return array IDs.
-	 */
-	private function get_non_attachments_from_imported_posts_log( array $imported_posts_data ): array {
-		$imported_post_ids_map    = [];
-		$imported_posts_data_post = $this->filter_imported_posts_log( $imported_posts_data, 'post_type', [ 'attachment' ], '!=', false );
-		foreach ( $imported_posts_data_post as $entry ) {
-			$imported_post_ids_map[ $entry['id_old'] ] = $entry['id_new'];
-		}
-
-		return $imported_post_ids_map;
-	}
-
-	/**
-	 * Gets IDs from the log for Attachments.
-	 *
-	 * @param array $imported_posts_data Imported posts log data.
-	 *
-	 * @return array IDs, keys are old/live IDs, values are new/local IDs.
-	 */
-	private function get_attachments_from_imported_posts_log( array $imported_posts_data ): array {
-		$imported_attachment_ids_map   = [];
-		$imported_post_data_attachment = $this->filter_imported_posts_log( $imported_posts_data, 'post_type', [ 'attachment' ], '==', false );
-		foreach ( $imported_post_data_attachment as $entry ) {
-			$imported_attachment_ids_map[ $entry['id_old'] ] = $entry['id_new'];
-		}
-
-		return $imported_attachment_ids_map;
+		return $map;
 	}
 
 	/**

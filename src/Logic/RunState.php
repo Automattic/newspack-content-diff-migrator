@@ -246,11 +246,41 @@ class RunState {
 	}   
 
 	/**
-	 * Gets updated featured image IDs.
+	 * Appends an updated featured image post record.
+	 *
+	 * @param array $featured_data Featured data with 'id_old' and 'id_new' keys.
+	 *
+	 * @return bool Success.
+	 */
+	public function append_updated_featured_image_post( array $featured_data ): bool {
+		return $this->append_jsonl( self::FILE_UPDATED_FEATURED, $featured_data );
+	}
+
+	/**
+	 * Returns a map of "old => new" post IDs which already had their featured images updated.
+	 *
+	 * @return array Keys are old live post IDs, values are new local post IDs, or empty array if file doesn't exist.
+	 */
+	public function get_updated_featured_image_post_ids_map(): array {
+		$updated_featured_data = $this->read_updated_featured();
+		if ( empty( $updated_featured_data ) ) {
+			return [];
+		}
+		$updated_featured_post_ids_map = [];
+		foreach ( $updated_featured_data as $entry ) {
+			if ( isset( $entry['id_old'] ) && isset( $entry['id_new'] ) ) {
+				$updated_featured_post_ids_map[ (int) $entry['id_old'] ] = (int) $entry['id_new'];
+			}
+		}
+		return $updated_featured_post_ids_map;
+	}
+
+	/**
+	 * Gets updated featured image records.
 	 *
 	 * @return array Array of updated featured image records.
 	 */
-	public function read_updated_featured(): array {
+	private function read_updated_featured(): array {
 		return $this->read_jsonl( self::FILE_UPDATED_FEATURED );
 	}
 
