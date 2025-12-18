@@ -614,7 +614,7 @@ class ContentDiffMigrator {
 		if ( null !== $modified_ids_map && ! empty( $modified_ids_map ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $modified_ids_map ) ) );
 			
-			// Get list of already deleted modified IDs, and IDs which still need to be deleted.
+			// Get modified IDs which were already deleted, and skip them.
 			$already_deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
 			$local_ids_to_delete              = array_values( array_diff( array_values( $modified_ids_map ), array_values( $already_deleted_modified_ids_map ) ) );
 			
@@ -735,17 +735,15 @@ class ContentDiffMigrator {
 	public function import_posts( array $new_live_ids, array $taxonomies_to_migrate, string $source_hostname ): array {
 		$imported_posts_data = [];
 
-		// Get already imported IDs to skip (for resume capability).
+		// Get IDs which were already imported, and skip them.
 		$already_imported_ids_map = $this->run_state->get_imported_post_ids_map() ?? [];
 		$live_ids_to_import       = array_values( array_diff( $new_live_ids, array_keys( $already_imported_ids_map ) ) );
-
-		// Log resume progress.
 		if ( empty( $live_ids_to_import ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts were already imported, moving on.' );
 			return $imported_posts_data;
 		}
 		if ( count( $already_imported_ids_map ) > 0 ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d IDs were already imported, continuing from there...', count( $already_imported_ids_map ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d IDs were already imported, continuing from there...', count( $already_imported_ids_map ), count( $new_live_ids ) ) );
 		}
 
 		// Import posts.
@@ -801,59 +799,28 @@ class ContentDiffMigrator {
 	 * @param string $source_hostname Source hostname.
 	 */
 	public function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname ): void {
+		global $wpdb;
 
-		$parent_ids_for_update = $all_live_posts_ids;
-
-		// Skip previously updated IDs.
-		$previously_updated_parent_ids_data = $this->run_state->read_updated_parents();
-		$updated_ids_lookup                 = [];
-		foreach ( $previously_updated_parent_ids_data as $entry ) {
-			$id_old = $entry['id_old'] ?? null;
-			if ( ! is_null( $id_old ) ) {
-				$updated_ids_lookup[ $id_old ] = true;
-			}
-		}
-
-		foreach ( $updated_ids_lookup as $id_old => $_ ) {
-			$key_id_old = array_search( $id_old, $parent_ids_for_update );
-			if ( false !== $key_id_old ) {
-				unset( $parent_ids_for_update[ $key_id_old ] );
-			}
-		}
-
-		if ( empty( $parent_ids_for_update ) ) {
+		// Get IDs which already had their post_parent updated, and skip them.
+		$already_updated_ids_map     = $this->run_state->get_updated_parents_post_ids_map();
+		$live_ids_for_parents_update = array_values( array_diff( $all_live_posts_ids, array_keys( $already_updated_ids_map ) ) );
+		if ( empty( $live_ids_for_parents_update ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their post_parent updated, moving on.' );
 			return;
 		}
-		if ( $parent_ids_for_update !== $all_live_posts_ids ) {
-			$parent_ids_for_update = array_values( $parent_ids_for_update );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s post_parent IDs of total %d were already updated, continuing from there..', count( $all_live_posts_ids ) - count( $parent_ids_for_update ), count( $all_live_posts_ids ) ) );
+		if ( count( $already_updated_ids_map ) > 0 ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d post_parent IDs were already updated, continuing from there...', count( $already_updated_ids_map ), count( $all_live_posts_ids ) ) );
 		}
 
-		/**
-		 * Map of all imported post types other than Attachments (Posts, Pages, etc).
-		 *
-		 * @var array $imported_post_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_post_ids_map = $this->get_non_attachments_from_imported_posts_log( $imported_posts_data );
-
-		/**
-		 * Map of imported Attachments.
-		 *
-		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_attachment_ids_map = $this->get_attachments_from_imported_posts_log( $imported_posts_data );
-
-		// Try and free some memory.
-		$all_live_posts_ids  = null;
-		$imported_posts_data = null;
-		usleep( 100000 );
+		// Build map of all imported IDs (old => new) from imported_posts_data.
+		$imported_ids_map = [];
+		foreach ( $imported_posts_data as $entry ) {
+			$imported_ids_map[ $entry['id_old'] ] = $entry['id_new'];
+		}
 
 		// Update parent IDs.
-		global $wpdb;
-		$progress = new Progress( count( $parent_ids_for_update ) );
-		foreach ( $parent_ids_for_update as $key_id_old => $id_old ) {
-
+		$progress = new Progress( count( $live_ids_for_parents_update ) );
+		foreach ( $live_ids_for_parents_update as $key_id_old => $id_old ) {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_id_old + 1 );
 			if ( $progress_milestone ) {
@@ -861,40 +828,32 @@ class ContentDiffMigrator {
 			}
 
 			// Get new local Post ID.
-			$id_new = $imported_post_ids_map[ $id_old ] ?? null;
-			$id_new = is_null( $id_new ) ? $imported_attachment_ids_map[ $id_old ] : $id_new;
+			$id_new = $imported_ids_map[ $id_old ] ?? null;
 
-			// Get Post's post_parent which uses the live DB ID.
-			$parent_id_old = $wpdb->get_var( $wpdb->prepare( "SELECT post_parent FROM $wpdb->posts WHERE ID = %d;", $id_new ) ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching.
-
-			// No update to do.
+			// Get the local Post's post_parent, which is still set to old live ID value.
+			$post_row      = $this->logic->select_post_row( $wpdb->prefix, $id_new );
+			$parent_id_old = $post_row['post_parent'] ?? null;
 			if ( ( '0' == $parent_id_old ) || empty( $parent_id_old ) ) {
+				// No update on parent ID 0.
 				continue;
 			}
 
-			// Get new post_parent.
-			$parent_id_new = $imported_post_ids_map[ $parent_id_old ] ?? null;
-			// Check if it's perhaps an attachment.
-			$parent_id_new = is_null( $parent_id_new ) && array_key_exists( $parent_id_old, $imported_attachment_ids_map ) ? $imported_attachment_ids_map[ $parent_id_old ] : $parent_id_new;
-
-			// It's possible that this $post's post_parent already existed in local DB before the Content Diff import was run, so
-			// it won't be present in the list of the posts we imported. Let's try and search for the new ID directly in DB.
-			// First try searching by source-specific postmeta -- in case a previous content diff imported it.
+			// Get new post_parent from imported IDs map, if it exists. It's also possible that this $post's post_parent already existed in
+			// local DB before the Content Diff import was run, in which case it won't be present in the list of the posts we imported.
+			$parent_id_new = $imported_ids_map[ $parent_id_old ] ?? null;
+			// 1/3 - First try searching for new parent ID by "old ID postmeta", in case a previous content diff imported it.
 			if ( is_null( $parent_id_new ) ) {
 				$meta_key      = $this->logic->get_old_id_meta_key( $source_hostname );
 				$parent_id_new = $this->logic->get_current_post_id_by_custom_meta( $parent_id_old, $meta_key );
 			}
-			// Next try searching for the new parent_id by joining local and live DB tables.
+			// 2/3 - Next try searching for the new parent_id by comparing the local and live DB tables.
 			if ( is_null( $parent_id_new ) ) {
 				$parent_id_new = $this->logic->get_current_post_id_by_comparing_with_live_db( $parent_id_old, $this->live_table_prefix );
 			}
-
-			// Warn if this post_parent object was not found/imported. It might be legit, like the parent object being a
-			// post_type different than the supported post type, or an error like the post_parent object missing in Live DB.
+			// 3/3 - If it can't be found, set parent to 0 and log error. This might be legit, e.g. the parent object being a
+			// post_type different than the supported post type, or an invalid relationship in live DB if post_parent object is actually missing.
 			if ( is_null( $parent_id_new ) ) {
-				// If all attempts failed (possibly this parent does not exist in the live DB, or if this parent is of a post_type which was not imported), set that post_parent to 0.
 				$parent_id_new = 0;
-
 				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids error, $id_old=%s, $id_new=%s, $parent_id_old=%s, $parent_id_new is 0.', $id_old, $id_new, $parent_id_old ) );
 			}
 
@@ -902,17 +861,13 @@ class ContentDiffMigrator {
 			if ( $parent_id_old != $parent_id_new ) {
 				$this->logic->update_post_parent( $id_new, $parent_id_new );
 			}
-
-			// Log IDs of the Post to JSONL.
+			// Log the parent update to RunState for resume capability (even if post wasn't updated, it's still been processed).
 			$log_entry = [
-				'id_old' => $id_old,
-				'id_new' => $id_new,
+				'id_old'        => $id_old,
+				'id_new'        => $id_new,
+				'parent_id_old' => $parent_id_old,
+				'parent_id_new' => $parent_id_new,
 			];
-			if ( 0 != $parent_id_old && ! is_null( $parent_id_new ) ) {
-				// Log, add IDs of post_parent.
-				$log_entry['parent_id_old'] = $parent_id_old;
-				$log_entry['parent_id_new'] = $parent_id_new;
-			}
 			$this->run_state->append_updated_parent( $log_entry );
 		}
 		if ( $progress->finish() ) {
@@ -943,13 +898,6 @@ class ContentDiffMigrator {
 		 */
 		$imported_post_ids_map = $this->get_non_attachments_from_imported_posts_log( $imported_posts_data );
 
-		/**
-		 * Map of imported Attachments.
-		 *
-		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
-
 		// Get new Post IDs from DB.
 		$new_post_ids = array_values( $imported_post_ids_map );
 
@@ -970,6 +918,15 @@ class ContentDiffMigrator {
 		);
 
 		if ( ! empty( $new_post_ids ) ) {
+			/**
+			 * Get a map of all migrated Attachments from the DB, not from the run-state. 
+			 * That's necessary because a newly imported post might use a featured image attachment which existed in DB before this migration.
+			 * The RunState only contains the current batch of imported objects. Fetching from DB will get us all the migrated ones.
+			 *
+			 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
+			 */
+			$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
+
 			$this->logic->update_featured_images( array_values( $new_post_ids ), $imported_attachment_ids_map );
 		}
 	}
