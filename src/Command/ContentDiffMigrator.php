@@ -844,7 +844,7 @@ class ContentDiffMigrator {
 			// 1/3 - First try searching for new parent ID by "old ID postmeta", in case a previous content diff imported it.
 			if ( is_null( $parent_id_new ) ) {
 				$meta_key      = $this->logic->get_old_id_meta_key( $source_hostname );
-				$parent_id_new = $this->logic->get_current_post_id_by_custom_meta( $parent_id_old, $meta_key );
+				$parent_id_new = $this->logic->get_post_id_by_postmeta( $meta_key, $parent_id_old );
 			}
 			// 2/3 - Next try searching for the new parent_id by comparing the local and live DB tables.
 			if ( is_null( $parent_id_new ) ) {

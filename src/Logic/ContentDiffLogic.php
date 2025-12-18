@@ -1459,12 +1459,12 @@ class ContentDiffLogic {
 	/**
 	 * Finds current post ID by old live DB ID, by searching for a source-specific post meta.
 	 *
-	 * @param int|string $id_live  Post ID from live DB.
-	 * @param string     $meta_key Name of postmeta which contains old post ID (use get_old_id_meta_key()).
+	 * @param string     $meta_key   Name of postmeta which contains old post ID (use get_old_id_meta_key()).
+	 * @param int|string $meta_value Post ID from live DB.
 	 *
 	 * @return string|null Current Post ID.
 	 */
-	public function get_current_post_id_by_custom_meta( $id_live, $meta_key ) {
+	public function get_post_id_by_postmeta( $meta_key, $meta_value ) {
 
 		// phpcs:disable -- wpdb::prepare is used correctly.
 		$post_id_new = $this->wpdb->get_var(
@@ -1474,7 +1474,7 @@ class ContentDiffLogic {
 			WHERE meta_key = %s
 			AND meta_value = %s",
 				$meta_key,
-				$id_live
+				$meta_value
 			)
 		);
 		// phpcs:enable
