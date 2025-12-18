@@ -203,15 +203,6 @@ class RunState {
 	}
 
 	/**
-	 * Gets updated parent IDs.
-	 *
-	 * @return array Array of updated parent records.
-	 */
-	public function read_updated_parents(): array {
-		return $this->read_jsonl( self::FILE_UPDATED_PARENTS );
-	}
-
-	/**
 	 * Appends an updated parent record.
 	 *
 	 * @param array $parent_data Parent data with 'id_old', 'id_new', optionally 'parent_id_old', 'parent_id_new'.
@@ -221,6 +212,38 @@ class RunState {
 	public function append_updated_parent( array $parent_data ): bool {
 		return $this->append_jsonl( self::FILE_UPDATED_PARENTS, $parent_data );
 	}
+
+	/**
+	 * Returns a map of "old => new" post IDs which already had their post_parent updated.
+	 * 
+	 * The updated parent run-state data contains some more keys and values, not all are returned here:
+	 * - id_old: int Old Live ID.
+	 * - id_new: int New Local ID.
+	 * - parent_id_old: int Old Live Parent ID.
+	 * - parent_id_new: int New Local Parent ID.
+	 * 
+	 * @return array|null Keys are old live post IDs, values are new local post IDs, or null if file with updated parents doesn't exist.
+	 */
+	public function get_updated_parents_post_ids_map(): ?array {
+		$updated_parents_data = $this->read_updated_parents();
+		if ( null === $updated_parents_data ) {
+			return null;
+		}
+		$updated_parents_post_ids_map = [];
+		foreach ( $updated_parents_data as $entry ) {
+			$updated_parents_post_ids_map[ (int) $entry['id_old'] ] = (int) $entry['id_new'];
+		}
+		return $updated_parents_post_ids_map;
+	}
+
+	/**
+	 * Gets updated parent IDs.
+	 *
+	 * @return array Array of updated parent records.
+	 */ 
+	private function read_updated_parents(): array {
+		return $this->read_jsonl( self::FILE_UPDATED_PARENTS );
+	}   
 
 	/**
 	 * Gets updated featured image IDs.
