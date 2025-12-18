@@ -44,6 +44,18 @@ class RunState {
 	}
 
 	/**
+	 * Writes migration manifest, it's basically just a "migration Table of Contents".
+	 * Makes it easy to review when the migration was started and what was migrated.
+	 *
+	 * @param array $manifest Manifest data.
+	 *
+	 * @return bool Success.
+	 */
+	public function write_manifest( array $manifest ): bool {
+		return $this->write_json( self::FILE_MANIFEST, $manifest );
+	}
+
+	/**
 	 * Writes new IDs to be migrated.
 	 *
 	 * @param array $ids Array of IDs.
@@ -73,7 +85,7 @@ class RunState {
 	 *
 	 * @return array|null Array of modified ID pairs or null if file doesn't exist.
 	 */
-	public function read_modified_ids(): ?array {
+	private function read_modified_ids(): ?array {
 		$modified_ids = $this->read_json( self::FILE_MODIFIED_IDS );
 		if ( null === $modified_ids ) {
 			return null;
@@ -111,20 +123,6 @@ class RunState {
 	public function write_modified_ids( array $modified_ids ): bool {
 		return $this->write_json( self::FILE_MODIFIED_IDS, $modified_ids );
 	}
-
-	/**
-	 * Writes migration manifest data.
-	 * It's basically just a "migration Table of Contents",
-	 * so that it's easy to review when the migration was done and what was migrated.
-	 *
-	 * @param array $manifest Manifest data.
-	 *
-	 * @return bool Success.
-	 */
-	public function write_manifest( array $manifest ): bool {
-		return $this->write_json( self::FILE_MANIFEST, $manifest );
-	}
-
 
 	/**
 	 * Appends a deleted modified ID record.
@@ -330,7 +328,7 @@ class RunState {
 	 *
 	 * @return string Full path.
 	 */
-	public function get_file_path( string $filename ): string {
+	private function get_file_path( string $filename ): string {
 		return $this->run_state_dir . '/' . $filename;
 	}
 

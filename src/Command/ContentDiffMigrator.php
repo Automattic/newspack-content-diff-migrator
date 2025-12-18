@@ -502,16 +502,16 @@ class ContentDiffMigrator {
 			throw $e;
 		}
 
-		// Write new IDs to migrate.
+		// Write to run-state new IDs to migrate.
 		if ( count( $new_live_ids ) > 0 ) {
 			$this->run_state->write_new_ids( $new_live_ids );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'New IDs exported to %s', RunState::FILE_NEW_IDS ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of new IDs to migrate stored to run-state file %s', RunState::FILE_NEW_IDS ) );
 		}
 
-		// Write IDs which are modified and need to be reimported.
+		// Write to run-state IDs which were modified on live and need to be reimported.
 		if ( count( $modified_live_ids ) > 0 ) {
 			$this->run_state->write_modified_ids( $modified_live_ids );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Modified IDs exported to %s', RunState::FILE_MODIFIED_IDS ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of modified IDs to reimport stored to run-state file %s', RunState::FILE_MODIFIED_IDS ) );
 		}
 
 		// Save manifest.json with migration TOC.
@@ -589,7 +589,7 @@ class ContentDiffMigrator {
 
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
-		$taxonomies_to_migrate = $this->validate_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
+		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
@@ -618,11 +618,11 @@ class ContentDiffMigrator {
 			$already_deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
 			$local_ids_to_delete              = array_values( array_diff( array_values( $modified_ids_map ), array_values( $already_deleted_modified_ids_map ) ) );
 			
-			// Delete modified posts so they can be reimported.
-			$this->delete_local_posts( $local_ids_to_delete );
-
-			// Save in run-state that these modified IDs were deleted.
+			// Delete modified posts so they can be re-imported.
 			foreach ( $local_ids_to_delete as $id ) {
+				wp_delete_post( $id, true );
+
+				// Save run-state info that this modified ID was deleted.
 				$this->run_state->append_deleted_modified_id(
 					[
 						'live_id'  => array_search( $id, $modified_ids_map ),
@@ -675,7 +675,7 @@ class ContentDiffMigrator {
 	 *
 	 * @return array $taxonomies_to_migrate Validated and filtered hierarchical taxonomies to migrate.
 	 */
-	public function validate_hierarchical_taxonomies( array $taxonomies_to_migrate, array $live_taxonomies ): array {
+	public function validate_and_fix_hierarchical_taxonomies( array $taxonomies_to_migrate, array $live_taxonomies ): array {
 		global $wpdb;
 
 		// Check if any of the taxonomies does not exist in the live DB.
@@ -700,19 +700,6 @@ class ContentDiffMigrator {
 		}
 
 		return $taxonomies_to_migrate;
-	}
-
-	/**
-	 * Permanently deletes local posts.
-	 *
-	 * @param array $ids Post IDs.
-	 *
-	 * @return void
-	 */
-	public function delete_local_posts( array $ids ): void {
-		foreach ( $ids as $id ) {
-			wp_delete_post( $id, true );
-		}
 	}
 
 	/**
@@ -1081,7 +1068,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Filters IDs of certain $post_type from the imported posts data array.
+	 * Util method to filter IDs of certain $post_type from the $imported_posts_data array.
 	 *
 	 * @param array  $imported_posts_data Imported posts log data.
 	 * @param string $post_type           Post type to filter by (e.g., 'attachment').
