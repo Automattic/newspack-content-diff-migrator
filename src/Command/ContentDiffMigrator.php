@@ -960,36 +960,44 @@ class ContentDiffMigrator {
 	public function update_attachment_ids_in_blocks( array $imported_posts_data ): void {
 
 		// Get ID maps of imported Attachments, and non-attachments (Posts, Pages, etc).
-		$imported_attachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment' );
-		$imported_post_ids_map       = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
+		$imported_attachment_ids_map    = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment' );
+		$imported_nonattachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
 
-		// Skip previously updated Posts.
-		$updated_blocks = $this->run_state->read_updated_blocks();
-		$updated_ids    = [];
-		foreach ( $updated_blocks as $entry ) {
-			$id_new = $entry['id_new'] ?? null;
-			if ( ! is_null( $id_new ) ) {
-				$updated_ids[ $id_new ] = true;
-			}
-		}
-
-		$new_post_ids_for_blocks_update = array_filter(
-			array_values( $imported_post_ids_map ),
-			function( $id ) use ( $updated_ids ) {
-				return ! isset( $updated_ids[ $id ] );
-			}
-		);
-
-		if ( empty( $new_post_ids_for_blocks_update ) ) {
+		// Get IDs which already had block attachment IDs updated, and skip them.
+		$already_updated_ids_map   = $this->run_state->get_updated_block_post_ids_map();
+		$ids_map_for_blocks_update = array_diff_key( $imported_nonattachment_ids_map, $already_updated_ids_map );
+		if ( empty( $ids_map_for_blocks_update ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their blocks\' attachment IDs updated, moving on.' );
 			return;
 		}
-		if ( count( $new_post_ids_for_blocks_update ) < count( $imported_post_ids_map ) ) {
-			$new_post_ids_for_blocks_update = array_values( $new_post_ids_for_blocks_update );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%s of total %d posts already had their blocks\' IDs updated, continuing from there..', count( $imported_post_ids_map ) - count( $new_post_ids_for_blocks_update ), count( $imported_post_ids_map ) ) );
+		if ( count( $already_updated_ids_map ) > 0 ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d posts already had their blocks\' IDs updated, continuing from there...', count( $already_updated_ids_map ), count( $imported_nonattachment_ids_map ) ) );
 		}
 
-		$this->logic->update_blocks_ids( array_values( $new_post_ids_for_blocks_update ), $imported_attachment_ids_map );
+		// Update block attachment IDs.
+		$progress = new Progress( count( $ids_map_for_blocks_update ) );
+		$step     = 0;
+		foreach ( $ids_map_for_blocks_update as $id_old => $id_new ) {
+			// Output progress by 10%.
+			++$step;
+			$progress_milestone = $progress->tick( $step );
+			if ( $progress_milestone ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+			}
+
+			$this->logic->update_blocks_ids( $id_new, $imported_attachment_ids_map );
+
+			// Save to run-state for resume capability (even if post's blocks weren't updated, it has still been processed).
+			$this->run_state->append_updated_block_post(
+				[
+					'id_old' => $id_old,
+					'id_new' => $id_new,
+				]
+			);
+		}
+		if ( $progress->finish() ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+		}
 	}
 
 	/**

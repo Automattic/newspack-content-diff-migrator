@@ -801,12 +801,11 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Updates Gutenberg Blocks' attachment IDs with new attachment IDs in created `post_content` and `post_excerpt` fields.
+	 * Updates Gutenberg Blocks' attachment IDs with new attachment IDs in a single post's `post_content` and `post_excerpt` fields.
 	 *
-	 * @param array $imported_post_ids            An array of newly imported Post IDs. Will only fetch an do replacements in these.
-	 * @param array $known_attachment_ids_updates An array of known Attachment IDs which were updated; keys are old IDs, values are
-	 *                                            new IDs.
-	 * @param array $local_hostname_aliases       An array of image hostnames to be looked up as local. Explanation and example --
+	 * @param int   $post_id                      The post ID to update.
+	 * @param array $known_attachment_ids_updates An array of known Attachment IDs which were updated; keys are old IDs, values are new IDs.
+	 * @param array $local_hostname_aliases       An array of image hostnames to be looked up as local. Explanation via an example --
 	 *                                            let's take hostname.com and a local image https://hostname.com/wp-content/2022/09/22/a.jpg
 	 *                                            as local image. Searching for this image's attachment ID will work just fine using
 	 *                                            the full URL. But perhaps if this site is using an S3 bucket, and if some of
@@ -815,7 +814,10 @@ class ContentDiffLogic {
 	 *                                            \attachment_url_to_postid can query the attachment ID by treating this S3 hostname
 	 *                                            as an alias of the local one.
 	 */
-	public function update_blocks_ids( array $imported_post_ids, array $known_attachment_ids_updates, array $local_hostname_aliases = [] ): void {
+	public function update_blocks_ids( int $post_id, array $known_attachment_ids_updates, array $local_hostname_aliases = [] ): void {
+		if ( empty( $known_attachment_ids_updates ) ) {
+			return;
+		}
 
 		// Filter the $local_hostname_aliases argument -- remove the local host if the user entered it, just leaving additional hostname aliases here.
 		if ( ! empty( $local_hostname_aliases ) ) {
@@ -824,72 +826,63 @@ class ContentDiffLogic {
 			$key_local_hostname = array_search( $local_hostname, $local_hostname_aliases );
 			if ( false !== $key_local_hostname ) {
 				unset( $local_hostname_aliases[ $key_local_hostname ] );
-				unset( $local_hostname_aliases[ $key_local_hostname ] );
 			}
 		}
 
-		// Fetch imported posts.
-		$post_ids_new = array_values( $imported_post_ids );
-		$posts_table  = $this->wpdb->posts;
-		$placeholders = implode( ',', array_fill( 0, count( $post_ids_new ), '%d' ) );
-		// phpcs:disable -- wpdb::prepare used by wrapper.
-		$sql          = $this->wpdb->prepare(
-			"SELECT ID, post_content, post_excerpt FROM $posts_table pm WHERE ID IN ( $placeholders );",
-			$post_ids_new
+		// Fetch the post.
+		$result = $this->wpdb->get_row(
+			$this->wpdb->prepare(
+				"SELECT ID, post_content, post_excerpt FROM {$this->wpdb->posts} WHERE ID = %d;",
+				$post_id
+			),
+			ARRAY_A
 		);
-		$results      = $this->wpdb->get_results( $sql, ARRAY_A );
-		// phpcs:enable
-
-		// Loop through all imported posts, and do all the replacements.
-		foreach ( $results as $key_result => $result ) {
-			$id              = $result['ID'];
-			$content_before  = $result['post_content'];
-			$content_updated = $result['post_content'];
-			$excerpt_before  = $result['post_excerpt'];
-			$excerpt_updated = $result['post_excerpt'];
-
-			// Update all block types using BlockUpdater.
-			$content_updated = $this->block_updater->update_all_blocks_ids( $content_updated, $known_attachment_ids_updates, $local_hostname_aliases );
-			$excerpt_updated = $this->block_updater->update_all_blocks_ids( $excerpt_updated, $known_attachment_ids_updates, $local_hostname_aliases );
-
-			// Persist.
-			if ( $content_before != $content_updated || $excerpt_before != $excerpt_updated ) {
-				$updated = $this->wpdb->update(
-					$this->wpdb->posts,
-					[
-						'post_content' => $content_updated,
-						'post_excerpt' => $excerpt_updated,
-					],
-					[ 'ID' => $id ]
-				);
-			}
-
-			// Log updates.
-			$log_entry = [ 'id_new' => $id ];
-
-			// And if any updates were made, log them fully.
-			if ( $content_before != $content_updated ) {
-				$log_entry = array_merge(
-					$log_entry,
-					[
-						'post_content_before' => $content_before,
-						'post_content_after'  => $content_updated,
-					]
-				);
-			}
-
-			if ( $excerpt_before != $excerpt_updated ) {
-				$log_entry = array_merge(
-					$log_entry,
-					[
-						'post_excerpt_before' => $excerpt_before,
-						'post_excerpt_after'  => $excerpt_updated,
-					]
-				);
-			}
-
-			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, wp_json_encode( $log_entry ) );
+		if ( ! $result ) {
+			return;
 		}
+
+		$content_before  = $result['post_content'];
+		$content_updated = $result['post_content'];
+		$excerpt_before  = $result['post_excerpt'];
+		$excerpt_updated = $result['post_excerpt'];
+
+		// Update all block types using BlockUpdater.
+		$content_updated = $this->block_updater->update_all_blocks_ids( $content_updated, $known_attachment_ids_updates, $local_hostname_aliases );
+		$excerpt_updated = $this->block_updater->update_all_blocks_ids( $excerpt_updated, $known_attachment_ids_updates, $local_hostname_aliases );
+
+		// Persist.
+		if ( $content_before != $content_updated || $excerpt_before != $excerpt_updated ) {
+			$this->wpdb->update(
+				$this->wpdb->posts,
+				[
+					'post_content' => $content_updated,
+					'post_excerpt' => $excerpt_updated,
+				],
+				[ 'ID' => $post_id ]
+			);
+		}
+
+		// Log detailed updates to file only.
+		$log_context = [ 'id_new' => $post_id ];
+		if ( $content_before != $content_updated ) {
+			$log_context = array_merge(
+				$log_context,
+				[
+					'post_content_before' => $content_before,
+					'post_content_after'  => $content_updated,
+				]
+			);
+		}
+		if ( $excerpt_before != $excerpt_updated ) {
+			$log_context = array_merge(
+				$log_context,
+				[
+					'post_excerpt_before' => $excerpt_before,
+					'post_excerpt_after'  => $excerpt_updated,
+				]
+			);
+		}
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated block attachment IDs in content and excerpt for post ID %d.', $post_id ), $log_context );
 	}
 
 	/**

@@ -285,11 +285,41 @@ class RunState {
 	}
 
 	/**
-	 * Gets updated block IDs.
+	 * Appends a block update record to the run-state file.
+	 *
+	 * @param array $block_data Block data with 'id_old' and 'id_new' keys.
+	 *
+	 * @return bool Success.
+	 */
+	public function append_updated_block_post( array $block_data ): bool {
+		return $this->append_jsonl( self::FILE_UPDATED_BLOCKS, $block_data );
+	}
+
+	/**
+	 * Returns a map of "old => new" post IDs which already had their block attachment IDs updated.
+	 *
+	 * @return array Keys are old live post IDs, values are new local post IDs, or empty array if file doesn't exist.
+	 */
+	public function get_updated_block_post_ids_map(): array {
+		$updated_blocks_data = $this->read_updated_blocks();
+		if ( empty( $updated_blocks_data ) ) {
+			return [];
+		}
+		$updated_block_post_ids_map = [];
+		foreach ( $updated_blocks_data as $entry ) {
+			if ( isset( $entry['id_old'] ) && isset( $entry['id_new'] ) ) {
+				$updated_block_post_ids_map[ (int) $entry['id_old'] ] = (int) $entry['id_new'];
+			}
+		}
+		return $updated_block_post_ids_map;
+	}
+
+	/**
+	 * Gets updated block records.
 	 *
 	 * @return array Array of updated block records.
 	 */
-	public function read_updated_blocks(): array {
+	private function read_updated_blocks(): array {
 		return $this->read_jsonl( self::FILE_UPDATED_BLOCKS );
 	}
 
