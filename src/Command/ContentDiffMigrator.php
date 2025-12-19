@@ -620,7 +620,16 @@ class ContentDiffMigrator {
 			
 			// Delete modified posts so they can be re-imported.
 			foreach ( $local_ids_to_delete as $id ) {
-				wp_delete_post( $id, true );
+				$deleted = wp_delete_post( $id, true );
+				if ( false === $deleted && null === $deleted ) {
+					$context = [
+						'local_id' => $id,
+						'live_id'  => array_search( $id, $modified_ids_map ),
+					];
+					Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to delete modified post local ID %d during reimport, this post will not be reimported/refreshed', $id ), $context );
+					// Don't continue and save to run-state if deletion failed.
+					continue;
+				}
 
 				// Save run-state info that this modified ID was deleted.
 				$this->run_state->append_deleted_modified_id(
@@ -760,7 +769,7 @@ class ContentDiffMigrator {
 	 *
 	 * @return array $taxonomies_to_migrate Validated and filtered hierarchical taxonomies to migrate.
 	 */
-	public function validate_and_fix_hierarchical_taxonomies( array $taxonomies_to_migrate, array $live_taxonomies ): array {
+	private function validate_and_fix_hierarchical_taxonomies( array $taxonomies_to_migrate, array $live_taxonomies ): array {
 		global $wpdb;
 
 		// Check if any of the taxonomies does not exist in the live DB.
@@ -804,7 +813,7 @@ class ContentDiffMigrator {
 	 *     }
 	 * }
 	 */
-	public function import_posts( array $new_live_ids, array $taxonomies_to_migrate, string $source_hostname ): array {
+	private function import_posts( array $new_live_ids, array $taxonomies_to_migrate, string $source_hostname ): array {
 		$imported_posts_data = [];
 
 		// Get IDs which were already imported, and skip them.
@@ -870,7 +879,7 @@ class ContentDiffMigrator {
 	 * }
 	 * @param string $source_hostname Source hostname.
 	 */
-	public function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname ): void {
+	private function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname ): void {
 		global $wpdb;
 
 		// Get IDs which already had their post_parent updated, and skip them.
@@ -961,7 +970,7 @@ class ContentDiffMigrator {
 	 * }
 	 * @param string $source_hostname Source hostname.
 	 */
-	public function update_featured_image_ids( array $imported_posts_data, string $source_hostname ): void {
+	private function update_featured_image_ids( array $imported_posts_data, string $source_hostname ): void {
 
 		// Get ID map of all imported post types other than Attachments (Posts, Pages, etc). Keys are old IDs, values are new IDs.
 		$imported_nonattachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
@@ -1029,7 +1038,7 @@ class ContentDiffMigrator {
 	 *     }
 	 * }
 	 */
-	public function update_attachment_ids_in_blocks( array $imported_posts_data ): void {
+	private function update_attachment_ids_in_blocks( array $imported_posts_data ): void {
 
 		// Get ID maps of imported Attachments, and non-attachments (Posts, Pages, etc).
 		$imported_attachment_ids_map    = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment' );

@@ -24,9 +24,9 @@ class DataImporter {
 	/**
 	 * Global $wpdb.
 	 *
-	 * @var object $wpdb Global $wpdb.
+	 * @var wpdb $wpdb Global $wpdb.
 	 */
-	private $wpdb;
+	private wpdb $wpdb;
 
 	/**
 	 * Map of live term_id to local term_id for all taxonomies.
@@ -39,9 +39,9 @@ class DataImporter {
 	/**
 	 * DataImporter constructor.
 	 *
-	 * @param object $wpdb Global $wpdb.
+	 * @param wpdb $wpdb Global $wpdb.
 	 */
-	public function __construct( object $wpdb ) {
+	public function __construct( wpdb $wpdb ) {
 		$this->wpdb = $wpdb;
 	}
 
@@ -287,7 +287,15 @@ class DataImporter {
 					if ( ! taxonomy_exists( $taxonomy_name ) ) {
 						// Check if live taxonomy is hierarchical by looking at parent field in live data.
 						$is_hierarchical = ! empty( $live_term_taxonomy_row['parent'] ) && '0' != $live_term_taxonomy_row['parent'];
-						register_taxonomy( $taxonomy_name, 'post', [ 'hierarchical' => $is_hierarchical ] );
+						$registered      = register_taxonomy( $taxonomy_name, 'post', [ 'hierarchical' => $is_hierarchical ] );
+						if ( is_wp_error( $registered ) ) {
+							$context = [
+								'taxonomy'        => $taxonomy_name,
+								'is_hierarchical' => $is_hierarchical,
+							];
+							Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::WARNING, sprintf( 'Failed to register taxonomy %s: %s', $taxonomy_name, $registered->get_error_message() ), $context );
+							// Don't throw - continue processing, may work anyway
+						}
 					}
 					$live_tree                                   = $this->get_taxonomy_tree( $live_table_prefix, $live_term_taxonomy_row );
 					$created_tree                                = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
@@ -350,6 +358,7 @@ class DataImporter {
 					],
 					[ 'term_taxonomy_id' => $local_term_taxonomy_id ]
 				);
+				// Not handling update error, because terms will get recounted when migration is finished.
 
 				$inserted_term_taxonomy_ids[] = $local_term_taxonomy_id;
 			}
@@ -366,7 +375,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted meta_id.
 	 */
-	private function insert_postmeta_row( $postmeta_row, $post_id ) {
+	private function insert_postmeta_row( array $postmeta_row, int $post_id ): int {
 		$insert_postmeta_row = $postmeta_row;
 		unset( $insert_postmeta_row['meta_id'] );
 		$insert_postmeta_row['post_id'] = $post_id;
@@ -418,7 +427,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted User ID.
 	 */
-	private function insert_user( $user_row, string $source_hostname ) {
+	private function insert_user( array $user_row, string $source_hostname ): int {
 		$old_user_id = $user_row['ID'];
 
 		$insert_user_row = $user_row;
@@ -434,7 +443,7 @@ class DataImporter {
 
 		// Save original user ID as usermeta.
 		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_value
-		$this->wpdb->insert(
+		$inserted = $this->wpdb->insert(
 			$this->wpdb->usermeta,
 			[
 				'user_id'    => $new_user_id,
@@ -443,6 +452,13 @@ class DataImporter {
 			]
 		);
 		// phpcs:enable
+		if ( 1 !== $inserted ) {
+			$context = [
+				'new_user_id' => $new_user_id,
+				'old_user_id' => $old_user_id,
+			];
+			Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to insert old_id usermeta for new user ID %d which may cause duplicate users. DB error: %s', $new_user_id, $this->wpdb->last_error ), $context );
+		}
 
 		return $new_user_id;
 	}
@@ -457,7 +473,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted umeta_id.
 	 */
-	public function insert_usermeta_row( $usermeta_row, $user_id ) {
+	public function insert_usermeta_row( array $usermeta_row, int $user_id ): int {
 		$insert_usermeta_row = $usermeta_row;
 		unset( $insert_usermeta_row['umeta_id'] );
 		$insert_usermeta_row['user_id'] = $user_id;
@@ -481,7 +497,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted comment_id.
 	 */
-	private function insert_comment( $comment_row, $new_post_id, $new_user_id ) {
+	private function insert_comment( array $comment_row, int $new_post_id, int $new_user_id ): int {
 		$insert_comment_row = $comment_row;
 		unset( $insert_comment_row['comment_ID'] );
 		$insert_comment_row['comment_post_ID'] = $new_post_id;
@@ -505,7 +521,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted meta_id.
 	 */
-	private function insert_commentmeta_row( $commentmeta_row, $new_comment_id ) {
+	private function insert_commentmeta_row( array $commentmeta_row, int $new_comment_id ): int {
 		$insert_commentmeta_row = $commentmeta_row;
 		unset( $insert_commentmeta_row['meta_id'] );
 		$insert_commentmeta_row['comment_id'] = $new_comment_id;
@@ -528,7 +544,7 @@ class DataImporter {
 	 *
 	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
 	 */
-	private function update_comment_parent( $comment_id, $comment_parent_new ) {
+	private function update_comment_parent( int $comment_id, int $comment_parent_new ): int|false {
 		$updated = $this->wpdb->update( $this->wpdb->comments, [ 'comment_parent' => $comment_parent_new ], [ 'comment_ID' => $comment_id ] );
 		if ( 1 != $updated ) {
 			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
@@ -559,7 +575,7 @@ class DataImporter {
 	 *     @type int|string $term_taxonomy_id The new term taxonomy ID. Can be a numeric string.
 	 * }
 	 */
-	private function wp_insert_term( $term_name, $taxonomy, $args = [] ) {
+	private function wp_insert_term( string $term_name, string $taxonomy, array $args = [] ): array|\WP_Error {
 		return \wp_insert_term( $term_name, $taxonomy, $args );
 	}
 
@@ -573,7 +589,7 @@ class DataImporter {
 	 *
 	 * @return int Inserted object_id.
 	 */
-	private function insert_term_relationship( $object_id, $term_taxonomy_id ) {
+	private function insert_term_relationship( int $object_id, int $term_taxonomy_id ): int {
 		$inserted = $this->wpdb->insert(
 			$this->wpdb->term_relationships,
 			[
@@ -598,7 +614,7 @@ class DataImporter {
 	 *
 	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
 	 */
-	private function update_post_author( $post_id, $new_author_id ) {
+	private function update_post_author( int $post_id, int $new_author_id ): int|false {
 		$updated = $this->wpdb->update( $this->wpdb->posts, [ 'post_author' => $new_author_id ], [ 'ID' => $post_id ] );
 		if ( 1 != $updated ) {
 			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
@@ -616,7 +632,7 @@ class DataImporter {
 	 *
 	 * @return array|null Term and taxonomy data, or null if not found.
 	 */
-	private function get_term_and_taxonomy_array( $table_prefix, array $where, $taxonomy ) {
+	private function get_term_and_taxonomy_array( string $table_prefix, array $where, string $taxonomy ): ?array {
 
 		$table_terms         = esc_sql( $table_prefix . 'terms' );
 		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
@@ -659,7 +675,7 @@ class DataImporter {
 	 *
 	 * @return array|null An array which matches the $key $value filter, or null if nothing is found.
 	 */
-	private function filter_array_element( $data, $key, $value ) {
+	private function filter_array_element( array $data, mixed $key, mixed $value ): ?array {
 		foreach ( $data as $subarray ) {
 			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
 				return $subarray;
@@ -678,7 +694,7 @@ class DataImporter {
 	 *
 	 * @return array An array with sub-arrays which match the $key $value filter, or an empty array if nothing is found.
 	 */
-	private function filter_array_elements( $data, $key, $value ) {
+	private function filter_array_elements( array $data, mixed $key, mixed $value ): array {
 		$found = [];
 		foreach ( $data as $subarray ) {
 			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
@@ -897,12 +913,12 @@ class DataImporter {
 	 *
 	 * @return int|\WP_Error Term ID on success, WP_Error on failure.
 	 */
-	private function wp_insert_or_update_term( string $term_name, string $term_description, $term_parent, string $taxonomy ) {
+	private function wp_insert_or_update_term( string $term_name, string $term_description, int $term_parent, string $taxonomy ): int|\WP_Error {
 		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.term_exists_term_exists
 		$term_exists = term_exists( $term_name, $taxonomy, $term_parent );
 
 		if ( ! $term_exists ) {
-			$term_id = $this->wp_insert_term(
+			$result = $this->wp_insert_term(
 				$term_name,
 				$taxonomy,
 				[
@@ -911,13 +927,14 @@ class DataImporter {
 				]
 			);
 
-			if ( is_wp_error( $term_id ) ) {
-				return $term_id;
+			if ( is_wp_error( $result ) ) {
+				/** @var \WP_Error $result */
+				return $result;
 			}
-			return $term_id['term_id'];
+			return (int) $result['term_id'];
 		}
 
-		$term_id     = $term_exists['term_id'];
+		$term_id     = (int) $term_exists['term_id'];
 		$term_update = wp_update_term(
 			$term_id,
 			$taxonomy,

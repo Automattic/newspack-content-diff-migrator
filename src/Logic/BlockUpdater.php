@@ -927,7 +927,7 @@ class BlockUpdater {
 	 *
 	 * @return mixed
 	 */
-	private function cast_to_int_if_numeric( $value ) {
+	private function cast_to_int_if_numeric( mixed $value ): mixed {
 		return ( is_numeric( $value ) && (int) $value == $value ) ? (int) $value : $value;
 	}
 

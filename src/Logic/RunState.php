@@ -7,6 +7,9 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\ContentDiffMigrator\Utils\Logger;
+use Psr\Log\LogLevel;
+
 /**
  * RunState keeps track of IDs/objects which needs to be migrated, and the progress of the migration.
  * If the migration is interrupted, it will be resumed based on this info.
@@ -29,7 +32,7 @@ class RunState {
 	 *
 	 * @var string
 	 */
-	private $run_state_dir;
+	private string $run_state_dir;
 
 	/**
 	 * Constructor.
@@ -363,9 +366,16 @@ class RunState {
 	 * @return bool Success.
 	 */
 	private function write_json( string $filename, array $data ): bool {
-		$path = $this->get_file_path( $filename );
-		$json = wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-		return false !== file_put_contents( $path, $json ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
+		$path   = $this->get_file_path( $filename );
+		$json   = wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+		$result = file_put_contents( $path, $json ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
+		
+		if ( false === $result ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to write run-state file %s, error: %s', $filename, error_get_last() ) );
+			return false;
+		}
+		
+		return true;
 	}
 
 	/**
@@ -413,8 +423,15 @@ class RunState {
 	 * @return bool Success.
 	 */
 	private function append_jsonl( string $filename, array $data ): bool {
-		$path = $this->get_file_path( $filename );
-		$json = wp_json_encode( $data );
-		return false !== file_put_contents( $path, $json . "\n", FILE_APPEND ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
+		$path   = $this->get_file_path( $filename );
+		$json   = wp_json_encode( $data );
+		$result = file_put_contents( $path, $json . "\n", FILE_APPEND ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
+		
+		if ( false === $result ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to append to run-state file %s, error: %s', $filename, error_get_last() ) );
+			return false;
+		}
+		
+		return true;
 	}
 }

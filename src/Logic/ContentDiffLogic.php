@@ -44,7 +44,7 @@ class ContentDiffLogic {
 	 *
 	 * @var wpdb Global $wpdb.
 	 */
-	private $wpdb;
+	private wpdb $wpdb;
 
 	/**
 	 * BlockUpdater instance.
@@ -70,9 +70,9 @@ class ContentDiffLogic {
 	/**
 	 * ContentDiffMigrator constructor.
 	 *
-	 * @param object $wpdb Global $wpdb.
+	 * @param wpdb $wpdb Global $wpdb.
 	 */
-	public function __construct( object $wpdb ) {
+	public function __construct( wpdb $wpdb ) {
 		$this->wpdb          = $wpdb;
 		$this->block_updater = new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
 		$this->data_importer = new DataImporter( $wpdb );
@@ -157,7 +157,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with columns specified in used query.
 	 */
-	public function get_posts_rows_for_content_diff( string $posts_table, array $post_types, array $post_statuses ) {
+	public function get_posts_rows_for_content_diff( string $posts_table, array $post_types, array $post_statuses ): array {
 		// Get post types and statuses placeholders for $wpdb::prepare.
 		$post_types_placeholders        = array_fill( 0, count( $post_types ), '%s' );
 		$post_types_placeholders_csv    = implode( ',', $post_types_placeholders );
@@ -382,7 +382,7 @@ class ContentDiffLogic {
 	 *     @type array self::DATAKEY_TERMS             Post's `terms` rows.
 	 * }
 	 */
-	public function get_post_data( $post_id, $table_prefix ) {
+	public function get_post_data( int $post_id, string $table_prefix ): array {
 
 		$data = $this->get_empty_data_array();
 
@@ -507,7 +507,7 @@ class ContentDiffLogic {
 	 *
 	 * @throws RuntimeException If user insertion fails, gets thrown by insert_usermeta_row and insert_user.
 	 */
-	public function migrate_all_users( $live_table_prefix, string $source_hostname ) {
+	public function migrate_all_users( string $live_table_prefix, string $source_hostname ): array {
 		// Keys are Live wp_user.IDs, and values are local user IDs (existing or newly inserted).
 		$users_map = [];
 
@@ -659,8 +659,17 @@ class ContentDiffLogic {
 		$this->data_importer->import_post_data( $post_id_new, $post_data, $live_table_prefix, $taxonomies_to_migrate, $source_hostname );
 
 		// Save source-specific old ID meta.
-		$meta_key = self::get_old_id_meta_key( $source_hostname );
-		update_post_meta( $post_id_new, $meta_key, $id_live );
+		$meta_key     = self::get_old_id_meta_key( $source_hostname );
+		$meta_updated = update_post_meta( $post_id_new, $meta_key, $id_live );
+		if ( false === $meta_updated ) {
+			$context = [
+				'id_new'   => $post_id_new,
+				'id_old'   => $id_live,
+				'meta_key' => $meta_key,
+			];
+			Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to save old_id postmeta for imported post %d which may cause duplicate imports on resume. DB error: %s', $post_id_new, $this->wpdb->last_error ), $context );
+			throw new \RuntimeException( sprintf( 'Critical: Failed to save old_id postmeta for post %d', esc_html( $post_id_new ) ) );
+		}
 
 		return [
 			'post_type' => $post_type,
@@ -675,8 +684,15 @@ class ContentDiffLogic {
 	 * @param int $post_id       Post ID.
 	 * @param int $new_parent_id New post_parent ID for this post.
 	 */
-	public function update_post_parent( $post_id, $new_parent_id ) {
-		$this->wpdb->update( $this->wpdb->posts, [ 'post_parent' => $new_parent_id ], [ 'ID' => $post_id ] );
+	public function update_post_parent( int $post_id, int $new_parent_id ): void {
+		$updated = $this->wpdb->update( $this->wpdb->posts, [ 'post_parent' => $new_parent_id ], [ 'ID' => $post_id ] );
+		if ( false === $updated ) {
+			$context = [
+				'post_id'       => $post_id,
+				'new_parent_id' => $new_parent_id,
+			];
+			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::ERROR, sprintf( 'Failed to update post_parent for post ID %d. DB error: %s', $post_id, $this->wpdb->last_error ), $context );
+		}
 	}
 
 	/**
@@ -793,7 +809,7 @@ class ContentDiffLogic {
 
 		// Persist.
 		if ( $content_before != $content_updated || $excerpt_before != $excerpt_updated ) {
-			$this->wpdb->update(
+			$updated = $this->wpdb->update(
 				$this->wpdb->posts,
 				[
 					'post_content' => $content_updated,
@@ -801,6 +817,13 @@ class ContentDiffLogic {
 				],
 				[ 'ID' => $post_id ]
 			);
+			if ( false === $updated ) {
+				$context = [
+					'post_id'  => $post_id,
+					'db_error' => $this->wpdb->last_error,
+				];
+				Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to update blocks for post ID %d. DB error: %s', $post_id, $this->wpdb->last_error ), $context );
+			}
 		}
 
 		// Log detailed updates to file only.
@@ -843,7 +866,7 @@ class ContentDiffLogic {
 	 *     @type array self::DATAKEY_TERMS             Post's `terms` rows.
 	 * }
 	 */
-	private function get_empty_data_array() {
+	private function get_empty_data_array(): array {
 		return [
 			self::DATAKEY_POST              => [],
 			self::DATAKEY_POSTMETA          => [],
@@ -866,7 +889,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int|null term_taxonomy_id or null.
 	 */
-	public function get_existing_term_taxonomy( $term_id, $taxonomy ) {
+	public function get_existing_term_taxonomy( int $term_id, string $taxonomy ): ?int {
 		// phpcs:disable -- wpdb::prepare used by wrapper.
 		$var = $this->wpdb->get_var(
 			$this->wpdb->prepare(
@@ -891,7 +914,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array|null Associative array return from $wpdb::get_row, or null if no results.
 	 */
-	public function select_post_row( $table_prefix, $post_id ) {
+	public function select_post_row( string $table_prefix, int $post_id ): ?array {
 		return $this->select( $table_prefix . 'posts', [ 'ID' => $post_id ], $select_just_one_row = true );
 	}
 
@@ -903,7 +926,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with subarray rows from $wpdb::get_results.
 	 */
-	public function select_postmeta_rows( $table_prefix, $post_id ) {
+	public function select_postmeta_rows( string $table_prefix, int $post_id ): array {
 		return $this->select( $table_prefix . 'postmeta', [ 'post_id' => $post_id ] );
 	}
 
@@ -915,7 +938,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array|null Associative array return from $wpdb::get_row, or null if no results.
 	 */
-	public function select_user_row( $table_prefix, $user_id ) {
+	public function select_user_row( string $table_prefix, int $user_id ): ?array {
 		return $this->select( $table_prefix . 'users', [ 'ID' => $user_id ], $select_just_one_row = true );
 	}
 
@@ -927,7 +950,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with subarray rows from $wpdb::get_results.
 	 */
-	public function select_usermeta_rows( $table_prefix, $user_id ) {
+	public function select_usermeta_rows( string $table_prefix, int $user_id ): array {
 		return $this->select( $table_prefix . 'usermeta', [ 'user_id' => $user_id ] );
 	}
 
@@ -939,7 +962,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with subarray rows from $wpdb::get_results.
 	 */
-	public function select_comment_rows( $table_prefix, $post_id ) {
+	public function select_comment_rows( string $table_prefix, int $post_id ): array {
 		return $this->select( $table_prefix . 'comments', [ 'comment_post_ID' => $post_id ] );
 	}
 
@@ -951,7 +974,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with subarray rows from $wpdb::get_results.
 	 */
-	public function select_commentmeta_rows( $table_prefix, $comment_id ) {
+	public function select_commentmeta_rows( string $table_prefix, int $comment_id ): array {
 		return $this->select( $table_prefix . 'commentmeta', [ 'comment_id' => $comment_id ] );
 	}
 
@@ -963,7 +986,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with subarray rows from $wpdb::get_results.
 	 */
-	public function select_term_relationships_rows( $table_prefix, $post_id ) {
+	public function select_term_relationships_rows( string $table_prefix, int $post_id ): array {
 		return $this->select( $table_prefix . 'term_relationships', [ 'object_id' => $post_id ] );
 	}
 
@@ -975,7 +998,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array|null Associative array return from $wpdb::get_row, or null if no results.
 	 */
-	public function select_term_taxonomy_row( $table_prefix, $term_taxonomy_id ) {
+	public function select_term_taxonomy_row( string $table_prefix, int $term_taxonomy_id ): ?array {
 		return $this->select( $table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $term_taxonomy_id ], $select_just_one_row = true );
 	}
 
@@ -987,7 +1010,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array|null Associative array return from $wpdb::get_row, or null if no results.
 	 */
-	public function select_term_row( $table_prefix, $term_id ) {
+	public function select_term_row( string $table_prefix, int $term_id ): ?array {
 		return $this->select( $table_prefix . 'terms', [ 'term_id' => $term_id ], $select_just_one_row = true );
 	}
 
@@ -999,7 +1022,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array Associative array with subarray rows from $wpdb::get_results.
 	 */
-	public function select_termmeta_rows( $table_prefix, $term_id ) {
+	public function select_termmeta_rows( string $table_prefix, int $term_id ): array {
 		return $this->select( $table_prefix . 'termmeta', [ 'term_id' => $term_id ] );
 	}
 
@@ -1013,7 +1036,7 @@ class ContentDiffLogic {
 	 * @return array|null wpdb results in associative array form. If $select_just_one_row is used, the result is an array or null.
 	 *                    Otherwise, the result is an array with subarray rows, or an empty array.
 	 */
-	private function select( $table_name, $where_conditions, $select_just_one_row = false ) {
+	private function select( string $table_name, array $where_conditions, bool $select_just_one_row = false ): ?array {
 		$sql = 'SELECT * FROM ' . esc_sql( $table_name );
 
 		if ( ! empty( $where_conditions ) ) {
@@ -1047,7 +1070,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int Inserted Post ID.
 	 */
-	public function insert_post( $post_row ) {
+	public function insert_post( array $post_row ): int {
 		$insert_post_row = $post_row;
 		$orig_id         = $insert_post_row['ID'];
 		unset( $insert_post_row['ID'] );
@@ -1070,7 +1093,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int Inserted meta_id.
 	 */
-	public function insert_postmeta_row( $postmeta_row, $post_id ) {
+	public function insert_postmeta_row( array $postmeta_row, int $post_id ): int {
 		$insert_postmeta_row = $postmeta_row;
 		unset( $insert_postmeta_row['meta_id'] );
 		$insert_postmeta_row['post_id'] = $post_id;
@@ -1094,7 +1117,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int Inserted comment_id.
 	 */
-	public function insert_comment( $comment_row, $new_post_id, $new_user_id ) {
+	public function insert_comment( array $comment_row, int $new_post_id, int $new_user_id ): int {
 		$insert_comment_row = $comment_row;
 		unset( $insert_comment_row['comment_ID'] );
 		$insert_comment_row['comment_post_ID'] = $new_post_id;
@@ -1118,7 +1141,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int Inserted meta_id.
 	 */
-	public function insert_commentmeta_row( $commentmeta_row, $new_comment_id ) {
+	public function insert_commentmeta_row( array $commentmeta_row, int $new_comment_id ): int {
 		$insert_commentmeta_row = $commentmeta_row;
 		unset( $insert_commentmeta_row['meta_id'] );
 		$insert_commentmeta_row['comment_id'] = $new_comment_id;
@@ -1141,7 +1164,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
 	 */
-	public function update_comment_parent( $comment_id, $comment_parent_new ) {
+	public function update_comment_parent( int $comment_id, int $comment_parent_new ): int|false {
 		$updated = $this->wpdb->update( $this->wpdb->comments, [ 'comment_parent' => $comment_parent_new ], [ 'comment_ID' => $comment_id ] );
 		if ( 1 != $updated ) {
 			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
@@ -1159,7 +1182,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int Inserted term_id.
 	 */
-	public function insert_term( $term_row ) {
+	public function insert_term( array $term_row ): int {
 		$insert_term_row = $term_row;
 		if ( isset( $insert_term_row['term_id'] ) ) {
 			unset( $insert_term_row['term_id'] );
@@ -1181,7 +1204,7 @@ class ContentDiffLogic {
 	 *
 	 * @return string|null Current Post ID.
 	 */
-	public function get_post_id_by_postmeta( $meta_key, $meta_value ) {
+	public function get_post_id_by_postmeta( string $meta_key, int|string $meta_value ): ?string {
 
 		// phpcs:disable -- wpdb::prepare is used correctly.
 		$post_id_new = $this->wpdb->get_var(
@@ -1207,7 +1230,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int|null Current Post ID.
 	 */
-	public function get_current_post_id_by_comparing_with_live_db( $id_live, $live_table_prefix ) {
+	public function get_current_post_id_by_comparing_with_live_db( int $id_live, string $live_table_prefix ): ?string {
 
 		$live_posts_table = $live_table_prefix . 'posts';
 		$posts_table      = $this->wpdb->posts;
@@ -1240,7 +1263,7 @@ class ContentDiffLogic {
 	 *
 	 * @return int The found post ID, or 0 on failure.
 	 */
-	public function attachment_url_to_postid_resolver( $url, $local_hostname_aliases = [] ) {
+	public function attachment_url_to_postid_resolver( string $url, array $local_hostname_aliases = [] ): int {
 
 		// If $url hostname has one of the given aliases, substitute its hostname with the local hostname.
 		if ( ! empty( $local_hostname_aliases ) ) {
@@ -1268,7 +1291,7 @@ class ContentDiffLogic {
 	 *
 	 * @return null|array The array which matches the $key $value filter, or null.
 	 */
-	public function filter_array_element( $data, $key, $value ) {
+	public function filter_array_element( array $data, mixed $key, mixed $value ): ?array {
 		foreach ( $data as $subarray ) {
 			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
 				return $subarray;
@@ -1287,7 +1310,7 @@ class ContentDiffLogic {
 	 *
 	 * @return array An array with sub-arrays which match the $key $value filter, or an empty array if nothing is found.
 	 */
-	public function filter_array_elements( $data, $key, $value ) {
+	public function filter_array_elements( array $data, mixed $key, mixed $value ): array {
 		$found = [];
 		foreach ( $data as $subarray ) {
 			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
