@@ -294,14 +294,6 @@ class ContentDiffMigrator {
 		Logger::instance()->init( __FUNCTION__ );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__ | source hostname: %s', $source_hostname ) );
 
-		// Show existing source hostnames.
-		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
-		if ( ! empty( $existing_source_sites ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
-		} else {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
-		}
-
 		// Validate DBs.
 		try {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
@@ -318,29 +310,30 @@ class ContentDiffMigrator {
 			);
 		}
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing local users and CPTs %s to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
-		
+		// Variables.
+		$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
 		// Post statuses by type.
 		$statuses_regular    = [ 'publish', 'future', 'draft', 'pending', 'private' ];
 		$statuses_attachment = [ 'inherit' ];
-		
-		$total_attributed = 0;
-		$total_local      = 0;
-		
-		// Get list of post types except attachments (handled separately like in cmd_search).
-		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
-		$process_attachments        = in_array( 'attachment', $post_types, true );
-		
-		$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
 
+		// Show existing source hostnames.
+		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
+		if ( ! empty( $existing_source_sites ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
+		} else {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
+		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching local content (CPTs %s and suers) to live DB, and attributing matches to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
+		
 		// Process non-attachment post types.
+		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
 		if ( ! empty( $post_types_non_attachments ) ) {
+			// Match non-attachment post types.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
-
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			MemoryCleanupHook::cleanup( 1 );
-
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
 			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
 			MemoryCleanupHook::cleanup( 1 );
@@ -348,68 +341,66 @@ class ContentDiffMigrator {
 			// Save metas for matched posts.
 			foreach ( $matched_posts as $match ) {
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+				$context = [
+					'post_type' => $match['post_type'],
+					'local_id'  => $match['local_id'],
+					'live_id'   => $match['live_id'],
+				];
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
 			}
-
-			$total_attributed += count( $matched_posts );
-			$total_local      += count( $results_local_posts );
-
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d posts attributed out of %d local.', count( $matched_posts ), count( $results_local_posts ) ) );
 			MemoryCleanupHook::cleanup( 1 );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local non-attachment objects attributed out of %d total.', count( $matched_posts ), count( $results_local_posts ) ) );
 		}
 
 		// Process attachments separately (like in cmd_search).
+		$process_attachments = in_array( 'attachment', $post_types, true );
 		if ( $process_attachments ) {
+			// Match attachments.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
-
 			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 			MemoryCleanupHook::cleanup( 1 );
-
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
 			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
 			MemoryCleanupHook::cleanup( 1 );
 
-			// Save metas for matched attachments.
+			// Attribute matched attachments to source hostname.
 			foreach ( $matched_attachments as $match ) {
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+				// Detailed log to file only.
+				$context = [
+					'post_type' => 'attachment',
+					'local_id'  => $match['local_id'],
+					'live_id'   => $match['live_id'],
+				];
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
 			}
-
-			$total_attributed += count( $matched_attachments );
-			$total_local      += count( $results_local_attachments );
-
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d attachments attributed out of %d local.', count( $matched_attachments ), count( $results_local_attachments ) ) );
 			MemoryCleanupHook::cleanup( 1 );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local attachments attributed out of %d total.', count( $matched_attachments ), count( $results_local_attachments ) ) );
 		}
 
-		// Process users.
+		// Match users.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
-
 		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
 		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
 		MemoryCleanupHook::cleanup( 1 );
-
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
 		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
 		MemoryCleanupHook::cleanup( 1 );
 
-		// Save metas for matched users.
+		// Attribute matched users to source hostname.
 		foreach ( $matched_users as $match ) {
 			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			// Detailed log to file only.
+			$context = [
+				'local_user_id' => $match['local_id'],
+				'live_user_id'  => $match['live_id'],
+			];
+			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'User attributed to source_hostname %s', $source_hostname ), $context );
 		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local users attributed out of %d total.', count( $matched_users ), count( $results_local_users ) ) );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '%d users attributed out of %d local.', count( $matched_users ), count( $results_local_users ) ) );
-
-		Logger::instance()->log(
-			Logger::OUTPUT_BOTH,
-			LogLevel::INFO,
-			sprintf(
-				'Done! Total: %d posts/attachments attributed out of %d. %d users attributed out of %d.',
-				$total_attributed,
-				$total_local,
-				count( $matched_users ),
-				count( $results_local_users )
-			)
-		);
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done!' );
 	}
 
 	/**
