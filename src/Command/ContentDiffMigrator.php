@@ -9,6 +9,7 @@
 namespace Newspack\ContentDiffMigrator\Command;
 
 use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
+use Newspack\ContentDiffMigrator\Logic\DB;
 use Newspack\ContentDiffMigrator\Logic\RunState;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
@@ -30,6 +31,13 @@ class ContentDiffMigrator {
 	private ContentDiffLogic $logic;
 
 	/**
+	 * Database utilities class.
+	 *
+	 * @var DB Database utilities.
+	 */
+	private DB $db;
+
+	/**
 	 * Prefix of tables from the live DB, which are imported next to local WP tables.
 	 *
 	 * @var null|string Live DB tables prefix.
@@ -49,6 +57,7 @@ class ContentDiffMigrator {
 	public function __construct() {
 		global $wpdb;
 		$this->logic = new ContentDiffLogic( $wpdb );
+		$this->db    = new DB( $wpdb );
 	}
 
 	/**
@@ -295,7 +304,7 @@ class ContentDiffMigrator {
 
 		// Validate DBs.
 		try {
-			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
+			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'About to run command correct-collations-for-live-wp-tables ...' );
@@ -433,7 +442,7 @@ class ContentDiffMigrator {
 		}
 
 		try {
-			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
+			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " - about to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
@@ -567,7 +576,7 @@ class ContentDiffMigrator {
 
 		// Validate DBs.
 		try {
-			$this->validate_db_tables( $live_table_prefix, [ 'options' ] );
+			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
@@ -665,6 +674,88 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', RunState::FILE_MANIFEST ) );
 
 		wp_cache_flush();
+	}
+
+	/**
+	 * This function will display a table comparing the collations of Live and Core WP tables.
+	 *
+	 * @param array $args Positional arguments.
+	 * @param array $assoc_args Optional arguments.
+	 */
+	public function cmd_compare_collations_of_live_and_core_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		$live_table_prefix     = $assoc_args['live-table-prefix'];
+		$skip_tables           = ! empty( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
+		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
+
+		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
+
+		$tables = [];
+		if ( $different_tables_only ) {
+			$tables = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
+		} else {
+			$tables = $this->db->get_collation_comparison_of_live_and_core_wp_tables( $live_table_prefix, $skip_tables );
+		}
+
+		if ( ! empty( $tables ) ) {
+			ob_start();
+			\WP_CLI\Utils\format_items( 'table', $tables, array_keys( $tables[0] ) );
+			$output = ob_get_clean();
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $output );
+		} else {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Live and Core WP DB table collations match.' );
+		}
+	}
+
+	/**
+	 * This function will execute the necessary steps to get Live WP
+	 * tables to match the collation of Core WP tables.
+	 *
+	 * @param array $args Positional arguments.
+	 * @param array $assoc_args Optional arguments.
+	 */
+	public function cmd_correct_collations_for_live_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		$live_table_prefix = $assoc_args['live-table-prefix'];
+		$mode              = $assoc_args['mode'];
+		$backup_prefix     = isset( $assoc_args['backup-table-prefix'] ) ? $assoc_args['backup-table-prefix'] : 'collationbak_';
+		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
+		
+		Logger::instance()->init( __FUNCTION__ );
+
+		$tables_with_differing_collations = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
+
+		if ( ! empty( $tables_with_differing_collations ) ) {
+			ob_start();
+			\WP_CLI\Utils\format_items( 'table', $tables_with_differing_collations, array_keys( $tables_with_differing_collations[0] ) );
+			$output = ob_get_clean();
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $output );
+
+		}
+
+		switch ( $mode ) {
+			case 'aggressive':
+				$records_per_transaction = 50000;
+				$sleep_in_seconds        = 1;
+				break;
+			case 'regular':
+				$records_per_transaction = 10000;
+				$sleep_in_seconds        = 2;
+				break;
+			case 'slow':
+				$records_per_transaction = 1000;
+				$sleep_in_seconds        = 3;
+				break;
+			default:
+				$records_per_transaction = 10000;
+				$sleep_in_seconds        = 2;
+				break;
+		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
+		foreach ( $tables_with_differing_collations as $result ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
+			$this->db->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $records_per_transaction, $sleep_in_seconds, $backup_prefix );
+		}
 	}
 
 	/**
@@ -988,86 +1079,6 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * This function will display a table comparing the collations of Live and Core WP tables.
-	 *
-	 * @param array $args Positional arguments.
-	 * @param array $assoc_args Optional arguments.
-	 */
-	public function cmd_compare_collations_of_live_and_core_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		$live_table_prefix     = $assoc_args['live-table-prefix'];
-		$skip_tables           = [];
-		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
-
-		Logger::instance()->init( __FUNCTION__ );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
-
-		if ( ! empty( $assoc_args['skip-tables'] ) ) {
-			$skip_tables = explode( ',', $assoc_args['skip-tables'] );
-		}
-
-		$tables = [];
-
-		if ( $different_tables_only ) {
-			$tables = $this->logic->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
-		} else {
-			$tables = $this->logic->get_collation_comparison_of_live_and_core_wp_tables( $live_table_prefix, $skip_tables );
-		}
-
-		if ( ! empty( $tables ) ) {
-			WP_CLI\Utils\format_items( 'table', $tables, array_keys( $tables[0] ) );
-		} else {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Live and Core WP DB table collations match.' );
-		}
-	}
-
-	/**
-	 * This function will execute the necessary steps to get Live WP
-	 * tables to match the collation of Core WP tables.
-	 *
-	 * @param array $args Positional arguments.
-	 * @param array $assoc_args Optional arguments.
-	 */
-	public function cmd_correct_collations_for_live_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		$live_table_prefix = $assoc_args['live-table-prefix'];
-		$mode              = $assoc_args['mode'];
-		$backup_prefix     = isset( $assoc_args['backup-table-prefix'] ) ? $assoc_args['backup-table-prefix'] : 'collationbak_';
-		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
-		
-		Logger::instance()->init( __FUNCTION__ );
-		
-		$tables_with_differing_collations = $this->logic->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
-
-		if ( ! empty( $tables_with_differing_collations ) ) {
-			WP_CLI\Utils\format_items( 'table', $tables_with_differing_collations, array_keys( $tables_with_differing_collations[0] ) );
-		}
-
-		switch ( $mode ) {
-			case 'aggressive':
-				$records_per_transaction = 50000;
-				$sleep_in_seconds        = 1;
-				break;
-			case 'regular':
-				$records_per_transaction = 10000;
-				$sleep_in_seconds        = 2;
-				break;
-			case 'slow':
-				$records_per_transaction = 1000;
-				$sleep_in_seconds        = 3;
-				break;
-			default:
-				$records_per_transaction = 10000;
-				$sleep_in_seconds        = 2;
-				break;
-		}
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
-		foreach ( $tables_with_differing_collations as $result ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
-			$this->logic->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $records_per_transaction, $sleep_in_seconds, $backup_prefix );
-		}
-	}
-
-	/**
 	 * Util method to filter IDs of certain $post_type from the $imported_posts_data array.
 	 *
 	 * @param array  $imported_posts_data Imported posts log data.
@@ -1085,22 +1096,5 @@ class ContentDiffMigrator {
 			}
 		}
 		return $map;
-	}
-
-	/**
-	 * Validates DB tables.
-	 *
-	 * @param string $live_table_prefix Live table prefix.
-	 * @param array  $skip_tables       Core WP DB tables to skip (without prefix).
-	 *
-	 * @throws \RuntimeException In case that table collations do not match.
-	 *
-	 * @return void
-	 */
-	public function validate_db_tables( string $live_table_prefix, array $skip_tables ): void {
-		$this->logic->validate_core_wp_db_tables_exist_in_db( $live_table_prefix, $skip_tables );
-		if ( ! $this->logic->are_table_collations_matching( $live_table_prefix, $skip_tables ) ) {
-			throw new \RuntimeException( 'Table collations do not match for some (or all) WP tables.' );
-		}
 	}
 }

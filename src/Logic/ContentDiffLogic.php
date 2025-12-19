@@ -12,7 +12,6 @@ use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
 use Psr\Log\LogLevel;
 use RuntimeException;
-use WP_CLI;
 use WP_User;
 use wpdb;
 
@@ -40,21 +39,6 @@ class ContentDiffLogic {
 	const DATAKEY_TERMS             = 'terms';
 	const DATAKEY_TERMMETA          = 'termmeta';
 
-	const CORE_WP_TABLES = [
-		'commentmeta',
-		'comments',
-		'links',
-		'options',
-		'postmeta',
-		'posts',
-		'terms',
-		'termmeta',
-		'term_relationships',
-		'term_taxonomy',
-		'usermeta',
-		'users',
-	];
-
 	/**
 	 * Global $wpdb.
 	 *
@@ -77,6 +61,13 @@ class ContentDiffLogic {
 	private DataImporter $data_importer;
 
 	/**
+	 * DB utilities instance.
+	 *
+	 * @var DB
+	 */
+	private DB $db;
+
+	/**
 	 * ContentDiffMigrator constructor.
 	 *
 	 * @param object $wpdb Global $wpdb.
@@ -85,6 +76,7 @@ class ContentDiffLogic {
 		$this->wpdb          = $wpdb;
 		$this->block_updater = new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
 		$this->data_importer = new DataImporter( $wpdb );
+		$this->db            = new DB( $wpdb );
 	}
 
 	/**
@@ -153,59 +145,6 @@ class ContentDiffLogic {
 		}
 
 		return $source_hostnames;
-	}
-
-	/**
-	 * Gets a diff of new Posts, Pages and Attachments from the Live Site.
-	 *
-	 * @param string $live_table_prefix Table prefix for the Live Site.
-	 *
-	 * @return     array Result from $wpdb->get_results.
-	 * @throws     \RuntimeException Throws exception if any live tables do not match the collation of their corresponding Core WP DB table.
-	 * @deprecated Since large JOINs can time out on Atomic, this was eprecated in favor of `get_posts_rows_for_content_diff` and
-	 * `filter_new_live_ids`. And there's also the new `filter_modified_live_ids` method.
-	 */
-	public function get_live_diff_content_ids( $live_table_prefix ) {
-		if ( ! $this->are_table_collations_matching( $live_table_prefix ) ) {
-			throw new \RuntimeException( 'Table collations do not match for some (or all) WP tables.' );
-		}
-
-		$ids              = [];
-		$live_posts_table = esc_sql( $live_table_prefix ) . 'posts';
-		$posts_table      = $this->wpdb->prefix . 'posts';
-
-		// Get all Posts and Pages except revisions and trashed items.
-		$sql_posts = "SELECT lwp.ID FROM {$live_posts_table} lwp
-			LEFT JOIN {$posts_table} wp
-				ON wp.post_name = lwp.post_name
-				AND wp.post_title = lwp.post_title
-				AND wp.post_status = lwp.post_status
-				AND wp.post_date = lwp.post_date
-			WHERE lwp.post_type IN ( 'post', 'page' )
-			AND lwp.post_status IN ( 'publish', 'future', 'draft', 'pending', 'private' )
-			AND wp.ID IS NULL;";
-		// phpcs:ignore -- no SQL parameters used.
-		$results   = $this->wpdb->get_results( $sql_posts, ARRAY_A );
-		foreach ( $results as $result ) {
-			$ids[] = $result['ID'];
-		}
-
-		// Get attachments.
-		$sql_attachments = "SELECT lwp.ID FROM {$live_posts_table} lwp
-			LEFT JOIN {$posts_table} wp
-				ON wp.post_name = lwp.post_name
-				AND wp.post_title = lwp.post_title
-				AND wp.post_status = lwp.post_status
-				AND wp.post_date = lwp.post_date
-			WHERE lwp.post_type IN ( 'attachment' )
-			AND wp.ID IS NULL;";
-		// phpcs:ignore -- no SQL parameters used.
-		$results         = $this->wpdb->get_results( $sql_attachments, ARRAY_A );
-		foreach ( $results as $result ) {
-			$ids[] = $result['ID'];
-		}
-
-		return $ids;
 	}
 
 	/**
@@ -830,6 +769,7 @@ class ContentDiffLogic {
 		}
 
 		// Fetch the post.
+		// phpcs:disable -- Query is correctly prepared. WordPress.DB.PreparedSQL.NotPrepared.
 		$result = $this->wpdb->get_row(
 			$this->wpdb->prepare(
 				"SELECT ID, post_content, post_excerpt FROM {$this->wpdb->posts} WHERE ID = %d;",
@@ -837,6 +777,7 @@ class ContentDiffLogic {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable
 		if ( ! $result ) {
 			return;
 		}
@@ -1230,199 +1171,6 @@ class ContentDiffLogic {
 		}
 
 		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Gets a list of all the tables in the active DB.
-	 *
-	 * @return array List of all tables in DB.
-	 */
-	public function get_all_db_tables() {
-		$all_tables        = [];
-		$all_tables_result = $this->wpdb->get_results( 'SHOW TABLES;', ARRAY_N );
-		foreach ( $all_tables_result as $table ) {
-			$all_tables[] = $table[0];
-		}
-
-		return $all_tables;
-	}
-
-	/**
-	 * Checks whether all core WP DB tables are present in used DB.
-	 *
-	 * @param string $table_prefix Table prefix.
-	 * @param array  $skip_tables  Core WP DB tables to skip (without prefix).
-	 *
-	 * @throws \RuntimeException In case not all live DB core WP tables are found.
-	 */
-	public function validate_core_wp_db_tables_exist_in_db( $table_prefix, $skip_tables = [] ) {
-		$all_tables = $this->get_all_db_tables();
-		foreach ( self::CORE_WP_TABLES as $table ) {
-			if ( in_array( $table, $skip_tables ) ) {
-				continue;
-			}
-			$tablename = $table_prefix . $table;
-			if ( ! in_array( $tablename, $all_tables ) ) {
-				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $tablename ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-			}
-		}
-	}
-
-	/**
-	 * This function will compare Core WP Tables against the Live WP tables
-	 * brought in for a content migration/refresh. This will be
-	 * useful for determining whether a collation
-	 * migration is necessary.
-	 *
-	 * @param string $table_prefix Table prefix.
-	 * @param array  $skip_tables Core WP DB tables to skip (without prefix).
-	 *
-	 * @throws \RuntimeException Throws exception if unable to find live tables with given prefix.
-	 * @return array
-	 */
-	public function get_collation_comparison_of_live_and_core_wp_tables( string $table_prefix, array $skip_tables = [] ): array {
-		$validated_tables = [];
-
-		$core_tables = array_diff( self::CORE_WP_TABLES, $skip_tables );
-		foreach ( $core_tables as $table ) {
-			$core_table = esc_sql( $this->wpdb->prefix . $table );
-			$live_table = esc_sql( $table_prefix . $table );
-
-			// phpcs:ignore -- query fully sanitized.
-			$core_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$core_table'" );
-			// phpcs:ignore -- query fully sanitized.
-			$live_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$live_table'" );
-
-			if ( is_null( $live_table_status ) ) {
-				WP_CLI::warning( "Live table `$live_table` does not exist, skipping table." );
-				continue;
-			}
-
-			// phpcs:ignore -- ignore CamelCase param.
-			$match_test = $live_table_status->Collation === $core_table_status->Collation;
-
-			$validated_tables[] = [
-				'table'                => $table,
-				'core_table_name'      => $core_table,
-				// phpcs:ignore -- ignore CamelCase param.
-				'core_table_collation' => $core_table_status->Collation,
-				'live_table_name'      => $live_table,
-				// phpcs:ignore -- ignore CamelCase param.
-				'live_table_collation' => $live_table_status->Collation,
-				'match'                => $match_test ? 'YES' : 'NO',
-				'match_bool'           => $match_test,
-			];
-		}
-
-		if ( empty( $validated_tables ) ) {
-			throw new \RuntimeException( 'Unable to validate collation on content diff tables. Please verify live table prefix.' );
-		}
-
-		return $validated_tables;
-	}
-
-	/**
-	 * Convenience function that only returns tables which have a different collation
-	 * than the Core WP DB tables.
-	 *
-	 * @param string $table_prefix Table prefix.
-	 * @param array  $skip_tables Core WP DB tables to skip (without prefix).
-	 *
-	 * @throws \RuntimeException Throws exception if unable to find live tables with given prefix.
-	 * @return array
-	 */
-	public function filter_for_different_collated_tables( string $table_prefix, array $skip_tables = [] ): array {
-		$collation_comparison = $this->get_collation_comparison_of_live_and_core_wp_tables( $table_prefix, $skip_tables );
-
-		return array_values(
-			array_filter(
-				$collation_comparison,
-				fn( $validated_table ) => false === $validated_table['match_bool']
-			)
-		);
-	}
-
-	/**
-	 * Convenience function which returns a simple boolean value indicating whether all Live
-	 * DB tables have matching collations with their corresponding Core WP DB tables.
-	 *
-	 * @param string $table_prefix Table prefix.
-	 * @param array  $skip_tables Core WP DB tables to skip (without prefix).
-	 *
-	 * @throws \RuntimeException Throws exception if unable to find live tables with given prefix.
-	 * @return bool
-	 */
-	public function are_table_collations_matching( string $table_prefix, array $skip_tables = [] ): bool {
-		return empty( $this->filter_for_different_collated_tables( $table_prefix, $skip_tables ) );
-	}
-
-	/**
-	 * This function will handle the operation to move data from the
-	 * incompatibly collated table to the new compatible table.
-	 *
-	 * @param string $prefix Live table prefix.
-	 * @param string $table The Core WP Table to address.
-	 * @param int    $records_per_transaction The amount of records to process per transaction.
-	 * @param int    $sleep_in_seconds Delay in seconds between each DB transaction.
-	 * @param string $prefix_for_backup Custom prefix for table to be backed up to.
-	 *
-	 * @throws \RuntimeException Throws various exceptions if unable to complete required SQL operations.
-	 */
-	public function copy_table_data_using_proper_collation( string $prefix, string $table, int $records_per_transaction = 5000, int $sleep_in_seconds = 1, string $prefix_for_backup = 'bak_' ) {
-		$backup_table              = esc_sql( $prefix_for_backup . $prefix . $table );
-		$source_table              = esc_sql( $prefix . $table );
-		$match_collation_for_table = esc_sql( $this->wpdb->prefix . $table );
-
-		$rename_sql = "RENAME TABLE $source_table TO $backup_table";
-		// phpcs:ignore -- query fully sanitized.
-		$rename_result             = $this->wpdb->query( $rename_sql );
-
-		if ( is_wp_error( $rename_result ) ) {
-			throw new \RuntimeException( "Unable to rename table: '$rename_sql'\n" . $rename_result->get_error_message() ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		$create_like_table_sql = "CREATE TABLE {$source_table} LIKE $match_collation_for_table";
-		// phpcs:ignore -- query fully sanitized.
-        $create_result         = $this->wpdb->query( $create_like_table_sql );
-
-		if ( false === $create_result ) {
-			$db_error = ( '' != $this->wpdb->last_error ) ? $this->wpdb->last_error : 'unknown error';
-			throw new \RuntimeException( "Unable to create table: '$create_like_table_sql'\nDB error: $db_error" ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		$limiter = [
-			'start' => 0,
-			'limit' => $records_per_transaction,
-		];
-
-		$table_columns_sql = "SHOW COLUMNS FROM $source_table";
-		// phpcs:ignore -- query fully sanitized.
-		$table_columns_results = $this->wpdb->get_results( $table_columns_sql );
-		$table_columns         = implode( ',', array_map( fn( $column_row ) => "`$column_row->Field`", $table_columns_results ) );
-		// phpcs:ignore -- query fully sanitized.
-        $count                 = $this->wpdb->get_row( "SELECT COUNT(*) as counter FROM $backup_table;" );
-
-		if ( empty( $count ) || 0 === (int) $count->counter ) {
-			throw new \RuntimeException( "Table '$backup_table' has 0 rows. No need to continue." ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		$iterations = ceil( $count->counter / $limiter['limit'] );
-		for ( $i = 1; $i <= $iterations; $i++ ) {
-			$insert_sql = "INSERT INTO `{$source_table}`({$table_columns}) SELECT {$table_columns} FROM {$backup_table} LIMIT {$limiter['start']}, {$limiter['limit']}";
-			// phpcs:ignore -- query fully sanitized.
-            $insert_result = $this->wpdb->query( $insert_sql );
-
-			if ( ( false !== $insert_result ) && ( 0 !== $insert_result ) ) {
-				$limiter['start'] = $limiter['start'] + $limiter['limit'];
-			} else {
-				$db_error = ( '' != $this->wpdb->last_error ) ? 'DB error message: ' . $this->wpdb->last_error : 'No DB error message available -- check error and debug logs.';
-				WP_CLI::error( sprintf( "Got up to (not including) %s. Failed running SQL '%s'. %s", $limiter['start'], $insert_sql, $db_error ) );
-			}
-
-			if ( $sleep_in_seconds ) {
-				sleep( $sleep_in_seconds );
-			}
-		}
 	}
 
 	/**
