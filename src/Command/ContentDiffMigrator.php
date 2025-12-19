@@ -65,14 +65,14 @@ class ContentDiffMigrator {
 	 */
 	public static function register_commands(): void {
 		WP_CLI::add_command(
-			'newspack-content-migrator content-diff-list-source-hostnames',
+			'newspack-content-diff-migrator list-source-hostnames',
 			[ __CLASS__, 'cmd_list_source_hostnames' ],
 			[
 				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-migrator content-diff-attribute-initial-content',
+			'newspack-content-diff-migrator attribute-initial-content',
 			[ __CLASS__, 'cmd_attribute_initial_content' ],
 			[
 				'shortdesc' => 'Attributes existing local content to a source hostname by comparing with those live DB tables and adding source-specific metadata.',
@@ -102,7 +102,7 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-migrator content-diff-search-new-content-on-live',
+			'newspack-content-diff-migrator search-new-content-on-live',
 			[ __CLASS__, 'cmd_search_new_content_on_live' ],
 			[
 				'shortdesc' => 'Searches for new posts existing in the Live site tables and not in the local site tables, and exports the IDs to a file.',
@@ -139,7 +139,7 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-migrator content-diff-migrate-live-content',
+			'newspack-content-diff-migrator migrate-live-content',
 			[ __CLASS__, 'cmd_migrate_live_content' ],
 			[
 				'shortdesc' => 'Migrates content from Live site tables to local site tables.',
@@ -176,7 +176,7 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-migrator display-collations-comparison',
+			'newspack-content-diff-migrator display-collations-comparison',
 			[ __CLASS__, 'cmd_compare_collations_of_live_and_core_wp_tables' ],
 			[
 				'shortdesc' => 'Display a table comparing collations of Live and Core WP tables.',
@@ -205,7 +205,7 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-migrator correct-collations-for-live-wp-tables',
+			'newspack-content-diff-migrator correct-collations-for-live-wp-tables',
 			[ __CLASS__, 'cmd_correct_collations_for_live_wp_tables' ],
 			[
 				'shortdesc' => 'This command will handle the necessary operations to match collations across Live and Core WP tables',
@@ -251,7 +251,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-migrator content-diff-list-source-hostnames`.
+	 * Callable for `newspack-content-diff-migrator list-source-hostnames`.
 	 *
 	 * Lists all source hostnames from which content has been imported.
 	 *
@@ -275,7 +275,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-migrator content-diff-attribute-initial-content`.
+	 * Callable for `newspack-content-diff-migrator attribute-initial-content`.
 	 *
 	 * Attributes/assigns existing local content to a source hostname by comparing with live DB
 	 * and adding source-specific metadata.
@@ -404,7 +404,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-migrator content-diff-search-new-content-on-live`.
+	 * Callable for `newspack-content-diff-migrator search-new-content-on-live`.
 	 *
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
@@ -528,7 +528,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-migrator content-diff-migrate-live-content`.
+	 * Callable for `newspack-content-diff-migrator migrate-live-content`.
 	 *
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.

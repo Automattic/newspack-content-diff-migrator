@@ -40,13 +40,13 @@ This plugin operates exclusively through WP-CLI commands. It's designed to be ru
 2. **Import Live Tables**: Import live site database tables with a specific prefix
 3. **Attribute Initial Content** (if local site was cloned from source): Create source-specific metadata for existing content
 ```bash
-wp newspack-content-migrator content-diff-attribute-initial-content \
+wp newspack-content-diff-migrator attribute-initial-content \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com
 ```
 4. **Search for New Content**: Identify new or modified content on the live site
 ```bash
-wp newspack-content-migrator content-diff-search-new-content-on-live \
+wp newspack-content-diff-migrator search-new-content-on-live \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com \
     --data-dir=/tmp/cdiff_data \
@@ -54,7 +54,7 @@ wp newspack-content-migrator content-diff-search-new-content-on-live \
 ```
 5. **Migrate Content**: Import the identified content differential to the local site
 ```bash
-wp newspack-content-migrator content-diff-migrate-live-content \
+wp newspack-content-diff-migrator migrate-live-content \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com \
     --data-dir=/tmp/cdiff_data \
@@ -113,30 +113,30 @@ The source hostname is used to namespace the "old ID" metadata, ensuring that ol
 To see which source hostnames have already been imported:
 
 ```bash
-wp newspack-content-migrator content-diff-list-source-hostnames
+wp newspack-content-diff-migrator list-source-hostnames
 ```
 
 ### Workflow for Multiple Sources
 
 ```bash
 # Import from Hostname A (www.example-1.com)
-wp newspack-content-migrator content-diff-search-new-content-on-live \
+wp newspack-content-diff-migrator search-new-content-on-live \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com \
     --data-dir=/tmp/cdiff_eg1
 
-wp newspack-content-migrator content-diff-migrate-live-content \
+wp newspack-content-diff-migrator migrate-live-content \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com \
     --data-dir=/tmp/cdiff_eg1
 
 # Import from Hostname B (www.example-2.com)
-wp newspack-content-migrator content-diff-search-new-content-on-live \
+wp newspack-content-diff-migrator search-new-content-on-live \
     --live-table-prefix=eg2_ \
     --source-hostname=www.example-2.com \
     --data-dir=/tmp/cdiff_eg2
 
-wp newspack-content-migrator content-diff-migrate-live-content \
+wp newspack-content-diff-migrator migrate-live-content \
     --live-table-prefix=eg2_ \
     --source-hostname=www.example-2.com \
     --data-dir=/tmp/cdiff_eg2
@@ -147,7 +147,7 @@ wp newspack-content-migrator content-diff-migrate-live-content \
 If your local site was initially cloned from a source hostname, you should attribute existing content before running content-diff. This creates the necessary source-specific metadata for proper tracking:
 
 ```bash
-wp newspack-content-migrator content-diff-attribute-initial-content \
+wp newspack-content-diff-migrator attribute-initial-content \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com
 ```
@@ -189,7 +189,7 @@ DELETE FROM wp_usermeta WHERE meta_key = 'newspackcontentdiff_live_id';
 After cleaning legacy metadata, attribute the existing content on site the source hostname you are migrating:
 
 ```bash
-wp newspack-content-migrator content-diff-attribute-initial-content \
+wp newspack-content-diff-migrator attribute-initial-content \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com
 ```
