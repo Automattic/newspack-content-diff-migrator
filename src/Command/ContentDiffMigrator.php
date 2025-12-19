@@ -657,6 +657,11 @@ class ContentDiffMigrator {
 		$this->update_attachment_ids_in_blocks( $imported_posts_data );
 		MemoryCleanupHook::cleanup( 1 );
 
+		// Recalculate counts for all migrated taxonomies.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Recalculating term counts for migrated taxonomies...' );
+		$this->recalculate_term_counts( $taxonomies_to_migrate );
+		MemoryCleanupHook::cleanup( 1 );
+
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
 
 		// Display info about available logs.
@@ -687,7 +692,6 @@ class ContentDiffMigrator {
 		} else {
 			$tables = $this->db->get_collation_comparison_of_live_and_core_wp_tables( $live_table_prefix, $skip_tables );
 		}
-
 		if ( ! empty( $tables ) ) {
 			ob_start();
 			\WP_CLI\Utils\format_items( 'table', $tables, array_keys( $tables[0] ) );
@@ -723,6 +727,7 @@ class ContentDiffMigrator {
 
 		}
 
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
 		switch ( $mode ) {
 			case 'aggressive':
 				$records_per_transaction = 50000;
@@ -741,8 +746,6 @@ class ContentDiffMigrator {
 				$sleep_in_seconds        = 2;
 				break;
 		}
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
 		foreach ( $tables_with_differing_collations as $result ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
 			$this->db->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $records_per_transaction, $sleep_in_seconds, $backup_prefix );
@@ -1066,6 +1069,26 @@ class ContentDiffMigrator {
 		}
 		if ( $progress->finish() ) {
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+		}
+	}
+
+	/**
+	 * Recalculates term counts for all migrated taxonomies.
+	 *
+	 * @param array $taxonomies_to_migrate Taxonomies to migrate.
+	 */
+	private function recalculate_term_counts( array $taxonomies_to_migrate ): void {
+		foreach ( $taxonomies_to_migrate as $taxonomy ) {
+			$terms = get_terms(
+				[
+					'taxonomy'   => $taxonomy,
+					'hide_empty' => false,
+					'fields'     => 'ids',
+				] 
+			);
+			if ( ! is_wp_error( $terms ) && $terms ) {
+				wp_update_term_count_now( $terms, $taxonomy );
+			}
 		}
 	}
 
