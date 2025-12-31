@@ -54,10 +54,23 @@ class DataImporter {
 	}
 
 	/**
-	 * Imports all post-related data (meta, author, comments, taxonomies).
+	 * Imports all post-related data (meta, author, comments, taxonomies, termmeta).
 	 *
 	 * @param int    $post_id               Post ID.
-	 * @param array  $data                  Post data array with keys: post, postmeta, comments, commentmeta, users, usermeta, term_relationships, term_taxonomy, terms, termmeta.
+	 * @param array  $data {
+	 *     Post data array from ContentDiffLogic::get_post_data().
+	 *
+	 *     @type array $post              Contains `posts` row (DATAKEY_POST).
+	 *     @type array $postmeta          Post's `postmeta` rows (DATAKEY_POSTMETA).
+	 *     @type array $comments          Post's `comments` rows (DATAKEY_COMMENTS).
+	 *     @type array $commentmeta       Post's `commentmeta` rows (DATAKEY_COMMENTMETA).
+	 *     @type array $users             Post's `users` rows for Author and Comment Users (DATAKEY_USERS).
+	 *     @type array $usermeta          Post's `usermeta` rows (DATAKEY_USERMETA).
+	 *     @type array $term_relationships Post's `term_relationships` rows (DATAKEY_TERMRELATIONSHIPS).
+	 *     @type array $term_taxonomy     Post's `term_taxonomy` rows (DATAKEY_TERMTAXONOMY).
+	 *     @type array $terms             Post's `terms` rows (DATAKEY_TERMS).
+	 *     @type array $termmeta          Post's `termmeta` rows (DATAKEY_TERMMETA).
+	 * }
 	 * @param string $live_table_prefix     Live database table prefix.
 	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
 	 * @param string $source_hostname       Source hostname.
