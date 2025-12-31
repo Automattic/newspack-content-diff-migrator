@@ -371,7 +371,7 @@ class RunState {
 		$result = file_put_contents( $path, $json ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
 		
 		if ( false === $result ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to write run-state file %s, error: %s', $filename, error_get_last() ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to write run-state file %s, error: %s', $filename, wp_json_encode( error_get_last() ) ) );
 			return false;
 		}
 		
@@ -428,7 +428,7 @@ class RunState {
 		$result = file_put_contents( $path, $json . "\n", FILE_APPEND ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
 		
 		if ( false === $result ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to append to run-state file %s, error: %s', $filename, error_get_last() ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to append to run-state file %s, error: %s', $filename, wp_json_encode( error_get_last() ) ) );
 			return false;
 		}
 		

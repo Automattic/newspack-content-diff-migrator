@@ -744,13 +744,12 @@ class ContentDiffLogic {
 			Logger::instance()->log(
 				Logger::OUTPUT_FILE,
 				LogLevel::DEBUG,
-				wp_json_encode(
-					[
-						'post_id'           => $post_id,
-						'_thumbnail_id_old' => (int) $current_thumbnail_id,
-						'_thumbnail_id_new' => (int) $new_thumbnail_id,
-					]
-				)
+				'Featured image updated',
+				[
+					'post_id'           => $post_id,
+					'_thumbnail_id_old' => (int) $current_thumbnail_id,
+					'_thumbnail_id_new' => (int) $new_thumbnail_id,
+				]
 			);
 		}
 	}

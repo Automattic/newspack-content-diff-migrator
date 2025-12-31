@@ -260,7 +260,7 @@ class ContentDiffMigrator {
 	 */
 	public function cmd_list_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		Logger::instance()->init( __FUNCTION__ );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__' ) );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
 		if ( empty( $source_sites ) ) {
@@ -292,7 +292,7 @@ class ContentDiffMigrator {
 		
 		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__ | source hostname: %s', $source_hostname ) );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
 		// Validate DBs.
 		try {
@@ -544,7 +544,7 @@ class ContentDiffMigrator {
 		
 		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting __FUNCTION__ | source hostname: %s', $source_hostname ) );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
 		// Set instance properties.
 		$this->run_state         = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
@@ -594,8 +594,7 @@ class ContentDiffMigrator {
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
 		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ), $inserted_wp_users_updates );
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ) );
+		Logger::instance()->log_both_brief_and_verbose( LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ), $inserted_wp_users_updates );
 		MemoryCleanupHook::cleanup( 1 );
 
 		// Get new IDs which will be migrated.
