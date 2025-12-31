@@ -342,9 +342,8 @@ class ContentDiffMigrator {
 			foreach ( $matched_posts as $match ) {
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
 				$context = [
-					'post_type' => $match['post_type'],
-					'local_id'  => $match['local_id'],
-					'live_id'   => $match['live_id'],
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
 				];
 				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
 			}
@@ -369,11 +368,10 @@ class ContentDiffMigrator {
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
 				// Detailed log to file only.
 				$context = [
-					'post_type' => 'attachment',
-					'local_id'  => $match['local_id'],
-					'live_id'   => $match['live_id'],
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
 				];
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Attachment attributed to source_hostname %s', $source_hostname ), $context );
 			}
 			MemoryCleanupHook::cleanup( 1 );
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local attachments attributed out of %d total.', count( $matched_attachments ), count( $results_local_attachments ) ) );
