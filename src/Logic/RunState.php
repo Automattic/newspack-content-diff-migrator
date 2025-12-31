@@ -38,9 +38,24 @@ class RunState {
 	 * Constructor.
 	 *
 	 * @param string $run_state_dir Full path to run-state data directory, expected to be, '{--data-dir}/{--source-hostname}/run-state'.
+	 *
+	 * @throws \InvalidArgumentException If the path is invalid or contains path traversal.
 	 */
 	public function __construct( string $run_state_dir ) {
 		$this->run_state_dir = rtrim( $run_state_dir, '/' );
+
+		// Validate for security: path doesn't contain path traversal.
+		if ( false !== strpos( $this->run_state_dir, '..' ) ) {
+			throw new \InvalidArgumentException( 'Invalid run-state directory path: path traversal not allowed.' );
+		}
+
+		// Validate parent directory exists.
+		$parent_dir = dirname( $this->run_state_dir );
+		$real_path  = realpath( $parent_dir );
+		if ( false === $real_path ) {
+			throw new \InvalidArgumentException( 'Invalid run-state directory path: parent directory does not exist.' );
+		}
+
 		if ( ! is_dir( $this->run_state_dir ) ) {
 			wp_mkdir_p( $this->run_state_dir );
 		}
@@ -93,7 +108,7 @@ class RunState {
 		if ( null === $modified_ids ) {
 			return null;
 		}
-		array_map( 'intval', $modified_ids );
+		$modified_ids = array_map( 'intval', $modified_ids );
 		return $modified_ids;
 	}
 
