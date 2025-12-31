@@ -172,84 +172,132 @@ class DataImporter {
 	private function import_comments( array $data, int $post_id, string $source_hostname ): void {
 		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
 
-		// Insert Comments.
-		$comment_ids_updates = [];
+		// Insert all comments and collect old_id => new_id mapping.
+		$comment_ids_map = [];
 		foreach ( $data[ ContentDiffLogic::DATAKEY_COMMENTS ] as $comment_row ) {
-			$comment_id_old = (int) $comment_row['comment_ID'];
-
-			// Get or create Comment User.
-			$comment_user_id_old = (int) $comment_row['user_id'];
-			$comment_user_id_new = 0;
-			if ( 0 !== $comment_user_id_old ) {
-				$comment_user_row      = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment_user_id_old );
-				$comment_usermeta_rows = ! is_null( $comment_user_row ) ? $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] ) : [];
-
-				try {
-					$comment_user_id_new = ! is_null( $comment_user_row ) ? $this->get_or_create_user( $comment_user_row, $comment_usermeta_rows, $source_hostname ) : null;
-				} catch ( \Exception $e ) {
-					Logger::instance()->log_brief_and_verbose(
-						LogLevel::ERROR,
-						sprintf( 'import_comments get_or_create_user error: %s', $e->getMessage() ),
-						[
-							'id_old'                => $id_old,
-							'id_new'                => $post_id,
-							'comment_id_old'        => $comment_id_old,
-							'comment_user_row'      => $comment_user_row,
-							'comment_usermeta_rows' => $comment_usermeta_rows,
-						] 
-					);
-					$comment_user_id_new = null;
-				}
-
-				// If user couldn't be found/created, default to 0.
-				if ( is_null( $comment_user_id_new ) ) {
-					$comment_user_id_new = 0;
-				}
-			}
-
-			// Insert Comment and Comment Metas.
-			$commentmeta_rows = $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_id_old );
-			$comment_id_new   = null;
-			try {
-				$comment_id_new                         = $this->insert_comment( $comment_row, $post_id, $comment_user_id_new );
-				$comment_ids_updates[ $comment_id_old ] = $comment_id_new;
-				foreach ( $commentmeta_rows as $commentmeta_row ) {
-					$this->insert_commentmeta_row( $commentmeta_row, $comment_id_new );
-				}
-			} catch ( \Exception $e ) {
-				Logger::instance()->log_brief_and_verbose(
-					LogLevel::ERROR,
-					sprintf( 'import_comments insert_comment and insert_commentmeta_row error: %s', $e->getMessage() ),
-					[
-						'id_old'              => $id_old,
-						'id_new'              => $post_id,
-						'comment_id_old'      => $comment_id_old,
-						'comment_user_id_new' => $comment_user_id_new,
-						'comment_row'         => $comment_row,
-						'commentmeta_rows'    => $commentmeta_rows,
-					] 
-				);
+			$new_comment_id = $this->import_single_comment( $comment_row, $data, $post_id, $id_old, $source_hostname );
+			if ( null !== $new_comment_id ) {
+				$comment_ids_map[ (int) $comment_row['comment_ID'] ] = $new_comment_id;
 			}
 		}
 
-		// Loop through all comments, and update their Parent IDs.
-		foreach ( $comment_ids_updates as $comment_id_old => $comment_id_new ) {
-			$comment_row        = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_COMMENTS ], 'comment_ID', $comment_id_old );
+		// Update parent IDs for all inserted comments.
+		$this->update_imported_comment_parents( $comment_ids_map, $data[ ContentDiffLogic::DATAKEY_COMMENTS ], $id_old, $post_id );
+	}
+
+	/**
+	 * Imports a single comment with its user and commentmeta.
+	 *
+	 * @param array  $comment_row     Comment row from live DB.
+	 * @param array  $data            Full post data array.
+	 * @param int    $post_id         New post ID.
+	 * @param int    $id_old          Original post ID (for logging).
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int|null New comment ID, or null on error.
+	 */
+	private function import_single_comment( array $comment_row, array $data, int $post_id, int $id_old, string $source_hostname ): ?int {
+		$comment_id_old = (int) $comment_row['comment_ID'];
+
+		// Get or create Comment User.
+		$comment_user_id_new = $this->get_comment_user_id( $comment_row, $data, $post_id, $id_old, $source_hostname );
+
+		// Insert Comment and Comment Metas.
+		$commentmeta_rows = $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_COMMENTMETA ], 'comment_id', $comment_id_old );
+		try {
+			$comment_id_new = $this->insert_comment( $comment_row, $post_id, $comment_user_id_new );
+			foreach ( $commentmeta_rows as $commentmeta_row ) {
+				$this->insert_commentmeta_row( $commentmeta_row, $comment_id_new );
+			}
+			return $comment_id_new;
+		} catch ( \Exception $e ) {
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::ERROR,
+				sprintf( 'import_single_comment error: %s', $e->getMessage() ),
+				[
+					'id_old'              => $id_old,
+					'id_new'              => $post_id,
+					'comment_id_old'      => $comment_id_old,
+					'comment_user_id_new' => $comment_user_id_new,
+					'comment_row'         => $comment_row,
+					'commentmeta_rows'    => $commentmeta_rows,
+				]
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Gets or creates the user for a comment.
+	 *
+	 * @param array  $comment_row     Comment row from live DB.
+	 * @param array  $data            Full post data array.
+	 * @param int    $post_id         New post ID (for logging).
+	 * @param int    $id_old          Original post ID (for logging).
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int User ID (0 if no user or user couldn't be created).
+	 */
+	private function get_comment_user_id( array $comment_row, array $data, int $post_id, int $id_old, string $source_hostname ): int {
+		$comment_user_id_old = (int) $comment_row['user_id'];
+		$comment_id_old      = (int) $comment_row['comment_ID'];
+
+		if ( 0 === $comment_user_id_old ) {
+			return 0;
+		}
+
+		$comment_user_row      = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_USERS ], 'ID', $comment_user_id_old );
+		$comment_usermeta_rows = ! is_null( $comment_user_row ) ? $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] ) : [];
+
+		try {
+			$comment_user_id_new = ! is_null( $comment_user_row ) ? $this->get_or_create_user( $comment_user_row, $comment_usermeta_rows, $source_hostname ) : null;
+		} catch ( \Exception $e ) {
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::ERROR,
+				sprintf( 'get_comment_user_id error: %s', $e->getMessage() ),
+				[
+					'id_old'                => $id_old,
+					'id_new'                => $post_id,
+					'comment_id_old'        => $comment_id_old,
+					'comment_user_row'      => $comment_user_row,
+					'comment_usermeta_rows' => $comment_usermeta_rows,
+				]
+			);
+			$comment_user_id_new = null;
+		}
+
+		// If user couldn't be found/created, default to 0.
+		return $comment_user_id_new ?? 0;
+	}
+
+	/**
+	 * Updates parent IDs for all imported comments.
+	 *
+	 * @param array $comment_ids_map Map of old comment ID => new comment ID.
+	 * @param array $comments_data   Original comments data array.
+	 * @param int   $id_old          Original post ID (for logging).
+	 * @param int   $post_id         New post ID (for logging).
+	 */
+	private function update_imported_comment_parents( array $comment_ids_map, array $comments_data, int $id_old, int $post_id ): void {
+		foreach ( $comment_ids_map as $comment_id_old => $comment_id_new ) {
+			$comment_row        = $this->filter_array_element( $comments_data, 'comment_ID', $comment_id_old );
 			$comment_parent_old = $comment_row['comment_parent'];
-			$comment_parent_new = $comment_ids_updates[ $comment_parent_old ] ?? null;
+			$comment_parent_new = $comment_ids_map[ $comment_parent_old ] ?? null;
+
+			// Only update if parent exists and has changed.
 			if ( ( $comment_parent_old > 0 ) && $comment_parent_new && ( $comment_parent_old != $comment_parent_new ) ) {
 				try {
 					$this->update_comment_parent( $comment_id_new, $comment_parent_new );
 				} catch ( \Exception $e ) {
 					Logger::instance()->log_brief_and_verbose(
 						LogLevel::ERROR,
-						sprintf( 'import_comments update_comment_parent error: %s', $e->getMessage() ),
+						sprintf( 'update_imported_comment_parents error: %s', $e->getMessage() ),
 						[
 							'id_old'             => $id_old,
 							'id_new'             => $post_id,
 							'comment_id_new'     => $comment_id_new,
 							'comment_parent_new' => $comment_parent_new,
-						] 
+						]
 					);
 				}
 			}
@@ -266,126 +314,204 @@ class DataImporter {
 	 */
 	private function import_taxonomies( array $data, int $post_id, string $live_table_prefix, array $taxonomies_to_migrate ): void {
 		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
-		
-		// Import taxonomies.
+
+		// Track inserted term_taxonomy_ids to avoid duplicates.
 		$inserted_term_taxonomy_ids = [];
+
 		foreach ( $data[ ContentDiffLogic::DATAKEY_TERMRELATIONSHIPS ] as $term_relationship_row ) {
+			$inserted_term_taxonomy_ids = $this->import_single_term_relationship(
+				$term_relationship_row,
+				$data,
+				$post_id,
+				$id_old,
+				$live_table_prefix,
+				$taxonomies_to_migrate,
+				$inserted_term_taxonomy_ids
+			);
+		}
+	}
 
-			$live_term_taxonomy_id  = $term_relationship_row['term_taxonomy_id'];
-			$live_term_taxonomy_row = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', $live_term_taxonomy_id );
-			$live_term_id           = $live_term_taxonomy_row['term_id'];
-			$live_term_row          = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $live_term_id );
+	/**
+	 * Imports a single term relationship with its term and termmeta.
+	 *
+	 * @param array  $term_relationship_row      Term relationship row from live DB.
+	 * @param array  $data                       Full post data array.
+	 * @param int    $post_id                    New post ID.
+	 * @param int    $id_old                     Original post ID (for logging).
+	 * @param string $live_table_prefix          Live database table prefix.
+	 * @param array  $taxonomies_to_migrate      List of taxonomies allowed to be migrated.
+	 * @param array  $inserted_term_taxonomy_ids Tracks already inserted term_taxonomy_ids.
+	 *
+	 * @return array Updated $inserted_term_taxonomy_ids array.
+	 */
+	private function import_single_term_relationship(
+		array $term_relationship_row,
+		array $data,
+		int $post_id,
+		int $id_old,
+		string $live_table_prefix,
+		array $taxonomies_to_migrate,
+		array $inserted_term_taxonomy_ids
+	): array {
+		$live_term_taxonomy_id  = $term_relationship_row['term_taxonomy_id'];
+		$live_term_taxonomy_row = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', $live_term_taxonomy_id );
+		$live_term_id           = $live_term_taxonomy_row['term_id'];
+		$live_term_row          = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMS ], 'term_id', $live_term_id );
+		$taxonomy_name          = $live_term_taxonomy_row['taxonomy'];
 
-			// Skip taxonomies not in the allowed list.
-			if ( ! in_array( $live_term_taxonomy_row['taxonomy'], $taxonomies_to_migrate, true ) ) {
-				continue;
+		// Skip taxonomies not in the allowed list.
+		if ( ! in_array( $taxonomy_name, $taxonomies_to_migrate, true ) ) {
+			return $inserted_term_taxonomy_ids;
+		}
+
+		// Validate live term row, it could be missing or invalid.
+		if ( is_null( $live_term_row ) ) {
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::ERROR,
+				'import_single_term_relationship: term_id does not exist in live DB term table, skipping',
+				[
+					'id_old'                 => $id_old,
+					'id_new'                 => $post_id,
+					'live_term_taxonomy_id'  => $live_term_taxonomy_id,
+					'live_term_taxonomy_row' => $live_term_taxonomy_row,
+					'live_term_id'           => $live_term_id,
+					'live_term_row'          => $live_term_row,
+				]
+			);
+			return $inserted_term_taxonomy_ids;
+		}
+
+		// Get or create term (works for both hierarchical and non-hierarchical - non-hierarchical just has parent=0).
+		if ( ! isset( $this->taxonomy_term_id_map[ $live_term_id ] ) ) {
+			$local_term_id = $this->get_or_create_local_term( $live_term_taxonomy_row, $data, $post_id, $id_old, $live_table_prefix );
+			if ( null === $local_term_id ) {
+				return $inserted_term_taxonomy_ids; // Error already logged in get_or_create_local_term.
 			}
+			$this->taxonomy_term_id_map[ $live_term_id ] = $local_term_id;
+		}
 
-			// Validate live term row, it could be missing or invalid.
-			if ( is_null( $live_term_row ) ) {
-				Logger::instance()->log_brief_and_verbose(
-					LogLevel::ERROR,
-					'import_taxonomies found invalid term relationship in live DB: term_id given in term_relationship does not exist in live DB term table, skipping it',
-					[
-						'id_old'                 => $id_old,
-						'id_new'                 => $post_id,
-						'live_term_taxonomy_id'  => $live_term_taxonomy_id,
-						'live_term_taxonomy_row' => $live_term_taxonomy_row,
-						'live_term_id'           => $live_term_id,
-						'live_term_row'          => $live_term_row,
-					] 
-				);
-				continue;
-			}
+		$local_term_id = $this->taxonomy_term_id_map[ $live_term_id ];
 
-			$live_term_name = $live_term_row['name'];
-			$taxonomy_name  = $live_term_taxonomy_row['taxonomy'];
+		// Get local term_taxonomy data.
+		$local_term_taxonomy_data = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_id' => $local_term_id ], $taxonomy_name );
+		if ( is_null( $local_term_taxonomy_data ) ) {
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::ERROR,
+				'import_single_term_relationship: local term_taxonomy not found after creation',
+				[
+					'id_old'                   => $id_old,
+					'id_new'                   => $post_id,
+					'live_term_id'             => $live_term_id,
+					'live_term_taxonomy_id'    => $live_term_taxonomy_id,
+					'live_term_taxonomy_row'   => $live_term_taxonomy_row,
+					'local_term_id'            => $local_term_id,
+					'local_term_taxonomy_data' => $local_term_taxonomy_data,
+					'taxonomy'                 => $taxonomy_name,
+				]
+			);
+			return $inserted_term_taxonomy_ids;
+		}
 
-			// Get or create term (works for both hierarchical and non-hierarchical - non-hierarchical just has parent=0).
-			if ( ! isset( $this->taxonomy_term_id_map[ $live_term_id ] ) ) {
-				try {
-					// Register taxonomy if not registered (init action not executed at this point).
-					if ( ! taxonomy_exists( $taxonomy_name ) ) {
-						// Check if live taxonomy is hierarchical by looking at parent field in live data.
-						$is_hierarchical = ! empty( $live_term_taxonomy_row['parent'] ) && '0' != $live_term_taxonomy_row['parent'];
-						$registered      = register_taxonomy( $taxonomy_name, 'post', [ 'hierarchical' => $is_hierarchical ] );
-						if ( is_wp_error( $registered ) ) {
-							$context = [
-								'taxonomy'        => $taxonomy_name,
-								'is_hierarchical' => $is_hierarchical,
-							];
-							Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::WARNING, sprintf( 'Failed to register taxonomy %s: %s', $taxonomy_name, $registered->get_error_message() ), $context );
-							// Don't throw - continue processing, may work anyway
-						}
-					}
-					$live_tree                                   = $this->get_taxonomy_tree( $live_table_prefix, $live_term_taxonomy_row );
-					$created_tree                                = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
-					$this->taxonomy_term_id_map[ $live_term_id ] = $created_tree['term_id'];
+		$local_term_taxonomy_id    = $local_term_taxonomy_data['term_taxonomy_id'];
+		$local_term_taxonomy_count = $local_term_taxonomy_data['count'];
 
-					// Import termmeta for this term (only once per term across all posts).
-					$this->import_termmeta( $data, $live_term_id, $created_tree['term_id'], $id_old, $post_id );
-				} catch ( \Exception $e ) {
-					Logger::instance()->log_brief_and_verbose(
-						LogLevel::ERROR,
-						sprintf( 'import_taxonomies get_or_create_hierarchical_taxonomy_tree error: %s', $e->getMessage() ),
-						[
-							'id_old'                 => $id_old,
-							'id_new'                 => $post_id,
-							'live_term_id'           => $live_term_id,
-							'taxonomy'               => $taxonomy_name,
-							'live_term_taxonomy_row' => $live_term_taxonomy_row,
-						] 
-					);
-					continue;
-				}
-			}
+		/**
+		 * We need to check if the same $local_term_taxonomy_id has already been inserted. This can happen if there are two
+		 * terms which have the same name but different case, e.g. first term with name 'reseñas' and second with name 'Reseñas'.
+		 * WP distinguishes these Terms, but we should clean them up as we get the chance and merge them.
+		 */
+		$term_relationship_is_double = in_array( $local_term_taxonomy_id, $inserted_term_taxonomy_ids );
 
-			$local_term_id            = $this->taxonomy_term_id_map[ $live_term_id ];
-			$local_term_taxonomy_data = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_id' => $local_term_id ], $taxonomy_name );
-			if ( is_null( $local_term_taxonomy_data ) ) {
-				Logger::instance()->log_brief_and_verbose(
-					LogLevel::ERROR,
-					'import_taxonomies get_term_and_taxonomy_array not properly fetched after get_or_create_hierarchical_taxonomy_tree',
-					[
-						'id_old'                   => $id_old,
-						'id_new'                   => $post_id,
-						'live_term_id'             => $live_term_id,
-						'live_term_taxonomy_id'    => $live_term_taxonomy_id,
-						'live_term_taxonomy_row'   => $live_term_taxonomy_row,
-						'local_term_id'            => $local_term_id,
-						'local_term_taxonomy_data' => $local_term_taxonomy_data,
-						'taxonomy'                 => $taxonomy_name,
-					] 
-				);
-				continue;
-			}
-			$local_term_taxonomy_id    = $local_term_taxonomy_data['term_taxonomy_id'];
-			$local_term_taxonomy_count = $local_term_taxonomy_data['count'];
+		if ( ! is_null( $local_term_taxonomy_id ) && ! $term_relationship_is_double ) {
+			// Insert the Term Relationship record.
+			$this->insert_term_relationship( $post_id, $local_term_taxonomy_id );
 
-			/**
-			 * We need to check if the same $local_term_taxonomy_id has already been inserted. This can happen if there are two
-			 * terms which have the same name but different case, e.g. first term with name 'reseñas' and second with name 'Reseñas'.
-			 * WP distinguishes these Terms, but we should clean them up as we get the chance and merge them.
-			 */
-			$term_relationship_is_double = in_array( $local_term_taxonomy_id, $inserted_term_taxonomy_ids );
-			
-			if ( ! is_null( $local_term_taxonomy_id ) && ! $term_relationship_is_double ) {
-				// Insert the Term Relationship record.
-				$this->insert_term_relationship( $post_id, $local_term_taxonomy_id );
+			// Increment wp_term_taxonomy.count, and update wp_term_taxonomy.description.
+			$this->wpdb->update(
+				$this->wpdb->term_taxonomy,
+				[
+					'count'       => ( (int) $local_term_taxonomy_count + 1 ),
+					'description' => $live_term_taxonomy_row['description'],
+				],
+				[ 'term_taxonomy_id' => $local_term_taxonomy_id ]
+			);
+			// Not handling update error, because terms will get recounted when migration is finished.
 
-				// Increment wp_term_taxonomy.count, and update wp_term_taxonomy.description.
-				$this->wpdb->update(
-					$this->wpdb->term_taxonomy,
-					[
-						'count'       => ( (int) $local_term_taxonomy_count + 1 ),
-						'description' => $live_term_taxonomy_row['description'],
-					],
-					[ 'term_taxonomy_id' => $local_term_taxonomy_id ]
-				);
-				// Not handling update error, because terms will get recounted when migration is finished.
+			$inserted_term_taxonomy_ids[] = $local_term_taxonomy_id;
+		}
 
-				$inserted_term_taxonomy_ids[] = $local_term_taxonomy_id;
-			}
+		return $inserted_term_taxonomy_ids;
+	}
+
+	/**
+	 * Gets or creates a local term from live term taxonomy data.
+	 *
+	 * @param array  $live_term_taxonomy_row Live term taxonomy row.
+	 * @param array  $data                   Full post data array.
+	 * @param int    $post_id                New post ID (for logging).
+	 * @param int    $id_old                 Original post ID (for logging).
+	 * @param string $live_table_prefix      Live database table prefix.
+	 *
+	 * @return int|null Local term ID, or null on error.
+	 */
+	private function get_or_create_local_term( array $live_term_taxonomy_row, array $data, int $post_id, int $id_old, string $live_table_prefix ): ?int {
+		$taxonomy_name = $live_term_taxonomy_row['taxonomy'];
+		$live_term_id  = $live_term_taxonomy_row['term_id'];
+
+		try {
+			// Register taxonomy if not registered (init action not executed at this point).
+			$this->ensure_taxonomy_registered( $taxonomy_name, $live_term_taxonomy_row );
+
+			// Build and recreate the taxonomy tree.
+			$live_tree    = $this->get_taxonomy_tree( $live_table_prefix, $live_term_taxonomy_row );
+			$created_tree = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
+
+			// Import termmeta for this term (only once per term across all posts).
+			$this->import_termmeta( $data, $live_term_id, $created_tree['term_id'], $id_old, $post_id );
+
+			return $created_tree['term_id'];
+		} catch ( \Exception $e ) {
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::ERROR,
+				sprintf( 'get_or_create_local_term error: %s', $e->getMessage() ),
+				[
+					'id_old'                 => $id_old,
+					'id_new'                 => $post_id,
+					'live_term_id'           => $live_term_id,
+					'taxonomy'               => $taxonomy_name,
+					'live_term_taxonomy_row' => $live_term_taxonomy_row,
+				]
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Ensures a taxonomy is registered if it doesn't exist.
+	 *
+	 * @param string $taxonomy_name          Taxonomy name.
+	 * @param array  $live_term_taxonomy_row Live term taxonomy row (used to determine if hierarchical).
+	 */
+	private function ensure_taxonomy_registered( string $taxonomy_name, array $live_term_taxonomy_row ): void {
+		if ( taxonomy_exists( $taxonomy_name ) ) {
+			return;
+		}
+
+		// Check if live taxonomy is hierarchical by looking at parent field in live data.
+		$is_hierarchical = ! empty( $live_term_taxonomy_row['parent'] ) && '0' != $live_term_taxonomy_row['parent'];
+		$registered      = register_taxonomy( $taxonomy_name, 'post', [ 'hierarchical' => $is_hierarchical ] );
+
+		if ( is_wp_error( $registered ) ) {
+			Logger::instance()->log(
+				Logger::OUTPUT_FILE,
+				LogLevel::WARNING,
+				sprintf( 'Failed to register taxonomy %s: %s', $taxonomy_name, $registered->get_error_message() ),
+				[
+					'taxonomy'        => $taxonomy_name,
+					'is_hierarchical' => $is_hierarchical,
+				]
+			);
+			// Don't throw - continue processing, may work anyway.
 		}
 	}
 
