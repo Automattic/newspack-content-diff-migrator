@@ -37,6 +37,14 @@ class DataImporter {
 	private array $taxonomy_term_id_map = [];
 
 	/**
+	 * Set of live term_ids for which termmeta has already been imported.
+	 * Prevents duplicate termmeta inserts when the same term is encountered across multiple posts.
+	 *
+	 * @var array<int, bool>
+	 */
+	private array $termmeta_imported = [];
+
+	/**
 	 * DataImporter constructor.
 	 *
 	 * @param wpdb $wpdb Global $wpdb.
@@ -300,6 +308,9 @@ class DataImporter {
 					$live_tree                                   = $this->get_taxonomy_tree( $live_table_prefix, $live_term_taxonomy_row );
 					$created_tree                                = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
 					$this->taxonomy_term_id_map[ $live_term_id ] = $created_tree['term_id'];
+
+					// Import termmeta for this term (only once per term across all posts).
+					$this->import_termmeta( $data, $live_term_id, $created_tree['term_id'], $id_old, $post_id );
 				} catch ( \Exception $e ) {
 					Logger::instance()->log_brief_and_verbose(
 						LogLevel::ERROR,
@@ -363,6 +374,46 @@ class DataImporter {
 				$inserted_term_taxonomy_ids[] = $local_term_taxonomy_id;
 			}
 		}
+	}
+
+	/**
+	 * Imports termmeta for a term.
+	 *
+	 * @param array $data          Post data array containing termmeta.
+	 * @param int   $live_term_id  Term ID from live DB.
+	 * @param int   $local_term_id New local term ID.
+	 * @param int   $id_old        Original post ID (for logging).
+	 * @param int   $post_id       New post ID (for logging).
+	 */
+	private function import_termmeta( array $data, int $live_term_id, int $local_term_id, int $id_old, int $post_id ): void {
+		// Skip if termmeta has already been imported for this term.
+		if ( isset( $this->termmeta_imported[ $live_term_id ] ) ) {
+			return;
+		}
+
+		// Get termmeta rows for this term.
+		$termmeta_rows = $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_TERMMETA ], 'term_id', $live_term_id );
+
+		foreach ( $termmeta_rows as $termmeta_row ) {
+			try {
+				$this->insert_termmeta_row( $termmeta_row, $local_term_id );
+			} catch ( \Exception $e ) {
+				Logger::instance()->log_brief_and_verbose(
+					LogLevel::ERROR,
+					sprintf( 'import_termmeta insert_termmeta_row error: %s', $e->getMessage() ),
+					[
+						'id_old'        => $id_old,
+						'id_new'        => $post_id,
+						'live_term_id'  => $live_term_id,
+						'local_term_id' => $local_term_id,
+						'termmeta_row'  => $termmeta_row,
+					]
+				);
+			}
+		}
+
+		// Mark this term's termmeta as imported.
+		$this->termmeta_imported[ $live_term_id ] = true;
 	}
 
 	/**
@@ -529,6 +580,29 @@ class DataImporter {
 		$inserted = $this->wpdb->insert( $this->wpdb->commentmeta, $insert_commentmeta_row );
 		if ( 1 != $inserted ) {
 			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, wp_json_encode( $commentmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		return $this->wpdb->insert_id;
+	}
+
+	/**
+	 * Inserts Term Meta with an updated term_id.
+	 *
+	 * @param array $termmeta_row Termmeta row from live DB.
+	 * @param int   $new_term_id  New Term ID.
+	 *
+	 * @throws \RuntimeException In case insert fails.
+	 *
+	 * @return int Inserted meta_id.
+	 */
+	private function insert_termmeta_row( array $termmeta_row, int $new_term_id ): int {
+		$insert_termmeta_row = $termmeta_row;
+		unset( $insert_termmeta_row['meta_id'] );
+		$insert_termmeta_row['term_id'] = $new_term_id;
+
+		$inserted = $this->wpdb->insert( $this->wpdb->termmeta, $insert_termmeta_row );
+		if ( 1 != $inserted ) {
+			throw new \RuntimeException( sprintf( 'Error inserting term meta, $new_term_id %d, $termmeta_row %s', $new_term_id, wp_json_encode( $termmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
 		return $this->wpdb->insert_id;
