@@ -70,13 +70,21 @@ class ContentDiffLogic {
 	/**
 	 * ContentDiffMigrator constructor.
 	 *
-	 * @param wpdb $wpdb Global $wpdb.
+	 * @param wpdb              $wpdb          Global $wpdb.
+	 * @param BlockUpdater|null $block_updater Optional BlockUpdater instance (for testing).
+	 * @param DataImporter|null $data_importer Optional DataImporter instance (for testing).
+	 * @param DB|null           $db            Optional DB instance (for testing).
 	 */
-	public function __construct( wpdb $wpdb ) {
+	public function __construct(
+		wpdb $wpdb,
+		?BlockUpdater $block_updater = null,
+		?DataImporter $data_importer = null,
+		?DB $db = null
+	) {
 		$this->wpdb          = $wpdb;
-		$this->block_updater = new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
-		$this->data_importer = new DataImporter( $wpdb );
-		$this->db            = new DB( $wpdb );
+		$this->block_updater = $block_updater ?? new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
+		$this->data_importer = $data_importer ?? new DataImporter( $wpdb );
+		$this->db            = $db ?? new DB( $wpdb );
 	}
 
 	/**
