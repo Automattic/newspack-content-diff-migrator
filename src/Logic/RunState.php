@@ -38,23 +38,9 @@ class RunState {
 	 * Constructor.
 	 *
 	 * @param string $run_state_dir Full path to run-state data directory, expected to be, '{--data-dir}/{--source-hostname}/run-state'.
-	 *
-	 * @throws \InvalidArgumentException If the path is invalid or contains path traversal.
 	 */
 	public function __construct( string $run_state_dir ) {
 		$this->run_state_dir = rtrim( $run_state_dir, '/' );
-
-		// Validate for security: path doesn't contain path traversal.
-		if ( false !== strpos( $this->run_state_dir, '..' ) ) {
-			throw new \InvalidArgumentException( 'Invalid run-state directory path: path traversal not allowed.' );
-		}
-
-		// Validate parent directory exists.
-		$parent_dir = dirname( $this->run_state_dir );
-		$real_path  = realpath( $parent_dir );
-		if ( false === $real_path ) {
-			throw new \InvalidArgumentException( 'Invalid run-state directory path: parent directory does not exist.' );
-		}
 
 		if ( ! is_dir( $this->run_state_dir ) ) {
 			wp_mkdir_p( $this->run_state_dir );
@@ -99,25 +85,12 @@ class RunState {
 	}
 
 	/**
-	 * Gets modified IDs ('live_id', 'local_id' pairs).
-	 *
-	 * @return array|null Array of modified ID pairs or null if file doesn't exist.
-	 */
-	private function read_modified_ids(): ?array {
-		$modified_ids = $this->read_json( self::FILE_MODIFIED_IDS );
-		if ( null === $modified_ids ) {
-			return null;
-		}
-		return $modified_ids;
-	}
-
-	/**
 	 * Gets a map of "old => new" modified IDs.
 	 *
 	 * @return array|null Keys are old live modified IDs, values are new local modified IDs, or null if file with modified IDs doesn't exist.
 	 */
 	public function get_modified_ids_map(): ?array {
-		$modified_ids_data = $this->read_modified_ids();
+		$modified_ids_data = $this->read_json( self::FILE_MODIFIED_IDS );
 		if ( null === $modified_ids_data ) {
 			return null;
 		}
@@ -153,24 +126,12 @@ class RunState {
 	}
 
 	/**
-	 * Gets deleted modified IDs.
-	 *
-	 * @return array Array of deleted modified ID records.
-	 */
-	private function read_deleted_modified_ids(): array {
-		return $this->read_jsonl( self::FILE_DELETED_MODIFIED_IDS );
-	}
-
-	/**
 	 * Gets a map of "old => new" already deleted modified IDs from the run-state file.
 	 *
-	 * @return array|null Keys are old live deleted IDs, values are new local deleted IDs, or null if file with deleted modified IDs doesn't exist.
+	 * @return array Keys are old live deleted IDs, values are new local deleted IDs, or empty array if file doesn't exist.
 	 */
-	public function get_deleted_modified_ids_map(): ?array {
-		$deleted_modified_ids_data = $this->read_deleted_modified_ids();
-		if ( null === $deleted_modified_ids_data ) {
-			return null;
-		}
+	public function get_deleted_modified_ids_map(): array {
+		$deleted_modified_ids_data = $this->read_jsonl( self::FILE_DELETED_MODIFIED_IDS );
 
 		$deleted_modified_ids_map = [];
 		foreach ( $deleted_modified_ids_data as $entry ) {
@@ -181,24 +142,13 @@ class RunState {
 	}
 
 	/**
-	 * Gets imported posts.
-	 *
-	 * @return array Array of imported post records.
-	 */
-	private function read_imported_posts(): array {
-		return $this->read_jsonl( self::FILE_IMPORTED_POSTS );
-	}
-
-	/**
 	 * Gets a map of "old => new" already imported post IDs.
 	 *
-	 * @return array|null Keys are old live imported IDs, values are new local imported IDs, or null if file with imported posts doesn't exist.
+	 * @return array Keys are old live imported IDs, values are new local imported IDs, or empty array if file doesn't exist.
 	 */
-	public function get_imported_post_ids_map(): ?array {
-		$imported_posts_data = $this->read_imported_posts();
-		if ( null === $imported_posts_data ) {
-			return null;
-		}
+	public function get_imported_post_ids_map(): array {
+		$imported_posts_data = $this->read_jsonl( self::FILE_IMPORTED_POSTS );
+
 		$imported_post_ids_map = [];
 		foreach ( $imported_posts_data as $entry ) {
 			$imported_post_ids_map[ (int) $entry['id_old'] ] = (int) $entry['id_new'];
@@ -237,27 +187,16 @@ class RunState {
 	 * - parent_id_old: int Old Live Parent ID.
 	 * - parent_id_new: int New Local Parent ID.
 	 * 
-	 * @return array|null Keys are old live post IDs, values are new local post IDs, or null if file with updated parents doesn't exist.
+	 * @return array Keys are old live post IDs, values are new local post IDs, or empty array if file doesn't exist.
 	 */
-	public function get_updated_parents_post_ids_map(): ?array {
-		$updated_parents_data = $this->read_updated_parents();
-		if ( null === $updated_parents_data ) {
-			return null;
-		}
+	public function get_updated_parents_post_ids_map(): array {
+		$updated_parents_data = $this->read_jsonl( self::FILE_UPDATED_PARENTS );
+
 		$updated_parents_post_ids_map = [];
 		foreach ( $updated_parents_data as $entry ) {
 			$updated_parents_post_ids_map[ (int) $entry['id_old'] ] = (int) $entry['id_new'];
 		}
 		return $updated_parents_post_ids_map;
-	}
-
-	/**
-	 * Gets updated parent IDs.
-	 *
-	 * @return array Array of updated parent records.
-	 */ 
-	private function read_updated_parents(): array {
-		return $this->read_jsonl( self::FILE_UPDATED_PARENTS );
 	}   
 
 	/**
@@ -277,10 +216,8 @@ class RunState {
 	 * @return array Keys are old live post IDs, values are new local post IDs, or empty array if file doesn't exist.
 	 */
 	public function get_updated_featured_image_post_ids_map(): array {
-		$updated_featured_data = $this->read_updated_featured();
-		if ( empty( $updated_featured_data ) ) {
-			return [];
-		}
+		$updated_featured_data = $this->read_jsonl( self::FILE_UPDATED_FEATURED );
+
 		$updated_featured_post_ids_map = [];
 		foreach ( $updated_featured_data as $entry ) {
 			if ( isset( $entry['id_old'] ) && isset( $entry['id_new'] ) ) {
@@ -288,15 +225,6 @@ class RunState {
 			}
 		}
 		return $updated_featured_post_ids_map;
-	}
-
-	/**
-	 * Gets updated featured image records.
-	 *
-	 * @return array Array of updated featured image records.
-	 */
-	private function read_updated_featured(): array {
-		return $this->read_jsonl( self::FILE_UPDATED_FEATURED );
 	}
 
 	/**
@@ -316,10 +244,8 @@ class RunState {
 	 * @return array Keys are old live post IDs, values are new local post IDs, or empty array if file doesn't exist.
 	 */
 	public function get_updated_block_post_ids_map(): array {
-		$updated_blocks_data = $this->read_updated_blocks();
-		if ( empty( $updated_blocks_data ) ) {
-			return [];
-		}
+		$updated_blocks_data = $this->read_jsonl( self::FILE_UPDATED_BLOCKS );
+
 		$updated_block_post_ids_map = [];
 		foreach ( $updated_blocks_data as $entry ) {
 			if ( isset( $entry['id_old'] ) && isset( $entry['id_new'] ) ) {
@@ -327,15 +253,6 @@ class RunState {
 			}
 		}
 		return $updated_block_post_ids_map;
-	}
-
-	/**
-	 * Gets updated block records.
-	 *
-	 * @return array Array of updated block records.
-	 */
-	private function read_updated_blocks(): array {
-		return $this->read_jsonl( self::FILE_UPDATED_BLOCKS );
 	}
 
 	/**
