@@ -306,11 +306,13 @@ class ContentDiffLogic {
 	 * @param array $results_live_posts  Rows from live posts table.
 	 * @param array $results_local_posts Rows from local posts table.
 	 *
-	 * @return array $ids_modified {
-	 *     IDs of posts found.
+	 * @return array {
+	 *     Array of modified post ID pairs.
 	 *
-	 *     @type int live_id  Live Post ID.
-	 *     @type int local_id Matching Local Post ID.
+	 *     @type array $match {
+	 *         @type int $live_id  Live post ID.
+	 *         @type int $local_id Matching local post ID.
+	 *     }
 	 * }
 	 */
 	public function filter_modified_live_ids( array $results_live_posts, array $results_local_posts ): array {
@@ -371,15 +373,16 @@ class ContentDiffLogic {
 	 * @return array $args {
 	 *     Post and all core WP Post-related data.
 	 *
-	 *     @type array self::DATAKEY_POST              Contains `posts` row.
-	 *     @type array self::DATAKEY_POSTMETA          Post's `postmeta` rows.
-	 *     @type array self::DATAKEY_COMMENTS          Post's `comments` rows.
-	 *     @type array self::DATAKEY_COMMENTMETA       Post's `commentmeta` rows.
-	 *     @type array self::DATAKEY_USERS             Post's `users` rows (for the Post Author, and the Comment Users).
-	 *     @type array self::DATAKEY_USERMETA          Post's `usermeta` rows.
-	 *     @type array self::DATAKEY_TERMRELATIONSHIPS Post's `term_relationships` rows.
-	 *     @type array self::DATAKEY_TERMTAXONOMY      Post's `term_taxonomy` rows.
-	 *     @type array self::DATAKEY_TERMS             Post's `terms` rows.
+	 *     @type array $post              Contains `posts` row (DATAKEY_POST).
+	 *     @type array $postmeta          Post's `postmeta` rows (DATAKEY_POSTMETA).
+	 *     @type array $comments          Post's `comments` rows (DATAKEY_COMMENTS).
+	 *     @type array $commentmeta       Post's `commentmeta` rows (DATAKEY_COMMENTMETA).
+	 *     @type array $users             Post's `users` rows for Author and Comment Users (DATAKEY_USERS).
+	 *     @type array $usermeta          Post's `usermeta` rows (DATAKEY_USERMETA).
+	 *     @type array $term_relationships Post's `term_relationships` rows (DATAKEY_TERMRELATIONSHIPS).
+	 *     @type array $term_taxonomy     Post's `term_taxonomy` rows (DATAKEY_TERMTAXONOMY).
+	 *     @type array $terms             Post's `terms` rows (DATAKEY_TERMS).
+	 *     @type array $termmeta          Post's `termmeta` rows (DATAKEY_TERMMETA).
 	 * }
 	 */
 	public function get_post_data( int $post_id, string $table_prefix ): array {
@@ -537,7 +540,14 @@ class ContentDiffLogic {
 	 * @param array $results_local_posts Rows from local posts table.
 	 * @param array $results_live_posts  Rows from live posts table.
 	 *
-	 * @return array Matched pairs with local_id and live_id.
+	 * @return array {
+	 *     Array of matched post pairs with local_id and live_id.
+	 *
+	 *     @type array {
+	 *         @type int $local_id Local post ID.
+	 *         @type int $live_id  Live post ID.
+	 *     }
+	 * }
 	 */
 	public function match_local_to_live_posts( array $results_local_posts, array $results_live_posts ): array {
 		$matches = [];
@@ -597,7 +607,14 @@ class ContentDiffLogic {
 	 * @param array $results_local_users Rows from local users table.
 	 * @param array $results_live_users  Rows from live users table.
 	 *
-	 * @return array Matched pairs with local_id and live_id.
+	 * @return array {
+	 *     Array of matched user pairs with local_id and live_id.
+	 *
+	 *     @type array $match {
+	 *         @type int $local_id Local user ID.
+	 *         @type int $live_id  Live user ID.
+	 *     }
+	 * }
 	 */
 	public function match_local_to_live_users( array $results_local_users, array $results_live_users ): array {
 		$matched_users = [];
@@ -1083,96 +1100,6 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Inserts a post_meta record.
-	 *
-	 * @param array $postmeta_row ARRAY_A formatted wp_postmeta row with values to be inserted.
-	 * @param int   $post_id      Post ID.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted meta_id.
-	 */
-	public function insert_postmeta_row( array $postmeta_row, int $post_id ): int {
-		$insert_postmeta_row = $postmeta_row;
-		unset( $insert_postmeta_row['meta_id'] );
-		$insert_postmeta_row['post_id'] = $post_id;
-
-		$inserted = $this->wpdb->insert( $this->wpdb->postmeta, $insert_postmeta_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error in insert_postmeta_row, post_id %s, postmeta_row %s', $post_id, wp_json_encode( $postmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Inserts a Comment with an updated post_id and user_id.
-	 *
-	 * @param array $comment_row      `comment` row.
-	 * @param int   $new_post_id      Post ID.
-	 * @param int   $new_user_id      User ID.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted comment_id.
-	 */
-	public function insert_comment( array $comment_row, int $new_post_id, int $new_user_id ): int {
-		$insert_comment_row = $comment_row;
-		unset( $insert_comment_row['comment_ID'] );
-		$insert_comment_row['comment_post_ID'] = $new_post_id;
-		$insert_comment_row['user_id']         = $new_user_id;
-
-		$inserted = $this->wpdb->insert( $this->wpdb->comments, $insert_comment_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting comment, $new_post_id %d, $new_user_id %d, $comment_row %s', $new_post_id, $new_user_id, wp_json_encode( $comment_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Inserts Comment Metas with an updated comment_id.
-	 *
-	 * @param array $commentmeta_row Comment Meta rows.
-	 * @param int   $new_comment_id  New Comment ID.
-	 *
-	 * @throws \RuntimeException In case insert fails.
-	 *
-	 * @return int Inserted meta_id.
-	 */
-	public function insert_commentmeta_row( array $commentmeta_row, int $new_comment_id ): int {
-		$insert_commentmeta_row = $commentmeta_row;
-		unset( $insert_commentmeta_row['meta_id'] );
-		$insert_commentmeta_row['comment_id'] = $new_comment_id;
-
-		$inserted = $this->wpdb->insert( $this->wpdb->commentmeta, $insert_commentmeta_row );
-		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, wp_json_encode( $commentmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $this->wpdb->insert_id;
-	}
-
-	/**
-	 * Updates a Comment's parent ID.
-	 *
-	 * @throws \RuntimeException In case update fails.
-	 *
-	 * @param int $comment_id         Comment ID.
-	 * @param int $comment_parent_new new Comment Parent ID.
-	 *
-	 * @return int|false Return from $wpdb::update -- the number of rows updated, or false on error.
-	 */
-	public function update_comment_parent( int $comment_id, int $comment_parent_new ): int|false {
-		$updated = $this->wpdb->update( $this->wpdb->comments, [ 'comment_parent' => $comment_parent_new ], [ 'comment_ID' => $comment_id ] );
-		if ( 1 != $updated ) {
-			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-		}
-
-		return $updated;
-	}
-
-	/**
 	 * Inserts into `terms` table.
 	 *
 	 * @param array $term_row `term` row.
@@ -1279,25 +1206,6 @@ class ContentDiffLogic {
 		$post_id = \attachment_url_to_postid( $url );
 
 		return $post_id;
-	}
-
-	/**
-	 * Filters a multidimensional array and searches for a subarray with a key and value.
-	 *
-	 * @param array $data  Array being searched and filtered.
-	 * @param mixed $key   Array key to search for.
-	 * @param mixed $value Array value to search for.
-	 *
-	 * @return null|array The array which matches the $key $value filter, or null.
-	 */
-	public function filter_array_element( array $data, mixed $key, mixed $value ): ?array {
-		foreach ( $data as $subarray ) {
-			if ( isset( $subarray[ $key ] ) && $value == $subarray[ $key ] ) {
-				return $subarray;
-			}
-		}
-
-		return null;
 	}
 
 	/**
