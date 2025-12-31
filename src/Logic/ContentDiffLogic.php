@@ -520,10 +520,10 @@ class ContentDiffLogic {
 				if ( ! is_null( $user_id_local ) ) {
 					$users_map[ $user_row['ID'] ] = $user_id_local;
 				} else {
-					Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, 'migrate_all_users live DB user row is invalid, skipping user', [ 'user_row' => $user_row ] );
+					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, 'migrate_all_users live DB user row is invalid, skipping user', [ 'user_row' => $user_row ] );
 				}
 			} catch ( \Exception $e ) {
-				Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'migrate_all_users get_or_create_user error: %s', $e->getMessage() ), [ 'user_row' => $user_row, 'usermeta_rows' => $usermeta_rows ] );
+				Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'migrate_all_users get_or_create_user error: %s', $e->getMessage() ), [ 'user_row' => $user_row, 'usermeta_rows' => $usermeta_rows ] );
 			}
 		}
 
@@ -667,7 +667,7 @@ class ContentDiffLogic {
 				'id_old'   => $id_live,
 				'meta_key' => $meta_key,
 			];
-			Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to save old_id postmeta for imported post %d which may cause duplicate imports on resume. DB error: %s', $post_id_new, $this->wpdb->last_error ), $context );
+			Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to save old_id postmeta for imported post %d which may cause duplicate imports on resume. DB error: %s', $post_id_new, $this->wpdb->last_error ), $context );
 			throw new \RuntimeException( sprintf( 'Critical: Failed to save old_id postmeta for post %d', esc_html( $post_id_new ) ) );
 		}
 
@@ -821,7 +821,7 @@ class ContentDiffLogic {
 					'post_id'  => $post_id,
 					'db_error' => $this->wpdb->last_error,
 				];
-				Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to update blocks for post ID %d. DB error: %s', $post_id, $this->wpdb->last_error ), $context );
+				Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to update blocks for post ID %d. DB error: %s', $post_id, $this->wpdb->last_error ), $context );
 			}
 		}
 

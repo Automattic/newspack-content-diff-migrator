@@ -73,7 +73,7 @@ class DataImporter {
 			try {
 				$this->insert_postmeta_row( $postmeta_row, $post_id );
 			} catch ( \Exception $e ) {
-				Logger::instance()->log_both_brief_and_verbose(
+				Logger::instance()->log_brief_and_verbose(
 					LogLevel::ERROR,
 					sprintf( 'import_post_meta error: %s', $e->getMessage() ),
 					[
@@ -105,7 +105,7 @@ class DataImporter {
 		try {
 			$author_id_new = is_array( $author_row ) ? $this->get_or_create_user( $author_row, $usermeta_rows, $source_hostname ) : null;
 		} catch ( \Exception $e ) {
-			Logger::instance()->log_both_brief_and_verbose(
+			Logger::instance()->log_brief_and_verbose(
 				LogLevel::ERROR,
 				sprintf( 'import_author get_or_create_user error: %s', $e->getMessage() ),
 				[
@@ -128,7 +128,7 @@ class DataImporter {
 			try {
 				$this->update_post_author( $post_id, $author_id_new );
 			} catch ( \Exception $e ) {
-				Logger::instance()->log_both_brief_and_verbose(
+				Logger::instance()->log_brief_and_verbose(
 					LogLevel::ERROR,
 					sprintf( 'import_author update_post_author error: %s', $e->getMessage() ),
 					[
@@ -166,7 +166,7 @@ class DataImporter {
 				try {
 					$comment_user_id_new = ! is_null( $comment_user_row ) ? $this->get_or_create_user( $comment_user_row, $comment_usermeta_rows, $source_hostname ) : null;
 				} catch ( \Exception $e ) {
-					Logger::instance()->log_both_brief_and_verbose(
+					Logger::instance()->log_brief_and_verbose(
 						LogLevel::ERROR,
 						sprintf( 'import_comments get_or_create_user error: %s', $e->getMessage() ),
 						[
@@ -196,7 +196,7 @@ class DataImporter {
 					$this->insert_commentmeta_row( $commentmeta_row, $comment_id_new );
 				}
 			} catch ( \Exception $e ) {
-				Logger::instance()->log_both_brief_and_verbose(
+				Logger::instance()->log_brief_and_verbose(
 					LogLevel::ERROR,
 					sprintf( 'import_comments insert_comment and insert_commentmeta_row error: %s', $e->getMessage() ),
 					[
@@ -220,7 +220,7 @@ class DataImporter {
 				try {
 					$this->update_comment_parent( $comment_id_new, $comment_parent_new );
 				} catch ( \Exception $e ) {
-					Logger::instance()->log_both_brief_and_verbose(
+					Logger::instance()->log_brief_and_verbose(
 						LogLevel::ERROR,
 						sprintf( 'import_comments update_comment_parent error: %s', $e->getMessage() ),
 						[
@@ -262,7 +262,7 @@ class DataImporter {
 
 			// Validate live term row, it could be missing or invalid.
 			if ( is_null( $live_term_row ) ) {
-				Logger::instance()->log_both_brief_and_verbose(
+				Logger::instance()->log_brief_and_verbose(
 					LogLevel::ERROR,
 					'import_taxonomies found invalid term relationship in live DB: term_id given in term_relationship does not exist in live DB term table, skipping it',
 					[
@@ -301,7 +301,7 @@ class DataImporter {
 					$created_tree                                = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
 					$this->taxonomy_term_id_map[ $live_term_id ] = $created_tree['term_id'];
 				} catch ( \Exception $e ) {
-					Logger::instance()->log_both_brief_and_verbose(
+					Logger::instance()->log_brief_and_verbose(
 						LogLevel::ERROR,
 						sprintf( 'import_taxonomies get_or_create_hierarchical_taxonomy_tree error: %s', $e->getMessage() ),
 						[
@@ -319,7 +319,7 @@ class DataImporter {
 			$local_term_id            = $this->taxonomy_term_id_map[ $live_term_id ];
 			$local_term_taxonomy_data = $this->get_term_and_taxonomy_array( $this->wpdb->prefix, [ 'term_id' => $local_term_id ], $taxonomy_name );
 			if ( is_null( $local_term_taxonomy_data ) ) {
-				Logger::instance()->log_both_brief_and_verbose(
+				Logger::instance()->log_brief_and_verbose(
 					LogLevel::ERROR,
 					'import_taxonomies get_term_and_taxonomy_array not properly fetched after get_or_create_hierarchical_taxonomy_tree',
 					[
@@ -457,7 +457,7 @@ class DataImporter {
 				'new_user_id' => $new_user_id,
 				'old_user_id' => $old_user_id,
 			];
-			Logger::instance()->log_both_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to insert old_id usermeta for new user ID %d which may cause duplicate users. DB error: %s', $new_user_id, $this->wpdb->last_error ), $context );
+			Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to insert old_id usermeta for new user ID %d which may cause duplicate users. DB error: %s', $new_user_id, $this->wpdb->last_error ), $context );
 		}
 
 		return $new_user_id;
@@ -816,7 +816,7 @@ class DataImporter {
 					$taxonomy_tree['taxonomy']
 				);
 				if ( is_wp_error( $taxonomy_top_parent_term_id ) ) {
-					Logger::instance()->log_both_brief_and_verbose(
+					Logger::instance()->log_brief_and_verbose(
 						LogLevel::ERROR,
 						sprintf( 'import_taxonomies wp_insert_or_update_term error: %s', $taxonomy_top_parent_term_id->get_error_message() ),
 						[
@@ -847,7 +847,7 @@ class DataImporter {
 				$taxonomy_tree['taxonomy']
 			);
 			if ( is_wp_error( $taxonomy_term_id ) ) {
-				Logger::instance()->log_both_brief_and_verbose(
+				Logger::instance()->log_brief_and_verbose(
 					LogLevel::ERROR,
 					sprintf( 'import_taxonomies wp_insert_or_update_term error: %s', $taxonomy_term_id->get_error_message() ),
 					[

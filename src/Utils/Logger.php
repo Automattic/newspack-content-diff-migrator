@@ -150,7 +150,7 @@ class Logger {
 	 * @param string $message Log message.
 	 * @param array  $context Log context (only gets logged to file).
 	 */
-	public function log_both_brief_and_verbose( string $level, string $message, array $context ): void {
+	public function log_brief_and_verbose( string $level, string $message, array $context ): void {
 		$this->log( self::OUTPUT_FILE, $level, $message, $context );
 		$this->log( self::OUTPUT_CLI, $level, $message . '; see debug log for context.' );
 	}
