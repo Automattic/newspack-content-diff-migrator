@@ -108,7 +108,6 @@ class RunState {
 		if ( null === $modified_ids ) {
 			return null;
 		}
-		$modified_ids = array_map( 'intval', $modified_ids );
 		return $modified_ids;
 	}
 
