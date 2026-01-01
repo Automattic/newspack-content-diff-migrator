@@ -52,12 +52,34 @@ class ContentDiffMigrator {
 	private ?RunState $run_state = null;
 
 	/**
-	 * Constructor.
+	 * Whether running in testing environment.
+	 *
+	 * When true, bypasses WP_CLI::confirm() calls and memory cleanup sleep time is set to 0.
+	 *
+	 * @var bool
 	 */
-	public function __construct() {
+	private bool $test_env;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param bool $test_env For testing: suppresses confirmations and removes memory cleanup sleep time.
+	 */
+	public function __construct( bool $test_env = false ) {
+		// This class is presently just integration-tested, so no need to enable injection of any dependencies.
 		global $wpdb;
-		$this->logic = new ContentDiffLogic( $wpdb );
-		$this->db    = new DB( $wpdb );
+		$this->logic    = new ContentDiffLogic( $wpdb );
+		$this->db       = new DB( $wpdb );
+		$this->test_env = $test_env;
+	}
+
+	/**
+	 * Set RunState instance (for testing environment).
+	 *
+	 * @param RunState $run_state RunState instance.
+	 */
+	public function set_run_state( RunState $run_state ): void {
+		$this->run_state = $run_state;
 	}
 
 	/**
@@ -333,10 +355,10 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
 			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Save metas for matched posts.
 			foreach ( $matched_posts as $match ) {
@@ -347,7 +369,7 @@ class ContentDiffMigrator {
 				];
 				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
 			}
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local non-attachment objects attributed out of %d total.', count( $matched_posts ), count( $results_local_posts ) ) );
 		}
 
@@ -358,10 +380,10 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
 			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
 			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Attribute matched attachments to source hostname.
 			foreach ( $matched_attachments as $match ) {
@@ -373,7 +395,7 @@ class ContentDiffMigrator {
 				];
 				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Attachment attributed to source_hostname %s', $source_hostname ), $context );
 			}
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local attachments attributed out of %d total.', count( $matched_attachments ), count( $results_local_attachments ) ) );
 		}
 
@@ -381,10 +403,10 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
 		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
 		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
 		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Attribute matched users to source hostname.
 		foreach ( $matched_users as $match ) {
@@ -422,7 +444,9 @@ class ContentDiffMigrator {
 
 		// Set instance properties.
 		global $wpdb;
-		$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+		if ( null === $this->run_state ) {
+			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+		}
 
 		// Disable CAP's "guest-author" CPT.
 		if ( in_array( 'guest-author', $post_types ) ) {
@@ -473,22 +497,22 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s ...', implode( ',', $post_types_non_attachments ) ) );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_posts ) ) );
 			$new_live_ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
 			$modified_live_ids = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments ...' );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
-			MemoryCleanupHook::cleanup( 1 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_attachments ) ) );
 			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $results_local_attachments );
@@ -545,21 +569,29 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
 		// Set instance properties.
-		$this->run_state         = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
 		$this->live_table_prefix = $live_table_prefix;
+		if ( null === $this->run_state ) {
+			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+		}
 
 		// Default taxonomies which are migrated are defined here.
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
 			if ( ! in_array( 'category', $taxonomies_to_migrate ) ) {
-				WP_CLI::confirm( 'Warning, category was not given in --custom-taxonomies-csv argument and so categories will not be migrated. Continue?' );
+				if ( ! $this->test_env ) {
+					WP_CLI::confirm( 'Warning, category was not given in --custom-taxonomies-csv argument and so categories will not be migrated. Continue?' );
+				}
 			}
 			if ( ! in_array( 'post_tag', $taxonomies_to_migrate ) ) {
-				WP_CLI::confirm( 'Warning, post_tag was not given in --custom-taxonomies-csv argument and so tags will not be migrated. Continue?' );
+				if ( ! $this->test_env ) {
+					WP_CLI::confirm( 'Warning, post_tag was not given in --custom-taxonomies-csv argument and so tags will not be migrated. Continue?' );
+				}
 			}
 			if ( ! in_array( 'author', $taxonomies_to_migrate ) ) {
-				WP_CLI::confirm( 'Warning, author was not given in --custom-taxonomies-csv argument and so co-authors will not be migrated. Continue?' );
+				if ( ! $this->test_env ) {
+					WP_CLI::confirm( 'Warning, author was not given in --custom-taxonomies-csv argument and so co-authors will not be migrated. Continue?' );
+				}
 			}
 		}
 
@@ -593,13 +625,14 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
 		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
 		Logger::instance()->log_brief_and_verbose( LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ), $inserted_wp_users_updates );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Get new IDs which will be migrated.
 		$new_live_ids = $this->run_state->get_new_ids();
 		if ( null === $new_live_ids ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS ) );
-			exit;
+			$message = sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $message );
+			throw new \RuntimeException( esc_html( $message ) );
 		} elseif ( empty( $new_live_ids ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new posts to migrate.' );
 			// Continue to allow modified IDs to be processed.
@@ -641,32 +674,32 @@ class ContentDiffMigrator {
 			$new_live_ids = array_merge( $new_live_ids, array_keys( $modified_ids_map ) );
 		}
 
-		// If no new/modified posts to migrate, exit.
+		// If no new/modified posts to migrate, return early.
 		if ( empty( $new_live_ids ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new/modified posts to migrate.' );
-			exit;
+			return;
 		}
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Importing %d objects, hold tight...', count( $new_live_ids ) ) );
 		$imported_posts_data = $this->import_posts( $new_live_ids, $taxonomies_to_migrate, $source_hostname );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
 		$this->update_post_parent_ids( $new_live_ids, $imported_posts_data, $source_hostname );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Featured images IDs...' );
 		$this->update_featured_image_ids( $imported_posts_data, $source_hostname );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
 		$this->update_attachment_ids_in_blocks( $imported_posts_data );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Recalculate counts for all migrated taxonomies.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Recalculating term counts for migrated taxonomies...' );
 		$this->recalculate_term_counts( $taxonomies_to_migrate );
-		MemoryCleanupHook::cleanup( 1 );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
 
