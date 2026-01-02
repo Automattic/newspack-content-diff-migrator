@@ -37,9 +37,11 @@ class BlockUpdaterTest extends TestCase {
 	 */
 	protected function setUp(): void {
 		parent::setUp();
-		$this->updater      = new BlockUpdater( function ( string $url ) {
-			return 999;
-		} );
+		$this->updater      = new BlockUpdater(
+			function ( string $url ) { // phpcs:ignore -- leave unused $url parameter for readability Generic.CodeAnalysis.UnusedFunctionParameter.Found.
+				return 999;
+			} 
+		);
 		$this->fixtures_dir = dirname( __DIR__, 2 ) . '/fixtures/blocks';
 	}
 
