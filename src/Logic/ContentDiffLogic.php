@@ -1263,12 +1263,13 @@ class ContentDiffLogic {
 
 	/**
 	 * Builds a composite key for posts, using the standard post field sets for comparison.
+	 * These fields are in line with the Migration Data Consistency Standard which defines the fields that should be used to compare and update posts.
 	 *
 	 * @param array $post Associative array with post fields.
 	 *
 	 * @return string Composite key.
 	 */
 	private function build_post_composite_key_for_post( array $post ): string {
-		return $this->build_post_composite_key( $post, [ 'post_name', 'post_title', 'post_type', 'post_status', 'post_date' ] );
+		return $this->build_post_composite_key( $post, [ 'post_name', 'post_title', 'post_type', 'post_date' ] );
 	}
 }
