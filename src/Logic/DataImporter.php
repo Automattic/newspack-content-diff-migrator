@@ -79,7 +79,7 @@ class DataImporter {
 		$this->import_post_meta( $data, $post_id );
 		$this->import_author( $data, $post_id, $source_hostname );
 		$this->import_comments( $data, $post_id, $source_hostname );
-		$this->import_taxonomies( $data, $post_id, $live_table_prefix, $taxonomies_to_migrate );
+		$this->import_taxonomies( $data, $post_id, $live_table_prefix, $taxonomies_to_migrate, $source_hostname );
 	}
 
 	/**
@@ -311,8 +311,9 @@ class DataImporter {
 	 * @param int    $post_id               New post ID.
 	 * @param string $live_table_prefix     Live database table prefix.
 	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
+	 * @param string $source_hostname       Source hostname for old_id meta.
 	 */
-	private function import_taxonomies( array $data, int $post_id, string $live_table_prefix, array $taxonomies_to_migrate ): void {
+	private function import_taxonomies( array $data, int $post_id, string $live_table_prefix, array $taxonomies_to_migrate, string $source_hostname ): void {
 		$id_old = $data[ ContentDiffLogic::DATAKEY_POST ]['ID'];
 
 		// Track inserted term_taxonomy_ids to avoid duplicates.
@@ -326,7 +327,8 @@ class DataImporter {
 				$id_old,
 				$live_table_prefix,
 				$taxonomies_to_migrate,
-				$inserted_term_taxonomy_ids
+				$inserted_term_taxonomy_ids,
+				$source_hostname
 			);
 		}
 	}
@@ -341,6 +343,7 @@ class DataImporter {
 	 * @param string $live_table_prefix          Live database table prefix.
 	 * @param array  $taxonomies_to_migrate      List of taxonomies allowed to be migrated.
 	 * @param array  $inserted_term_taxonomy_ids Tracks already inserted term_taxonomy_ids.
+	 * @param string $source_hostname            Source hostname for old_id meta.
 	 *
 	 * @return array Updated $inserted_term_taxonomy_ids array.
 	 */
@@ -351,7 +354,8 @@ class DataImporter {
 		int $id_old,
 		string $live_table_prefix,
 		array $taxonomies_to_migrate,
-		array $inserted_term_taxonomy_ids
+		array $inserted_term_taxonomy_ids,
+		string $source_hostname
 	): array {
 		$live_term_taxonomy_id  = $term_relationship_row['term_taxonomy_id'];
 		$live_term_taxonomy_row = $this->filter_array_element( $data[ ContentDiffLogic::DATAKEY_TERMTAXONOMY ], 'term_taxonomy_id', $live_term_taxonomy_id );
@@ -383,7 +387,7 @@ class DataImporter {
 
 		// Get or create term (works for both hierarchical and non-hierarchical - non-hierarchical just has parent=0).
 		if ( ! isset( $this->taxonomy_term_id_map[ $live_term_id ] ) ) {
-			$local_term_id = $this->get_or_create_local_term( $live_term_taxonomy_row, $data, $post_id, $id_old, $live_table_prefix );
+			$local_term_id = $this->get_or_create_local_term( $live_term_taxonomy_row, $data, $post_id, $id_old, $live_table_prefix, $source_hostname );
 			if ( null === $local_term_id ) {
 				return $inserted_term_taxonomy_ids; // Error already logged in get_or_create_local_term.
 			}
@@ -451,10 +455,11 @@ class DataImporter {
 	 * @param int    $post_id                New post ID (for logging).
 	 * @param int    $id_old                 Original post ID (for logging).
 	 * @param string $live_table_prefix      Live database table prefix.
+	 * @param string $source_hostname        Source hostname for old_id meta.
 	 *
 	 * @return int|null Local term ID, or null on error.
 	 */
-	private function get_or_create_local_term( array $live_term_taxonomy_row, array $data, int $post_id, int $id_old, string $live_table_prefix ): ?int {
+	private function get_or_create_local_term( array $live_term_taxonomy_row, array $data, int $post_id, int $id_old, string $live_table_prefix, string $source_hostname ): ?int {
 		$taxonomy_name = $live_term_taxonomy_row['taxonomy'];
 		$live_term_id  = $live_term_taxonomy_row['term_id'];
 
@@ -467,7 +472,7 @@ class DataImporter {
 			$created_tree = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
 
 			// Import termmeta for this term (only once per term across all posts).
-			$this->import_termmeta( $data, $live_term_id, $created_tree['term_id'], $id_old, $post_id );
+			$this->import_termmeta( $data, $live_term_id, $created_tree['term_id'], $id_old, $post_id, $source_hostname );
 
 			return $created_tree['term_id'];
 		} catch ( \Exception $e ) {
@@ -518,13 +523,14 @@ class DataImporter {
 	/**
 	 * Imports termmeta for a term.
 	 *
-	 * @param array $data          Post data array containing termmeta.
-	 * @param int   $live_term_id  Term ID from live DB.
-	 * @param int   $local_term_id New local term ID.
-	 * @param int   $id_old        Original post ID (for logging).
-	 * @param int   $post_id       New post ID (for logging).
+	 * @param array  $data            Post data array containing termmeta.
+	 * @param int    $live_term_id    Term ID from live DB.
+	 * @param int    $local_term_id   New local term ID.
+	 * @param int    $id_old          Original post ID (for logging).
+	 * @param int    $post_id         New post ID (for logging).
+	 * @param string $source_hostname Source hostname for old_id meta.
 	 */
-	private function import_termmeta( array $data, int $live_term_id, int $local_term_id, int $id_old, int $post_id ): void {
+	private function import_termmeta( array $data, int $live_term_id, int $local_term_id, int $id_old, int $post_id, string $source_hostname ): void {
 		// Skip if termmeta has already been imported for this term.
 		if ( isset( $this->termmeta_imported[ $live_term_id ] ) ) {
 			return;
@@ -549,6 +555,28 @@ class DataImporter {
 					]
 				);
 			}
+		}
+
+		// Save old_id termmeta for Migration Data Consistency Standard.
+		$meta_key = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+		$inserted = $this->wpdb->insert(
+			$this->wpdb->termmeta,
+			[
+				'term_id'    => $local_term_id,
+				'meta_key'   => $meta_key, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value' => $live_term_id, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+			]
+		);
+		if ( 1 !== $inserted ) {
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::ERROR,
+				sprintf( 'Failed to save old_id termmeta for term %d. DB error: %s', $local_term_id, $this->wpdb->last_error ),
+				[
+					'local_term_id' => $local_term_id,
+					'live_term_id'  => $live_term_id,
+					'meta_key'      => $meta_key,
+				]
+			);
 		}
 
 		// Mark this term's termmeta as imported.

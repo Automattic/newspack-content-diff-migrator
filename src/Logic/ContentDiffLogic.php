@@ -249,7 +249,7 @@ class ContentDiffLogic {
 			),
 			ARRAY_A
 		);
-		// phpcs:disable
+		// phpcs:enable
 
 		foreach ( $results as $result ) {
 			$post_ids_map[ $result['meta_value'] ] = $result['post_id'];
@@ -259,43 +259,263 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Gets an array of all User IDs imported by Content Diff, their "old_id"=>"new_id" from the usermeta.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return array Imported user IDs, keys are old/live IDs, values are new/local IDs.
+	 */
+	public function get_imported_user_id_mapping_from_db( string $source_hostname ): array {
+
+		$user_ids_map = [];
+		$meta_key     = $this->get_old_id_meta_key( $source_hostname );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$results = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT user_id, meta_value
+					FROM {$this->wpdb->usermeta}
+					WHERE meta_key = %s;",
+				$meta_key
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		foreach ( $results as $result ) {
+			$user_ids_map[ $result['meta_value'] ] = $result['user_id'];
+		}
+
+		return $user_ids_map;
+	}
+
+	/**
+	 * Gets an array of all Term IDs imported by Content Diff, their "old_id"=>"new_id" from the termmeta.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return array Imported term IDs, keys are old/live IDs, values are new/local IDs.
+	 */
+	public function get_imported_term_id_mapping_from_db( string $source_hostname ): array {
+
+		$term_ids_map = [];
+		$meta_key     = $this->get_old_id_meta_key( $source_hostname );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$results = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT term_id, meta_value
+					FROM {$this->wpdb->termmeta}
+					WHERE meta_key = %s;",
+				$meta_key
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		foreach ( $results as $result ) {
+			$term_ids_map[ $result['meta_value'] ] = $result['term_id'];
+		}
+
+		return $term_ids_map;
+	}
+
+	/**
+	 * Gets term rows for attribution matching.
+	 *
+	 * @param string $table_prefix Table prefix (local or live).
+	 *
+	 * @return array Associative array with term_id, slug, name, and taxonomy.
+	 */
+	public function get_terms_rows_for_attribution( string $table_prefix ): array {
+		$terms_table         = esc_sql( $table_prefix . 'terms' );
+		$term_taxonomy_table = esc_sql( $table_prefix . 'term_taxonomy' );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table prefix string value was escaped.
+		$results = $this->wpdb->get_results(
+			"SELECT t.term_id, t.slug, t.name, tt.taxonomy
+			FROM {$terms_table} t
+			INNER JOIN {$term_taxonomy_table} tt ON t.term_id = tt.term_id",
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		return is_null( $results ) ? [] : $results;
+	}
+
+	/**
+	 * Matches local terms to live terms by slug and taxonomy.
+	 *
+	 * @param array $results_local_terms Rows from local terms table.
+	 * @param array $results_live_terms  Rows from live terms table.
+	 *
+	 * @return array {
+	 *     Array of matched term pairs with local_id and live_id.
+	 *
+	 *     @type array $match {
+	 *         @type int $local_id Local term ID.
+	 *         @type int $live_id  Live term ID.
+	 *     }
+	 * }
+	 */
+	public function match_local_to_live_terms( array $results_local_terms, array $results_live_terms ): array {
+		$matched_terms = [];
+
+		// Live terms lookup by slug + taxonomy composite key.
+		$live_terms_lookup = [];
+		foreach ( $results_live_terms as $live_term ) {
+			$lookup_key                       = $live_term['slug'] . '|' . $live_term['taxonomy'];
+			$live_terms_lookup[ $lookup_key ] = (int) $live_term['term_id'];
+		}
+
+		foreach ( $results_local_terms as $local_term ) {
+			$lookup_key = $local_term['slug'] . '|' . $local_term['taxonomy'];
+			// Term is matched.
+			if ( isset( $live_terms_lookup[ $lookup_key ] ) ) {
+				$matched_terms[] = [
+					'local_id' => (int) $local_term['term_id'],
+					'live_id'  => $live_terms_lookup[ $lookup_key ],
+				];
+			}
+		}
+
+		return $matched_terms;
+	}
+
+	/**
+	 * Counts posts that don't have old_id attribution for a given source hostname.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param array  $post_types      Post types to check (excludes 'attachment').
+	 *
+	 * @return int Count of unattributed posts.
+	 */
+	public function count_unattributed_posts( string $source_hostname, array $post_types ): int {
+		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+
+		// Filter out attachments - they have their own method.
+		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
+		if ( empty( $post_types_non_attachments ) ) {
+			return 0;
+		}
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types_non_attachments ), '%s' ) );
+		$result = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT COUNT(*) FROM {$this->wpdb->posts} p
+				LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = %s
+				WHERE p.post_type IN ( {$post_types_placeholders} )
+				AND p.post_status IN ('publish', 'future', 'draft', 'pending', 'private')
+				AND pm.meta_id IS NULL;",
+				array_merge( [ $meta_key ], $post_types_non_attachments )
+			)
+		);
+		// phpcs:enable
+
+		return $result;
+	}
+
+	/**
+	 * Counts attachments that don't have old_id attribution for a given source hostname.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int Count of unattributed attachments.
+	 */
+	public function count_unattributed_attachments( string $source_hostname ): int {
+		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$result = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT COUNT(*) FROM {$this->wpdb->posts} p
+				LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = %s
+				WHERE p.post_type = 'attachment'
+				AND p.post_status = 'inherit'
+				AND pm.meta_id IS NULL;",
+				$meta_key
+			)
+		);
+		// phpcs:enable
+
+		return $result;
+	}
+
+	/**
+	 * Counts users that don't have old_id attribution for a given source hostname.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int Count of unattributed users.
+	 */
+	public function count_unattributed_users( string $source_hostname ): int {
+		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$result = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT COUNT(*) FROM {$this->wpdb->users} u
+				LEFT JOIN {$this->wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = %s
+				WHERE um.umeta_id IS NULL;",
+				$meta_key
+			)
+		);
+		// phpcs:enable
+		
+		return $result;
+	}
+
+	/**
+	 * Counts terms that don't have old_id attribution for a given source hostname.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int Count of unattributed terms.
+	 */
+	public function count_unattributed_terms( string $source_hostname ): int {
+		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$result = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT COUNT(*) FROM {$this->wpdb->terms} t
+				LEFT JOIN {$this->wpdb->termmeta} tm ON t.term_id = tm.term_id AND tm.meta_key = %s
+				WHERE tm.meta_id IS NULL;",
+				$meta_key
+			)
+		);
+		// phpcs:enable
+		return $result;
+	}
+
+	/**
 	 * Finds unique records in live posts table which don't exist in local posts table.
-	 * Optimized to O(n+m) using a normalized composite key hash map.
+	 * Uses old_id meta mapping for efficient O(1) lookup per post.
 	 *
 	 * Outputs progress by 10% increments to the CLI.
 	 *
-	 * @param array $results_live_posts  Rows from live posts table.
-	 * @param array $results_local_posts Rows from local posts table.
+	 * @param array $results_live_posts Rows from live posts table.
+	 * @param array $local_old_id_map   Map of live_id => local_id from old_id postmeta.
 	 *
-	 * @return array IDs of posts found.
+	 * @return array IDs of new posts (live IDs not found in local old_id mapping).
 	 */
-	public function filter_new_live_ids( array $results_live_posts, array $results_local_posts ): array {
-		// Search unique on live.
+	public function filter_new_live_ids( array $results_live_posts, array $local_old_id_map ): array {
 		$ids = [];
-
-		// Build a lookup hash from local posts for O(1) lookup instead of O(n) search.
-		// Use a hardened composite key derived from normalized fields.
-		$local_posts_lookup = [];
-		foreach ( $results_local_posts as $local_post ) {
-			$lookup_key = $this->build_post_composite_key_for_post( $local_post );
-			$local_posts_lookup[ $lookup_key ] = true;
-		}
 
 		$progress = new Progress( count( $results_live_posts ) );
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
 			// Output progress by 10%.
-			if ( $progress_milestone = $progress->tick( $key_live_post + 1 ) ) {
+			$progress_milestone = $progress->tick( $key_live_post + 1 );
+			if ( $progress_milestone ) {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
-			// Use hash lookup instead of nested loop - O(1) instead of O(n).
-			$lookup_key = $this->build_post_composite_key_for_post( $live_post );
-			$found = isset( $local_posts_lookup[ $lookup_key ] );
-
-			// Unique on live, add to $ids.
-			if ( false === $found ) {
-				$ids[] = (int) $live_post['ID'];
+			// O(1) lookup: if live ID is not in the old_id mapping, it's a new post.
+			$live_id = (int) $live_post['ID'];
+			if ( ! isset( $local_old_id_map[ $live_id ] ) ) {
+				$ids[] = $live_id;
 			}
 		}
 		if ( $progress->finish() ) {
@@ -306,13 +526,25 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Finds records in live posts table which have a newer post_modified date.
-	 * Optimized to O(n+m) using a normalized composite key hash map.
+	 * Finds records in live posts table which have been modified since last import according to the Migration Data Consistency Standard.
+	 * Uses old_id meta mapping for efficient O(1) lookup per post.
+	 *
+	 * Checks the following for modifications (per Migration Data Consistency Standard):
+	 * - post_modified date (always checked)
+	 * - post_status (always checked)
+	 * - post_author (if user_old_id_map provided)
+	 * - _thumbnail_id (if attachment_old_id_map provided)
+	 * - taxonomies (if term_old_id_map provided)
 	 *
 	 * Outputs progress by 10% increments to the CLI.
 	 *
-	 * @param array $results_live_posts  Rows from live posts table.
-	 * @param array $results_local_posts Rows from local posts table.
+	 * @param array  $results_live_posts    Rows from live posts table (must include ID, post_modified, post_status, post_author).
+	 * @param array  $results_local_posts   Rows from local posts table (must include ID, post_modified, post_status, post_author).
+	 * @param array  $local_old_id_map      Map of live_id => local_id from old_id postmeta.
+	 * @param string $live_table_prefix     Live DB table prefix (for fetching additional data).
+	 * @param array  $user_old_id_map       Optional. Map of live_user_id => local_user_id.
+	 * @param array  $attachment_old_id_map Optional. Map of live_attachment_id => local_attachment_id.
+	 * @param array  $term_old_id_map       Optional. Map of live_term_id => local_term_id.
 	 *
 	 * @return array {
 	 *     Array of modified post ID pairs.
@@ -323,46 +555,135 @@ class ContentDiffLogic {
 	 *     }
 	 * }
 	 */
-	public function filter_modified_live_ids( array $results_live_posts, array $results_local_posts ): array {
-
-		// Check if modified date is different. Posts which were already imported with Content Diff will have the original meta ID.
-		// But posts which were imported just by raw table import won't have the meta. So a full comparisson is needed.
+	public function filter_modified_live_ids(
+		array $results_live_posts,
+		array $results_local_posts,
+		array $local_old_id_map,
+		string $live_table_prefix = '',
+		array $user_old_id_map = [],
+		array $attachment_old_id_map = [],
+		array $term_old_id_map = []
+	): array {
 		$ids_modified = [];
 
-		// Build a lookup hash from local posts for O(1) lookup instead of O(n) search.
-		// Use a hardened composite key, store local ID and post_modified for comparison.
-		$local_posts_lookup = [];
+		// Build local posts lookup by ID for O(1) access.
+		$local_posts_by_id = [];
 		foreach ( $results_local_posts as $local_post ) {
-			$lookup_key = $this->build_post_composite_key_for_post( $local_post );
-			// Store only the first match (original code breaks on first match).
-			if ( ! isset( $local_posts_lookup[ $lookup_key ] ) ) {
-				$local_posts_lookup[ $lookup_key ] = [
-					'ID'            => $local_post['ID'],
-					'post_modified' => $local_post['post_modified'],
-				];
-			}
+			$local_posts_by_id[ (int) $local_post['ID'] ] = $local_post;
 		}
+
+		// Flip attachment map for reverse lookup (local_id => live_id).
+		$local_to_live_attachment_map = ! empty( $attachment_old_id_map ) ? array_flip( $attachment_old_id_map ) : [];
+
+		// Flip user map for reverse lookup (local_id => live_id).
+		$local_to_live_user_map = ! empty( $user_old_id_map ) ? array_flip( $user_old_id_map ) : [];
+
+		// Flip term map for reverse lookup (local_id => live_id).
+		$local_to_live_term_map = ! empty( $term_old_id_map ) ? array_flip( $term_old_id_map ) : [];
 
 		$progress = new Progress( count( $results_live_posts ) );
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
 			// Output progress by 10%.
-			if ( $progress_milestone = $progress->tick( $key_live_post + 1 ) ) {
+			$progress_milestone = $progress->tick( $key_live_post + 1 );
+			if ( $progress_milestone ) {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
-			// Use hash lookup instead of nested loop - O(1) instead of O(n).
-			$lookup_key = $this->build_post_composite_key_for_post( $live_post );
+			$live_id = (int) $live_post['ID'];
 
-			// Check if match exists and post_modified is newer on live.
-			if ( isset( $local_posts_lookup[ $lookup_key ] ) ) {
-				$local_post = $local_posts_lookup[ $lookup_key ];
-				if ( $live_post['post_modified'] > $local_post['post_modified'] ) {
-					$ids_modified[] = [
-						'live_id'  => (int) $live_post['ID'],
-						'local_id' => (int) $local_post['ID'],
-					];
+			// Skip if this live post hasn't been imported (it's a new post, not modified).
+			if ( ! isset( $local_old_id_map[ $live_id ] ) ) {
+				continue;
+			}
+
+			$local_id = (int) $local_old_id_map[ $live_id ];
+
+			// Skip if local post data not available.
+			if ( ! isset( $local_posts_by_id[ $local_id ] ) ) {
+				continue;
+			}
+
+			$local_post  = $local_posts_by_id[ $local_id ];
+			$is_modified = false;
+
+			// Check 1: post_modified is newer on live.
+			if ( $live_post['post_modified'] > $local_post['post_modified'] ) {
+				$is_modified = true;
+			}
+
+			// Check 2: post_status changed.
+			if ( ! $is_modified && isset( $live_post['post_status'] ) && isset( $local_post['post_status'] ) ) {
+				if ( $live_post['post_status'] !== $local_post['post_status'] ) {
+					$is_modified = true;
 				}
+			}
+
+			// Check 3: post_author changed (translate local author ID to live ID for comparison).
+			if ( ! $is_modified && ! empty( $local_to_live_user_map ) && isset( $live_post['post_author'] ) && isset( $local_post['post_author'] ) ) {
+				$local_author_id         = (int) $local_post['post_author'];
+				$live_author_id_expected = $local_to_live_user_map[ $local_author_id ] ?? null;
+				if ( null !== $live_author_id_expected && (int) $live_post['post_author'] !== $live_author_id_expected ) {
+					$is_modified = true;
+				}
+			}
+
+			// Check 4: _thumbnail_id changed (translate local thumbnail ID to live ID for comparison).
+			if ( ! $is_modified && ! empty( $local_to_live_attachment_map ) && ! empty( $live_table_prefix ) ) {
+				$local_thumbnail_id = (int) get_post_meta( $local_id, '_thumbnail_id', true );
+				if ( $local_thumbnail_id > 0 ) {
+					$live_thumbnail_id_expected = $local_to_live_attachment_map[ $local_thumbnail_id ] ?? null;
+					// Get live thumbnail ID.
+					$live_postmeta  = $this->select_postmeta_rows( $live_table_prefix, $live_id );
+					$live_thumbnail = null;
+					foreach ( $live_postmeta as $meta ) {
+						if ( '_thumbnail_id' === $meta['meta_key'] ) {
+							$live_thumbnail = (int) $meta['meta_value'];
+							break;
+						}
+					}
+					if ( null !== $live_thumbnail_id_expected && $live_thumbnail !== $live_thumbnail_id_expected ) {
+						$is_modified = true;
+					}
+				}
+			}
+
+			// Check 5: taxonomies changed (compare term sets).
+			if ( ! $is_modified && ! empty( $local_to_live_term_map ) && ! empty( $live_table_prefix ) ) {
+				// Get live term IDs.
+				$live_term_relationships = $this->select_term_relationships_rows( $live_table_prefix, $live_id );
+				$live_term_ids           = [];
+				foreach ( $live_term_relationships as $rel ) {
+					$term_taxonomy = $this->select_term_taxonomy_row( $live_table_prefix, $rel['term_taxonomy_id'] );
+					if ( $term_taxonomy ) {
+						$live_term_ids[] = (int) $term_taxonomy['term_id'];
+					}
+				}
+				sort( $live_term_ids );
+
+				// Get local term IDs translated to live IDs.
+				$local_terms            = wp_get_object_terms( $local_id, get_taxonomies(), [ 'fields' => 'ids' ] );
+				$local_term_ids_as_live = [];
+				if ( ! is_wp_error( $local_terms ) ) {
+					foreach ( $local_terms as $local_term_id ) {
+						$live_term_id = $local_to_live_term_map[ (int) $local_term_id ] ?? null;
+						if ( null !== $live_term_id ) {
+							$local_term_ids_as_live[] = (int) $live_term_id;
+						}
+					}
+				}
+				sort( $local_term_ids_as_live );
+
+				if ( $live_term_ids !== $local_term_ids_as_live ) {
+					$is_modified = true;
+				}
+			}
+
+			if ( $is_modified ) {
+				$ids_modified[] = [
+					'live_id'  => $live_id,
+					'local_id' => $local_id,
+				];
 			}
 		}
 		if ( $progress->finish() ) {
@@ -430,7 +751,7 @@ class ContentDiffLogic {
 
 				// Get Comment User (if the same User was not already fetched).
 				if ( $comment['user_id'] > 0 && empty( $this->filter_array_elements( $data[ self::DATAKEY_USERS ], 'ID', $comment['user_id'] ) ) ) {
-					$comment_user_row              = $this->select_user_row( $table_prefix, $comment['user_id'] );
+					$comment_user_row = $this->select_user_row( $table_prefix, $comment['user_id'] );
 					if ( $comment_user_row ) {
 						$data[ self::DATAKEY_USERS ][] = $comment_user_row;
 
@@ -534,11 +855,289 @@ class ContentDiffLogic {
 					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, 'migrate_all_users live DB user row is invalid, skipping user', [ 'user_row' => $user_row ] );
 				}
 			} catch ( \Exception $e ) {
-				Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'migrate_all_users get_or_create_user error: %s', $e->getMessage() ), [ 'user_row' => $user_row, 'usermeta_rows' => $usermeta_rows ] );
+				Logger::instance()->log_brief_and_verbose(
+					LogLevel::ERROR,
+					sprintf( 'migrate_all_users get_or_create_user error: %s', $e->getMessage() ),
+					[
+						'user_row'      => $user_row,
+						'usermeta_rows' => $usermeta_rows,
+					] 
+				);
 			}
 		}
 
 		return $users_map;
+	}
+
+	/**
+	 * Updates migrated users' email and display_name if changed on live.
+	 *
+	 * @param string $live_table_prefix Live DB table prefix.
+	 * @param string $source_hostname   Source hostname.
+	 *
+	 * @return array {
+	 *     @type int $checked Number of users checked.
+	 *     @type int $updated Number of users updated.
+	 * }
+	 */
+	public function update_modified_users( string $live_table_prefix, string $source_hostname ): array {
+		$checked = 0;
+		$updated = 0;
+
+		// Get user ID mapping (live_id => local_id).
+		$user_id_map = $this->get_imported_user_id_mapping_from_db( $source_hostname );
+		if ( empty( $user_id_map ) ) {
+			return [
+				'checked' => 0,
+				'updated' => 0,
+			];
+		}
+
+		// Get all live users.
+		$live_users       = $this->select( $live_table_prefix . 'users', [], false );
+		$live_users_by_id = [];
+		foreach ( $live_users as $user ) {
+			$live_users_by_id[ (int) $user['ID'] ] = $user;
+		}
+
+		foreach ( $user_id_map as $live_id => $local_id ) {
+			$checked++;
+
+			// Skip if live user not found.
+			if ( ! isset( $live_users_by_id[ (int) $live_id ] ) ) {
+				continue;
+			}
+
+			$live_user  = $live_users_by_id[ (int) $live_id ];
+			$local_user = get_userdata( (int) $local_id );
+			if ( ! $local_user ) {
+				continue;
+			}
+
+			$updates = [];
+
+			// Check user_email.
+			if ( $live_user['user_email'] !== $local_user->user_email ) {
+				$updates['user_email'] = $live_user['user_email'];
+			}
+
+			// Check display_name.
+			if ( $live_user['display_name'] !== $local_user->display_name ) {
+				$updates['display_name'] = $live_user['display_name'];
+			}
+
+			if ( ! empty( $updates ) ) {
+				$this->wpdb->update( $this->wpdb->users, $updates, [ 'ID' => $local_id ] );
+				$updated++;
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Updated user %d: %s', $local_id, wp_json_encode( $updates ) )
+				);
+			}
+		}
+
+		return [
+			'checked' => $checked,
+			'updated' => $updated,
+		];
+	}
+
+	/**
+	 * Updates migrated attachments' caption, description, alt text, and credits if changed on live.
+	 *
+	 * @param string $live_table_prefix Live DB table prefix.
+	 * @param string $source_hostname   Source hostname.
+	 *
+	 * @return array {
+	 *     @type int $checked Number of attachments checked.
+	 *     @type int $updated Number of attachments updated.
+	 * }
+	 */
+	public function update_modified_attachments( string $live_table_prefix, string $source_hostname ): array {
+		$checked = 0;
+		$updated = 0;
+
+		// Get attachment ID mapping (live_id => local_id).
+		$attachment_id_map = $this->get_imported_attachment_id_map_from_db( $source_hostname );
+		if ( empty( $attachment_id_map ) ) {
+			return [
+				'checked' => 0,
+				'updated' => 0,
+			];
+		}
+
+		// Meta keys to check.
+		$meta_keys_to_check = [ '_wp_attachment_image_alt', '_media_credit', '_media_credit_url' ];
+
+		foreach ( $attachment_id_map as $live_id => $local_id ) {
+			$checked++;
+			$was_updated = false;
+
+			// Get live post data.
+			$live_post = $this->select_post_row( $live_table_prefix, (int) $live_id );
+			if ( ! $live_post ) {
+				continue;
+			}
+
+			$local_post = get_post( (int) $local_id );
+			if ( ! $local_post ) {
+				continue;
+			}
+
+			$post_updates = [];
+
+			// Check post_excerpt (caption).
+			if ( $live_post['post_excerpt'] !== $local_post->post_excerpt ) {
+				$post_updates['post_excerpt'] = $live_post['post_excerpt'];
+			}
+
+			// Check post_content (description).
+			if ( $live_post['post_content'] !== $local_post->post_content ) {
+				$post_updates['post_content'] = $live_post['post_content'];
+			}
+
+			if ( ! empty( $post_updates ) ) {
+				$this->wpdb->update( $this->wpdb->posts, $post_updates, [ 'ID' => $local_id ] );
+				$was_updated = true;
+			}
+
+			// Check meta fields.
+			$live_postmeta    = $this->select_postmeta_rows( $live_table_prefix, (int) $live_id );
+			$live_meta_by_key = [];
+			foreach ( $live_postmeta as $meta ) {
+				$live_meta_by_key[ $meta['meta_key'] ] = $meta['meta_value'];
+			}
+
+			foreach ( $meta_keys_to_check as $meta_key ) {
+				$live_value  = $live_meta_by_key[ $meta_key ] ?? '';
+				$local_value = get_post_meta( (int) $local_id, $meta_key, true );
+				$local_value = is_string( $local_value ) ? $local_value : '';
+
+				if ( $live_value !== $local_value ) {
+					update_post_meta( (int) $local_id, $meta_key, $live_value );
+					$was_updated = true;
+				}
+			}
+
+			if ( $was_updated ) {
+				$updated++;
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Updated attachment %d', $local_id )
+				);
+			}
+		}
+
+		return [
+			'checked' => $checked,
+			'updated' => $updated,
+		];
+	}
+
+	/**
+	 * Updates migrated terms' slug and description if changed on live.
+	 *
+	 * @param string $live_table_prefix Live DB table prefix.
+	 * @param string $source_hostname   Source hostname.
+	 * @param array  $taxonomies        Taxonomies to check (e.g., ['category', 'post_tag']).
+	 *
+	 * @return array {
+	 *     @type int $checked Number of terms checked.
+	 *     @type int $updated Number of terms updated.
+	 * }
+	 */
+	public function update_modified_terms( string $live_table_prefix, string $source_hostname, array $taxonomies = [ 'category', 'post_tag' ] ): array {
+		$checked = 0;
+		$updated = 0;
+
+		// Get term ID mapping (live_id => local_id).
+		$term_id_map = $this->get_imported_term_id_mapping_from_db( $source_hostname );
+		if ( empty( $term_id_map ) ) {
+			return [
+				'checked' => 0,
+				'updated' => 0,
+			];
+		}
+
+		// Get all live terms with their taxonomy info.
+		$live_terms_table    = esc_sql( $live_table_prefix . 'terms' );
+		$live_taxonomy_table = esc_sql( $live_table_prefix . 'term_taxonomy' );
+
+		// phpcs:disable -- table prefix string value was escaped WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$taxonomies_placeholders = implode( ',', array_fill( 0, count( $taxonomies ), '%s' ) );
+		$live_terms              = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT t.term_id, t.slug, tt.description, tt.taxonomy
+				FROM {$live_terms_table} t
+				INNER JOIN {$live_taxonomy_table} tt ON t.term_id = tt.term_id
+				WHERE tt.taxonomy IN ( {$taxonomies_placeholders} )",
+				$taxonomies
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		$live_terms_by_id = [];
+		foreach ( $live_terms as $term ) {
+			$live_terms_by_id[ (int) $term['term_id'] ] = $term;
+		}
+
+		foreach ( $term_id_map as $live_id => $local_id ) {
+			// Skip terms not in our target taxonomies.
+			if ( ! isset( $live_terms_by_id[ (int) $live_id ] ) ) {
+				continue;
+			}
+
+			$checked++;
+			$live_term  = $live_terms_by_id[ (int) $live_id ];
+			$local_term = get_term( (int) $local_id );
+
+			if ( ! $local_term || is_wp_error( $local_term ) ) {
+				continue;
+			}
+
+			// Skip if taxonomy doesn't match target list.
+			if ( ! in_array( $local_term->taxonomy, $taxonomies, true ) ) {
+				continue;
+			}
+
+			$was_updated = false;
+
+			// Check slug.
+			if ( $live_term['slug'] !== $local_term->slug ) {
+				$this->wpdb->update( $this->wpdb->terms, [ 'slug' => $live_term['slug'] ], [ 'term_id' => $local_id ] );
+				$was_updated = true;
+			}
+
+			// Check description.
+			if ( $live_term['description'] !== $local_term->description ) {
+				$this->wpdb->update(
+					$this->wpdb->term_taxonomy,
+					[ 'description' => $live_term['description'] ],
+					[
+						'term_id'  => $local_id,
+						'taxonomy' => $local_term->taxonomy,
+					] 
+				);
+				$was_updated = true;
+			}
+
+			if ( $was_updated ) {
+				$updated++;
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Updated term %d (taxonomy: %s)', $local_id, $local_term->taxonomy )
+				);
+			}
+		}
+
+		return [
+			'checked' => $checked,
+			'updated' => $updated,
+		];
 	}
 
 	/**

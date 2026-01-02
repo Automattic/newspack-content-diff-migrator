@@ -382,86 +382,30 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	 * 8. filter_new_live_ids Tests
 	 * =========================================================================
 	 */
-	public function test_filter_new_live_ids_should_return_ids_not_in_local(): void {
-		$live_posts  = [
+	public function test_filter_new_live_ids_should_return_empty_array_when_all_mapped(): void {
+		$live_posts = [
 			[
-				'ID'          => '1',
-				'post_name'   => 'a',
-				'post_title'  => 'A',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
-			],
-			[
-				'ID'          => '2',
-				'post_name'   => 'b',
-				'post_title'  => 'B',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
+				'ID'            => '1',
+				'post_modified' => '2025-01-01',
 			],
 		];
-		$local_posts = [
-			[
-				'ID'          => '10',
-				'post_name'   => 'a',
-				'post_title'  => 'A',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
-			],
-		];
+		// All live IDs are in the mapping.
+		$old_id_map = [ 1 => 10 ];
 
-		$result = $this->logic->filter_new_live_ids( $live_posts, $local_posts );
-
-		$this->assertCount( 1, $result );
-		$this->assertContains( 2, $result );
-	}
-
-	public function test_filter_new_live_ids_should_return_empty_array_when_all_exist_locally(): void {
-		$live_posts  = [
-			[
-				'ID'          => '1',
-				'post_name'   => 'a',
-				'post_title'  => 'A',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
-			],
-		];
-		$local_posts = [
-			[
-				'ID'          => '10',
-				'post_name'   => 'a',
-				'post_title'  => 'A',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
-			],
-		];
-
-		$result = $this->logic->filter_new_live_ids( $live_posts, $local_posts );
+		$result = $this->logic->filter_new_live_ids( $live_posts, $old_id_map );
 
 		$this->assertEmpty( $result );
 	}
 
-	public function test_filter_new_live_ids_should_return_all_ids_when_local_is_empty(): void {
+	public function test_filter_new_live_ids_should_return_all_ids_when_mapping_empty(): void {
 		$live_posts = [
 			[
-				'ID'          => '1',
-				'post_name'   => 'a',
-				'post_title'  => 'A',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
+				'ID'            => '1',
+				'post_modified' => '2025-01-01',
 			],
 			[
-				'ID'          => '2',
-				'post_name'   => 'b',
-				'post_title'  => 'B',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
+				'ID'            => '2',
+				'post_modified' => '2025-01-01',
 			],
 		];
 
@@ -473,7 +417,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	}
 
 	public function test_filter_new_live_ids_should_handle_empty_live_array(): void {
-		$result = $this->logic->filter_new_live_ids( [], [ [ 'ID' => '1' ] ] );
+		$result = $this->logic->filter_new_live_ids( [], [ 1 => 10 ] );
 
 		$this->assertEmpty( $result );
 	}
@@ -481,12 +425,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	public function test_filter_new_live_ids_should_cast_ids_to_int(): void {
 		$live_posts = [
 			[
-				'ID'          => '123',
-				'post_name'   => 'x',
-				'post_title'  => 'X',
-				'post_type'   => 'post',
-				'post_status' => 'publish',
-				'post_date'   => '2025-01-01',
+				'ID'            => '123',
+				'post_modified' => '2025-01-01',
 			],
 		];
 
@@ -497,65 +437,57 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 9. filter_modified_live_ids Tests
+	 * 9. filter_modified_live_ids Tests (uses old_id mapping)
 	 * =========================================================================
 	 */
 	public function test_filter_modified_live_ids_should_return_pairs_with_newer_live_modified_date(): void {
 		$live_posts  = [
 			[
 				'ID'            => '1',
-				'post_name'     => 'a',
-				'post_title'    => 'A',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-06-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
 			],
 		];
 		$local_posts = [
 			[
 				'ID'            => '10',
-				'post_name'     => 'a',
-				'post_title'    => 'A',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
 			],
 		];
+		// old_id mapping: live_id 1 => local_id 10.
+		$old_id_map = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
 
 		$this->assertCount( 1, $result );
 		$this->assertSame( 1, $result[0]['live_id'] );
 		$this->assertSame( 10, $result[0]['local_id'] );
 	}
 
-	public function test_filter_modified_live_ids_should_return_empty_when_no_matches(): void {
+	public function test_filter_modified_live_ids_should_return_empty_when_not_in_mapping(): void {
 		$live_posts  = [
 			[
 				'ID'            => '1',
-				'post_name'     => 'unique',
-				'post_title'    => 'A',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-06-01',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
 			],
 		];
 		$local_posts = [
 			[
 				'ID'            => '10',
-				'post_name'     => 'different',
-				'post_title'    => 'B',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
 			],
 		];
+		// Live ID 1 is NOT in mapping - it's a new post, not modified.
+		$old_id_map = [];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
 
 		$this->assertEmpty( $result );
 	}
@@ -564,87 +496,64 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$live_posts  = [
 			[
 				'ID'            => '1',
-				'post_name'     => 'a',
-				'post_title'    => 'A',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
 			],
 		];
 		$local_posts = [
 			[
 				'ID'            => '10',
-				'post_name'     => 'a',
-				'post_title'    => 'A',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-06-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
 			],
 		];
+		$old_id_map  = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
 
 		$this->assertEmpty( $result );
 	}
 
 	public function test_filter_modified_live_ids_should_handle_empty_arrays(): void {
-		$this->assertEmpty( $this->logic->filter_modified_live_ids( [], [] ) );
-		// When local is provided, it must have post_modified to build lookup.
+		$this->assertEmpty( $this->logic->filter_modified_live_ids( [], [], [] ) );
 		$this->assertEmpty(
 			$this->logic->filter_modified_live_ids(
 				[],
 				[
 					[
 						'ID'            => '1',
-						'post_name'     => 'a',
-						'post_title'    => 'A',
-						'post_type'     => 'post',
-						'post_status'   => 'publish',
-						'post_date'     => '2025-01-01',
 						'post_modified' => '2025-01-01',
+						'post_status'   => 'publish',
+						'post_author'   => 1,
 					],
-				] 
+				],
+				[]
 			) 
 		);
 	}
 
-	public function test_filter_modified_live_ids_should_match_first_local_post_only(): void {
-		$live_posts = [
+	public function test_filter_modified_live_ids_should_detect_status_change(): void {
+		$live_posts  = [
 			[
 				'ID'            => '1',
-				'post_name'     => 'dup',
-				'post_title'    => 'D',
-				'post_type'     => 'post',
+				'post_modified' => '2025-01-01',
 				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
-				'post_modified' => '2025-06-01',
+				'post_author'   => 1,
 			],
 		];
-		// Two local posts with same composite key - should match first only.
 		$local_posts = [
 			[
 				'ID'            => '10',
-				'post_name'     => 'dup',
-				'post_title'    => 'D',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
 				'post_modified' => '2025-01-01',
-			],
-			[
-				'ID'            => '20',
-				'post_name'     => 'dup',
-				'post_title'    => 'D',
-				'post_type'     => 'post',
-				'post_status'   => 'publish',
-				'post_date'     => '2025-01-01',
-				'post_modified' => '2025-01-01',
+				'post_status'   => 'draft', // Different status.
+				'post_author'   => 1,
 			],
 		];
+		$old_id_map  = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
 
 		$this->assertCount( 1, $result );
 		$this->assertSame( 10, $result[0]['local_id'] );
@@ -1879,5 +1788,447 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$wpdb->suppress_errors( false );
 
 		$this->assertIsArray( $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * 26. filter_new_live_ids with old_id mapping Tests
+	 * =========================================================================
+	 */
+	public function test_filter_new_live_ids_should_return_ids_not_in_mapping(): void {
+		global $wpdb;
+
+		$live_posts = [
+			[
+				'ID'            => 100,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+			[
+				'ID'            => 101,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+			[
+				'ID'            => 102,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+		];
+
+		// Only 100 and 101 are in the mapping, 102 is new.
+		$old_id_map = [
+			100 => 1,
+			101 => 2,
+		];
+
+		$result = $this->logic->filter_new_live_ids( $live_posts, $old_id_map );
+
+		$this->assertEquals( [ 102 ], $result );
+	}
+
+	public function test_filter_new_live_ids_should_return_empty_when_all_mapped(): void {
+		global $wpdb;
+
+		$live_posts = [
+			[
+				'ID'            => 100,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+			[
+				'ID'            => 101,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+		];
+
+		$old_id_map = [
+			100 => 1,
+			101 => 2,
+		];
+
+		$result = $this->logic->filter_new_live_ids( $live_posts, $old_id_map );
+
+		$this->assertEmpty( $result );
+	}
+
+	public function test_filter_new_live_ids_should_return_all_when_mapping_empty(): void {
+		global $wpdb;
+
+		$live_posts = [
+			[
+				'ID'            => 100,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+			[
+				'ID'            => 101,
+				'post_modified' => '2025-01-01 00:00:00',
+			],
+		];
+
+		$result = $this->logic->filter_new_live_ids( $live_posts, [] );
+
+		$this->assertEquals( [ 100, 101 ], $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * 27. filter_modified_live_ids with old_id mapping Tests
+	 * =========================================================================
+	 */
+	public function test_filter_modified_live_ids_should_detect_post_modified_change(): void {
+		global $wpdb;
+
+		$live_posts = [
+			[
+				'ID'            => 100,
+				'post_modified' => '2025-01-02 00:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+			],
+		];
+
+		$local_posts = [
+			[
+				'ID'            => 1,
+				'post_modified' => '2025-01-01 00:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+			],
+		];
+
+		$old_id_map = [ 100 => 1 ];
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 100, $result[0]['live_id'] );
+		$this->assertEquals( 1, $result[0]['local_id'] );
+	}
+
+	public function test_filter_modified_live_ids_should_detect_post_status_change(): void {
+		global $wpdb;
+
+		$live_posts = [
+			[
+				'ID'            => 100,
+				'post_modified' => '2025-01-01 00:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+			],
+		];
+
+		$local_posts = [
+			[
+				'ID'            => 1,
+				'post_modified' => '2025-01-01 00:00:00',
+				'post_status'   => 'draft',
+				'post_author'   => 1,
+			],
+		];
+
+		$old_id_map = [ 100 => 1 ];
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+
+		$this->assertCount( 1, $result );
+	}
+
+	public function test_filter_modified_live_ids_should_skip_unimported_posts(): void {
+		global $wpdb;
+
+		$live_posts = [
+			[
+				'ID'            => 100,
+				'post_modified' => '2025-01-02 00:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+			],
+			[
+				'ID'            => 101,
+				'post_modified' => '2025-01-02 00:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+			],
+		];
+
+		$local_posts = [
+			[
+				'ID'            => 1,
+				'post_modified' => '2025-01-01 00:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+			],
+		];
+
+		// Only 100 is mapped, 101 is not imported yet.
+		$old_id_map = [ 100 => 1 ];
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 100, $result[0]['live_id'] );
+	}
+
+	/**
+	 * =========================================================================
+	 * 28. get_imported_user_id_mapping_from_db Tests
+	 * =========================================================================
+	 */
+	public function test_get_imported_user_id_mapping_from_db_should_return_mapping(): void {
+		global $wpdb;
+		$source_hostname = 'user-mapping-test.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		$user_id = self::factory()->user->create();
+		update_user_meta( $user_id, $meta_key, 999 );
+
+		$result = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
+
+		$this->assertArrayHasKey( 999, $result );
+		$this->assertEquals( $user_id, $result[999] );
+	}
+
+	public function test_get_imported_user_id_mapping_from_db_should_return_empty_for_no_matches(): void {
+		global $wpdb;
+
+		$result = $this->logic->get_imported_user_id_mapping_from_db( 'nonexistent-source.example.com' );
+
+		$this->assertIsArray( $result );
+		$this->assertEmpty( $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * 29. get_imported_term_id_mapping_from_db Tests
+	 * =========================================================================
+	 */
+	public function test_get_imported_term_id_mapping_from_db_should_return_mapping(): void {
+		global $wpdb;
+		$source_hostname = 'term-mapping-test.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		$term    = wp_insert_term( 'Test Term ' . uniqid(), 'category' );
+		$term_id = $term['term_id'];
+		update_term_meta( $term_id, $meta_key, 888 );
+
+		$result = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
+
+		$this->assertArrayHasKey( 888, $result );
+		$this->assertEquals( $term_id, $result[888] );
+	}
+
+	/**
+	 * =========================================================================
+	 * 30. count_unattributed_* Methods Tests
+	 * =========================================================================
+	 */
+	public function test_count_unattributed_posts_should_count_posts_without_meta(): void {
+		global $wpdb;
+		$source_hostname = 'unattributed-posts-test.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create posts - one attributed, one not.
+		$post1 = self::factory()->post->create();
+		$post2 = self::factory()->post->create();
+		update_post_meta( $post1, $meta_key, 100 );
+
+		$result = $this->logic->count_unattributed_posts( $source_hostname, [ 'post' ] );
+
+		$this->assertIsInt( $result );
+		$this->assertGreaterThanOrEqual( 1, $result );
+	}
+
+	public function test_count_unattributed_posts_should_return_zero_for_empty_post_types(): void {
+		$result = $this->logic->count_unattributed_posts( 'empty-types.example.com', [] );
+		$this->assertEquals( 0, $result );
+	}
+
+	public function test_count_unattributed_posts_should_exclude_attachments(): void {
+		$result = $this->logic->count_unattributed_posts( 'attachments-excluded.example.com', [ 'attachment' ] );
+		$this->assertEquals( 0, $result );
+	}
+
+	public function test_count_unattributed_attachments_should_count_attachments_without_meta(): void {
+		global $wpdb;
+		$source_hostname = 'unattributed-attachments-test.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create attachments - one attributed, one not.
+		$attachment1 = self::factory()->attachment->create();
+		$attachment2 = self::factory()->attachment->create();
+		update_post_meta( $attachment1, $meta_key, 200 );
+
+		$result = $this->logic->count_unattributed_attachments( $source_hostname );
+
+		$this->assertIsInt( $result );
+		$this->assertGreaterThanOrEqual( 1, $result );
+	}
+
+	public function test_count_unattributed_users_should_count_users_without_meta(): void {
+		global $wpdb;
+		$source_hostname = 'unattributed-users-test.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create users - one attributed, one not.
+		$user1 = self::factory()->user->create();
+		$user2 = self::factory()->user->create();
+		update_user_meta( $user1, $meta_key, 300 );
+
+		$result = $this->logic->count_unattributed_users( $source_hostname );
+
+		$this->assertIsInt( $result );
+		$this->assertGreaterThanOrEqual( 1, $result );
+	}
+
+	public function test_count_unattributed_terms_should_count_terms_without_meta(): void {
+		global $wpdb;
+		$source_hostname = 'unattributed-terms-test.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create terms - one attributed, one not.
+		$term1 = wp_insert_term( 'Unattributed Test Term 1 ' . uniqid(), 'category' );
+		$term2 = wp_insert_term( 'Unattributed Test Term 2 ' . uniqid(), 'category' );
+		update_term_meta( $term1['term_id'], $meta_key, 400 );
+
+		$result = $this->logic->count_unattributed_terms( $source_hostname );
+
+		$this->assertIsInt( $result );
+		$this->assertGreaterThanOrEqual( 1, $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * 31. get_terms_rows_for_attribution Tests
+	 * =========================================================================
+	 */
+	public function test_get_terms_rows_for_attribution_should_return_terms_with_taxonomy(): void {
+		global $wpdb;
+
+		$term = wp_insert_term( 'Attribution Term ' . uniqid(), 'category' );
+
+		$result = $this->logic->get_terms_rows_for_attribution( $wpdb->prefix );
+
+		$this->assertIsArray( $result );
+		$this->assertNotEmpty( $result );
+
+		$found = false;
+		foreach ( $result as $row ) {
+			if ( (int) $row['term_id'] === $term['term_id'] ) {
+				$found = true;
+				$this->assertEquals( 'category', $row['taxonomy'] );
+				break;
+			}
+		}
+		$this->assertTrue( $found, 'Created term should be in results' );
+	}
+
+	/**
+	 * =========================================================================
+	 * 32. match_local_to_live_terms Tests
+	 * =========================================================================
+	 */
+	public function test_match_local_to_live_terms_should_match_by_slug_and_taxonomy(): void {
+		global $wpdb;
+
+		$local_terms = [
+			[
+				'term_id'  => 1,
+				'slug'     => 'news',
+				'name'     => 'News',
+				'taxonomy' => 'category',
+			],
+			[
+				'term_id'  => 2,
+				'slug'     => 'tech',
+				'name'     => 'Tech',
+				'taxonomy' => 'category',
+			],
+		];
+
+		$live_terms = [
+			[
+				'term_id'  => 100,
+				'slug'     => 'news',
+				'name'     => 'News',
+				'taxonomy' => 'category',
+			],
+			[
+				'term_id'  => 101,
+				'slug'     => 'sports',
+				'name'     => 'Sports',
+				'taxonomy' => 'category',
+			],
+		];
+
+		$result = $this->logic->match_local_to_live_terms( $local_terms, $live_terms );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 1, $result[0]['local_id'] );
+		$this->assertEquals( 100, $result[0]['live_id'] );
+	}
+
+	public function test_match_local_to_live_terms_should_not_match_different_taxonomies(): void {
+		global $wpdb;
+
+		$local_terms = [
+			[
+				'term_id'  => 1,
+				'slug'     => 'news',
+				'name'     => 'News',
+				'taxonomy' => 'category',
+			],
+		];
+
+		$live_terms = [
+			[
+				'term_id'  => 100,
+				'slug'     => 'news',
+				'name'     => 'News',
+				'taxonomy' => 'post_tag',
+			],
+		];
+
+		$result = $this->logic->match_local_to_live_terms( $local_terms, $live_terms );
+
+		$this->assertEmpty( $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * 33. update_modified_users Tests
+	 * =========================================================================
+	 */
+	public function test_update_modified_users_should_return_empty_when_no_mapping(): void {
+		global $wpdb;
+
+		$result = $this->logic->update_modified_users( $wpdb->prefix, 'no-users.example.com' );
+
+		$this->assertEquals( 0, $result['checked'] );
+		$this->assertEquals( 0, $result['updated'] );
+	}
+
+	/**
+	 * =========================================================================
+	 * 34. update_modified_attachments Tests
+	 * =========================================================================
+	 */
+	public function test_update_modified_attachments_should_return_empty_when_no_mapping(): void {
+		global $wpdb;
+
+		$result = $this->logic->update_modified_attachments( $wpdb->prefix, 'no-attachments.example.com' );
+
+		$this->assertEquals( 0, $result['checked'] );
+		$this->assertEquals( 0, $result['updated'] );
+	}
+
+	/**
+	 * =========================================================================
+	 * 35. update_modified_terms Tests
+	 * =========================================================================
+	 */
+	public function test_update_modified_terms_should_return_empty_when_no_mapping(): void {
+		global $wpdb;
+
+		$result = $this->logic->update_modified_terms( $wpdb->prefix, 'no-terms.example.com' );
+
+		$this->assertEquals( 0, $result['checked'] );
+		$this->assertEquals( 0, $result['updated'] );
 	}
 }

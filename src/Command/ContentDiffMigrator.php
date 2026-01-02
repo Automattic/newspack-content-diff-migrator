@@ -420,6 +420,28 @@ class ContentDiffMigrator {
 		}
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local users attributed out of %d total.', count( $matched_users ), count( $results_local_users ) ) );
 
+		// Match terms.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying terms...' );
+		$results_local_terms = $this->logic->get_terms_rows_for_attribution( $wpdb->prefix );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$results_live_terms = $this->logic->get_terms_rows_for_attribution( $live_table_prefix );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local terms to live terms...', count( $results_local_terms ), count( $results_live_terms ) ) );
+		$matched_terms = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Attribute matched terms to source hostname.
+		foreach ( $matched_terms as $match ) {
+			update_term_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			// Detailed log to file only.
+			$context = [
+				'local_term_id' => $match['local_id'],
+				'live_term_id'  => $match['live_id'],
+			];
+			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
+
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done!' );
 	}
 
@@ -492,20 +514,73 @@ class ContentDiffMigrator {
 			$post_types_non_attachments = array_values( $post_types_non_attachments );
 		}
 
+		// Check for unattributed objects and warn if found.
+		$unattributed_posts       = $this->logic->count_unattributed_posts( $source_hostname, $post_types );
+		$unattributed_attachments = in_array( 'attachment', $post_types, true ) ? $this->logic->count_unattributed_attachments( $source_hostname ) : 0;
+		$unattributed_users       = $this->logic->count_unattributed_users( $source_hostname );
+		$unattributed_terms       = $this->logic->count_unattributed_terms( $source_hostname );
+		$unattributed_total       = $unattributed_posts + $unattributed_attachments + $unattributed_users + $unattributed_terms;
+		if ( $unattributed_total > 0 ) {
+			Logger::instance()->log(
+				Logger::OUTPUT_BOTH,
+				LogLevel::WARNING,
+				sprintf(
+					'Found %d objects without old_id attribution for source %s (posts: %d, attachments: %d, users: %d, terms: %d). Run `attribute-initial-content` first for accurate matching.',
+					$unattributed_total,
+					$source_hostname,
+					$unattributed_posts,
+					$unattributed_attachments,
+					$unattributed_users,
+					$unattributed_terms
+				)
+			);
+		}
+
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Searching live DB for new content...' );
 		try {
+			// Get old_id mappings for posts (more memory efficient than loading full post data).
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for posts...' );
+			$post_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d post old_id mappings.', count( $post_old_id_map ) ) );
+
+			// Get old_id mappings for attachments (needed for enhanced modification detection).
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for attachments...' );
+			$attachment_old_id_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d attachment old_id mappings.', count( $attachment_old_id_map ) ) );
+
+			// Get old_id mappings for users (needed for enhanced modification detection).
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for users...' );
+			$user_old_id_map = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d user old_id mappings.', count( $user_old_id_map ) ) );
+
+			// Get old_id mappings for terms (needed for enhanced modification detection).
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for terms...' );
+			$term_old_id_map = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d term old_id mappings.', count( $term_old_id_map ) ) );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+			// Get live posts for comparison.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s ...', implode( ',', $post_types_non_attachments ) ) );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_posts ) ) );
-			$new_live_ids = $this->logic->filter_new_live_ids( $results_live_posts, $results_local_posts );
+			$new_live_ids = $this->logic->filter_new_live_ids( $results_live_posts, $post_old_id_map );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
-			$modified_live_ids = $this->logic->filter_modified_live_ids( $results_live_posts, $results_local_posts );
+			// Enhanced modification detection according to the Migration Data Consistency Standard.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live (including status, author, thumbnail, taxonomies)...' );
+			$modified_live_ids = $this->logic->filter_modified_live_ids(
+				$results_live_posts,
+				$results_local_posts,
+				$post_old_id_map,
+				$live_table_prefix,
+				$user_old_id_map,
+				$attachment_old_id_map,
+				$term_old_id_map
+			);
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
@@ -515,7 +590,7 @@ class ContentDiffMigrator {
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_attachments ) ) );
-			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $results_local_attachments );
+			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $attachment_old_id_map );
 			$new_live_ids            = array_merge( $new_live_ids, $new_live_attachment_ids );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_attachment_ids ) ) );
 
@@ -699,6 +774,22 @@ class ContentDiffMigrator {
 		// Recalculate counts for all migrated taxonomies.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Recalculating term counts for migrated taxonomies...' );
 		$this->recalculate_term_counts( $taxonomies_to_migrate );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Migration Data Consistency Standard: Update modified properties of migrated objects.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified user properties...' );
+		$user_updates = $this->logic->update_modified_users( $live_table_prefix, $source_hostname );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d users, updated %d.', $user_updates['checked'], $user_updates['updated'] ) );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified attachment properties...' );
+		$attachment_updates = $this->logic->update_modified_attachments( $live_table_prefix, $source_hostname );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d attachments, updated %d.', $attachment_updates['checked'], $attachment_updates['updated'] ) );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified term properties (category/post_tag)...' );
+		$term_updates = $this->logic->update_modified_terms( $live_table_prefix, $source_hostname, [ 'category', 'post_tag' ] );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d terms, updated %d.', $term_updates['checked'], $term_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
