@@ -89,9 +89,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		global $wpdb;
 
 		// Disable Logger (use NullLogger).
-Logger::configure( false );
-// TODO temp
-// Logger::configure( true );
+		Logger::configure( false );
 
 		// Create cdiff_* tables mirroring WP core tables.
 		$this->create_live_tables();
@@ -1162,7 +1160,12 @@ Logger::configure( false );
 		global $wpdb;
 
 		// Create post with comments.
-		$post = $this->create_post_fixture( [ 'ID' => 5001 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 5001,
+				'comment_count' => '2',
+			] 
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		$comments = [
@@ -1223,7 +1226,12 @@ Logger::configure( false );
 	public function test_should_import_commentmeta_for_comment(): void {
 		global $wpdb;
 
-		$post = $this->create_post_fixture( [ 'ID' => 5002 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 5002,
+				'comment_count' => '1',
+			] 
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		$comment = [
@@ -1301,7 +1309,12 @@ Logger::configure( false );
 		);
 		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
-		$post = $this->create_post_fixture( [ 'ID' => 5003 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 5003,
+				'comment_count' => '1',
+			] 
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		$comment = [
@@ -1350,7 +1363,12 @@ Logger::configure( false );
 		);
 		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
-		$post = $this->create_post_fixture( [ 'ID' => 5004 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 5004,
+				'comment_count' => '1',
+			] 
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		$comment = [
@@ -1390,7 +1408,12 @@ Logger::configure( false );
 	public function test_should_handle_anonymous_comment_with_user_id_zero(): void {
 		global $wpdb;
 
-		$post = $this->create_post_fixture( [ 'ID' => 5005 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 5005,
+				'comment_count' => '1',
+			] 
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		$comment = [
@@ -1433,7 +1456,12 @@ Logger::configure( false );
 	public function test_should_update_comment_parent_ids_after_import(): void {
 		global $wpdb;
 
-		$post = $this->create_post_fixture( [ 'ID' => 5006 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 5006,
+				'comment_count' => '2',
+			] 
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		// Parent comment.
@@ -1487,7 +1515,7 @@ Logger::configure( false );
 				'order'   => 'ASC',
 			] 
 		);
-		$this->assertCount( 2, $imported_comments );
+		$this->assertCount( 2, $imported_comments, 'Post should have 2 comments.' );
 
 		$parent = $imported_comments[0];
 		$reply  = $imported_comments[1];
