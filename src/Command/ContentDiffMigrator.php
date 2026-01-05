@@ -539,24 +539,13 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Searching live DB for new content...' );
 		try {
 			// Get old_id mappings for posts (more memory efficient than loading full post data).
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for posts...' );
 			$post_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d post old_id mappings.', count( $post_old_id_map ) ) );
-
 			// Get old_id mappings for attachments (needed for enhanced modification detection).
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for attachments...' );
 			$attachment_old_id_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d attachment old_id mappings.', count( $attachment_old_id_map ) ) );
-
 			// Get old_id mappings for users (needed for enhanced modification detection).
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for users...' );
 			$user_old_id_map = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d user old_id mappings.', count( $user_old_id_map ) ) );
-
 			// Get old_id mappings for terms (needed for enhanced modification detection).
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Loading old_id mappings for terms...' );
 			$term_old_id_map = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d term old_id mappings.', count( $term_old_id_map ) ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Get live posts for comparison.
@@ -695,6 +684,9 @@ class ContentDiffMigrator {
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
 		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
+		if ( empty( $taxonomies_to_migrate ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'No taxonomies to migrate found. Proceeding with migration to allow for edge cases, but please do check whether this was an actual issue when providing categories.' );
+		}
 
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
@@ -901,6 +893,9 @@ class ContentDiffMigrator {
 			}
 		}
 		$taxonomies_to_migrate = array_values( $taxonomies_to_migrate );
+		if ( empty( $taxonomies_to_migrate ) ) {
+			return [];
+		}
 
 		// Fix local taxonomies with nonexistent parent term_ids.
 		$fixed_local = $this->logic->get_data_importer()->fix_hierarchical_taxonomies_parents( $wpdb->prefix, $taxonomies_to_migrate );
@@ -1045,8 +1040,7 @@ class ContentDiffMigrator {
 			$parent_id_new = $imported_ids_map[ $parent_id_old ] ?? null;
 			// 1/3 - First try searching for new parent ID by "old ID postmeta", in case a previous content diff imported it.
 			if ( is_null( $parent_id_new ) ) {
-				$meta_key      = $this->logic->get_old_id_meta_key( $source_hostname );
-				$parent_id_new = $this->logic->get_post_id_by_postmeta( $meta_key, $parent_id_old );
+				$parent_id_new = $this->logic->get_current_post_id_by_old_id( $parent_id_old, $source_hostname );
 			}
 			// 2/3 - Next try searching for the new parent_id by comparing the local and live DB tables.
 			if ( is_null( $parent_id_new ) ) {
