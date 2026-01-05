@@ -721,7 +721,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state for second run.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -2277,7 +2276,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Second migration - should only import second post.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -2761,7 +2759,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Now create new run-state and import a post using that attachment.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4062,7 +4059,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Set up for second source hostname.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname_2 . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname_2 . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4127,7 +4123,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Import from second source.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname_2 . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname_2 . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4269,7 +4264,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state directory for second migration.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4411,7 +4405,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state for second search.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4447,7 +4440,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4487,7 +4479,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4549,7 +4540,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4603,7 +4593,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
@@ -4661,7 +4650,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
