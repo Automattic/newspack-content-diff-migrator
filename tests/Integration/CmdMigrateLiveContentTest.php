@@ -3535,6 +3535,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	// =========================================================================
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_user_email_when_changed_on_live(): void {
@@ -3580,6 +3581,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_user_display_name_when_changed_on_live(): void {
@@ -3619,6 +3621,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_not_update_user_login_when_changed_on_live(): void {
@@ -3661,6 +3664,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_caption_when_changed_on_live(): void {
@@ -3695,6 +3699,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_description_when_changed_on_live(): void {
@@ -3729,6 +3734,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_alt_text_when_changed_on_live(): void {
@@ -3773,6 +3779,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_media_credit_when_changed_on_live(): void {
@@ -3817,6 +3824,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_term_slug_when_changed_on_live(): void {
@@ -3869,6 +3877,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_term_description_when_changed_on_live(): void {
@@ -3919,6 +3928,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * "mdcs" stands for "Migration Data Consistency Standard".
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_not_update_term_name_when_changed_on_live(): void {
