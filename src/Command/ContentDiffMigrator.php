@@ -492,11 +492,10 @@ class ContentDiffMigrator {
 
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
-		// phpcs:ignore -- table prefix string value was escaped.
-		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" );
+		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" ); // phpcs:ignore -- table prefix string value was escaped.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Following Post types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
 
-		// Validate selected post types.
+		// Validate selected CPTs.
 		array_walk(
 			$post_types,
 			function ( &$v, $k ) use ( $cpts_live ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
@@ -506,15 +505,7 @@ class ContentDiffMigrator {
 			}
 		);
 
-		// Get list of post types except attachments.
-		$post_types_non_attachments = $post_types;
-		$key                        = array_search( 'attachment', $post_types_non_attachments );
-		if ( false !== $key ) {
-			unset( $post_types_non_attachments[ $key ] );
-			$post_types_non_attachments = array_values( $post_types_non_attachments );
-		}
-
-		// Check for unattributed objects and warn if found.
+		// Check is there is any unattributed content on local site (posts and CPTs, attachments, users, terms which already exist on local site, and have not been attributed to source hostname, i.e. no "old_id meta", so they will not be considered/compared during migration), and warn if found.
 		$unattributed_posts       = $this->logic->count_unattributed_posts( $source_hostname, $post_types );
 		$unattributed_attachments = in_array( 'attachment', $post_types, true ) ? $this->logic->count_unattributed_attachments( $source_hostname ) : 0;
 		$unattributed_users       = $this->logic->count_unattributed_users( $source_hostname );
@@ -525,7 +516,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					'Found %d objects without old_id attribution for source %s (posts: %d, attachments: %d, users: %d, terms: %d). Run `attribute-initial-content` first for accurate matching.',
+					'Found %d objects without old_id meta for source %s (posts and CPTs: %d, attachments: %d, users: %d, terms: %d). Consider running `attribute-initial-content` if you wish to match these objects during migration.',
 					$unattributed_total,
 					$source_hostname,
 					$unattributed_posts,
@@ -536,30 +527,35 @@ class ContentDiffMigrator {
 			);
 		}
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Searching live DB for new content...' );
-		try {
-			// Get old_id mappings for posts (more memory efficient than loading full post data).
-			$post_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
-			// Get old_id mappings for attachments (needed for enhanced modification detection).
-			$attachment_old_id_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
-			// Get old_id mappings for users (needed for enhanced modification detection).
-			$user_old_id_map = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
-			// Get old_id mappings for terms (needed for enhanced modification detection).
-			$term_old_id_map = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		// Get post types other than attachments.
+		$post_types_non_attachments = $post_types;
+		$key                        = array_search( 'attachment', $post_types_non_attachments );
+		if ( false !== $key ) {
+			unset( $post_types_non_attachments[ $key ] );
+			$post_types_non_attachments = array_values( $post_types_non_attachments );
+		}
 
-			// Get live posts for comparison.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s ...', implode( ',', $post_types_non_attachments ) ) );
+		// Get already migrated old_id=>new_id mappings for posts and CPTs, attachments, users, and terms (more memory efficient).
+		$post_old_id_map       = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
+		$attachment_old_id_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
+		$user_old_id_map       = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
+		$term_old_id_map       = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		try {
+			// Query live DB for posts and CPTs.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Searching live DB for CPTs: %s ...', implode( ',', $post_types_non_attachments ) ) );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_posts ) ) );
+			// Check new objects.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking for new ones...', count( $results_live_posts ) ) );
 			$new_live_ids = $this->logic->filter_new_live_ids( $results_live_posts, $post_old_id_map );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Enhanced modification detection according to the Migration Data Consistency Standard.
+			// Check modified objects -- according to the Migration Data Consistency Standard -- these will get reimported fully.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live (including status, author, thumbnail, taxonomies)...' );
 			$modified_live_ids = $this->logic->filter_modified_live_ids(
 				$results_live_posts,
@@ -573,12 +569,13 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found.', count( $modified_live_ids ) ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments ...' );
+			// Query live DB for attachments.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Searching live DB for attachments ...' );
 			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
-			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking which ones are new...', count( $results_live_attachments ) ) );
+			// Check new attachments.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking for new ones...', count( $results_live_attachments ) ) );
 			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $attachment_old_id_map );
 			$new_live_ids            = array_merge( $new_live_ids, $new_live_attachment_ids );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_attachment_ids ) ) );
@@ -588,13 +585,13 @@ class ContentDiffMigrator {
 			throw $e;
 		}
 
-		// Write to run-state new IDs to migrate.
+		// Write new IDs to run-state file.
 		if ( count( $new_live_ids ) > 0 ) {
 			$this->run_state->write_new_ids( $new_live_ids );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of new IDs to migrate stored to run-state file %s', RunState::FILE_NEW_IDS ) );
 		}
 
-		// Write to run-state IDs which were modified on live and need to be reimported.
+		// Write modified IDs to run-state file.
 		if ( count( $modified_live_ids ) > 0 ) {
 			$this->run_state->write_modified_ids( $modified_live_ids );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of modified IDs to reimport stored to run-state file %s', RunState::FILE_MODIFIED_IDS ) );
