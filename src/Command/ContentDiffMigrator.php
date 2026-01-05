@@ -585,15 +585,15 @@ class ContentDiffMigrator {
 			throw $e;
 		}
 
-		// Write new IDs to run-state file.
-		if ( count( $new_live_ids ) > 0 ) {
-			$this->run_state->write_new_ids( $new_live_ids );
+		// Write new IDs to run-state file -- even if there are no new IDs, write the empty list -- migrate command will continue to allow other data to be migrated (users, modified IDs, etc.).
+		$this->run_state->write_new_ids( $new_live_ids );
+		if ( 0 === count( $new_live_ids ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of new IDs to migrate stored to run-state file %s', RunState::FILE_NEW_IDS ) );
 		}
 
 		// Write modified IDs to run-state file.
+		$this->run_state->write_modified_ids( $modified_live_ids );
 		if ( count( $modified_live_ids ) > 0 ) {
-			$this->run_state->write_modified_ids( $modified_live_ids );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of modified IDs to reimport stored to run-state file %s', RunState::FILE_MODIFIED_IDS ) );
 		}
 
@@ -695,11 +695,11 @@ class ContentDiffMigrator {
 		$new_live_ids = $this->run_state->get_new_ids();
 		if ( null === $new_live_ids ) {
 			$message = sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $message );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $message );
 			throw new \RuntimeException( esc_html( $message ) );
 		} elseif ( empty( $new_live_ids ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new posts to migrate.' );
-			// Continue to allow modified IDs to be processed.
+			// Continue to allow even without new IDs, to allow other data to be migrated (users, modified IDs, etc.).
 		}
 
 		// Process modified IDs -- delete them, then reimport.
