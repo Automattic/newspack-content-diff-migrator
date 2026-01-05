@@ -1,0 +1,82 @@
+{
+  "_description": "Basic attachment with metadata",
+  "post": {
+    "ID": 500,
+    "post_author": 21,
+    "post_date": "2024-01-10 10:00:00",
+    "post_date_gmt": "2024-01-10 10:00:00",
+    "post_content": "This is the image description.",
+    "post_title": "test-image",
+    "post_excerpt": "This is the image caption.",
+    "post_status": "inherit",
+    "comment_status": "open",
+    "ping_status": "closed",
+    "post_password": "",
+    "post_name": "test-image",
+    "to_ping": "",
+    "pinged": "",
+    "post_modified": "2024-01-10 10:00:00",
+    "post_modified_gmt": "2024-01-10 10:00:00",
+    "post_content_filtered": "",
+    "post_parent": 0,
+    "guid": "http://test.local/wp-content/uploads/2024/01/test-image.jpg",
+    "menu_order": 0,
+    "post_type": "attachment",
+    "post_mime_type": "image/jpeg",
+    "comment_count": 0
+  },
+  "postmeta": [
+    {
+      "meta_id": 501,
+      "post_id": 500,
+      "meta_key": "_wp_attached_file",
+      "meta_value": "2024/01/test-image.jpg"
+    },
+    {
+      "meta_id": 502,
+      "post_id": 500,
+      "meta_key": "_wp_attachment_metadata",
+      "meta_value": "a:5:{s:5:\"width\";i:1200;s:6:\"height\";i:800;s:4:\"file\";s:24:\"2024/01/test-image.jpg\";s:5:\"sizes\";a:2:{s:9:\"thumbnail\";a:4:{s:4:\"file\";s:32:\"test-image-150x150.jpg\";s:5:\"width\";i:150;s:6:\"height\";i:150;s:9:\"mime-type\";s:10:\"image/jpeg\";}s:6:\"medium\";a:4:{s:4:\"file\";s:32:\"test-image-300x200.jpg\";s:5:\"width\";i:300;s:6:\"height\";i:200;s:9:\"mime-type\";s:10:\"image/jpeg\";}}s:10:\"image_meta\";a:0:{}}"
+    },
+    {
+      "meta_id": 503,
+      "post_id": 500,
+      "meta_key": "_wp_attachment_image_alt",
+      "meta_value": "Test image alt text"
+    },
+    {
+      "meta_id": 504,
+      "post_id": 500,
+      "meta_key": "_media_credit",
+      "meta_value": "Photo Credit Name"
+    },
+    {
+      "meta_id": 505,
+      "post_id": 500,
+      "meta_key": "_media_credit_url",
+      "meta_value": "https://example.com/credit"
+    }
+  ],
+  "users": [
+    {
+      "ID": 21,
+      "user_login": "postauthor",
+      "user_pass": "$P$BJTe8iBJUuOui0O.A4JDRkLMfqqraF.",
+      "user_nicename": "postauthor",
+      "user_email": "postauthor@test.local",
+      "user_url": "http://test.local",
+      "user_registered": "2024-01-01 09:43:56",
+      "user_activation_key": "",
+      "user_status": 0,
+      "display_name": "Post Author"
+    }
+  ],
+  "usermeta": [],
+  "comments": [],
+  "commentmeta": [],
+  "term_relationships": [],
+  "term_taxonomy": [],
+  "terms": [],
+  "termmeta": []
+}
+

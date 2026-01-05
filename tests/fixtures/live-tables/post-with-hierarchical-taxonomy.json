@@ -1,0 +1,85 @@
+{
+  "_description": "Post with 3-level deep hierarchical category: Parent > Child > Grandchild",
+  "post": {
+    "ID": 300,
+    "post_author": 21,
+    "post_date": "2024-03-01 12:00:00",
+    "post_date_gmt": "2024-03-01 12:00:00",
+    "post_content": "<p>Post with hierarchical taxonomy.</p>",
+    "post_title": "Hierarchical Taxonomy Post",
+    "post_excerpt": "",
+    "post_status": "publish",
+    "comment_status": "closed",
+    "ping_status": "closed",
+    "post_password": "",
+    "post_name": "hierarchical-taxonomy-post",
+    "to_ping": "",
+    "pinged": "",
+    "post_modified": "2024-03-01 12:00:00",
+    "post_modified_gmt": "2024-03-01 12:00:00",
+    "post_content_filtered": "",
+    "post_parent": 0,
+    "guid": "http://test.local/?p=300",
+    "menu_order": 0,
+    "post_type": "post",
+    "post_mime_type": "",
+    "comment_count": 0
+  },
+  "postmeta": [],
+  "users": [
+    {
+      "ID": 21,
+      "user_login": "postauthor",
+      "user_pass": "$P$BJTe8iBJUuOui0O.A4JDRkLMfqqraF.",
+      "user_nicename": "postauthor",
+      "user_email": "postauthor@test.local",
+      "user_url": "",
+      "user_registered": "2024-01-01 00:00:00",
+      "user_activation_key": "",
+      "user_status": 0,
+      "display_name": "Post Author"
+    }
+  ],
+  "usermeta": [],
+  "comments": [],
+  "commentmeta": [],
+  "term_relationships": [
+    { "object_id": 300, "term_taxonomy_id": 103, "term_order": 0 }
+  ],
+  "term_taxonomy": [
+    {
+      "_description": "Top-level parent category",
+      "term_taxonomy_id": 101,
+      "term_id": 61,
+      "taxonomy": "category",
+      "description": "Parent category description",
+      "parent": 0,
+      "count": 10
+    },
+    {
+      "_description": "Child category under parent",
+      "term_taxonomy_id": 102,
+      "term_id": 62,
+      "taxonomy": "category",
+      "description": "Child category description",
+      "parent": 61,
+      "count": 5
+    },
+    {
+      "_description": "Grandchild category under child",
+      "term_taxonomy_id": 103,
+      "term_id": 63,
+      "taxonomy": "category",
+      "description": "Grandchild category description",
+      "parent": 62,
+      "count": 2
+    }
+  ],
+  "terms": [
+    { "term_id": 61, "name": "Parent Category", "slug": "parent-category", "term_group": 0 },
+    { "term_id": 62, "name": "Child Category", "slug": "child-category", "term_group": 0 },
+    { "term_id": 63, "name": "Grandchild Category", "slug": "grandchild-category", "term_group": 0 }
+  ],
+  "termmeta": []
+}
+
