@@ -2828,15 +2828,10 @@ Logger::configure( false );
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment1 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment2 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
-		// Create post with gallery block.
-		$content = '<!-- wp:gallery {"ids":[10101,10102],"columns":2} -->
-<figure class="wp-block-gallery columns-2 is-cropped">
-<ul class="blocks-gallery-grid">
-<li class="blocks-gallery-item"><figure><img src="test1.jpg" data-id="10101" class="wp-image-10101"/></figure></li>
-<li class="blocks-gallery-item"><figure><img src="test2.jpg" data-id="10102" class="wp-image-10102"/></figure></li>
-</ul>
-</figure>
-<!-- /wp:gallery -->';
+		// Create post with Jetpack Slideshow block -- this is just a small demo block, unit tests already cover more comprehensive fixtures.
+		$content = '<!-- wp:jetpack/slideshow {"ids":[10101,10102],"sizeSlug":"large"} -->
+<div class="wp-block-jetpack-slideshow"><div class="wp-block-jetpack-slideshow_container swiper"><ul class="wp-block-jetpack-slideshow_swiper-wrapper swiper-wrapper"><li class="wp-block-jetpack-slideshow_slide swiper-slide"><figure><img alt="" class="wp-block-jetpack-slideshow_image wp-image-10101" data-id="10101" data-aspect-ratio="1024 / 439" src="https://ivannptest.newspackstaging.com/wp-content/uploads/2026/01/WP-art-100x200-1-1024x439.png"/></figure></li><li class="wp-block-jetpack-slideshow_slide swiper-slide"><figure><img alt="" class="wp-block-jetpack-slideshow_image wp-image-10102" data-id="10102" data-aspect-ratio="1024 / 408" src="https://ivannptest.newspackstaging.com/wp-content/uploads/2025/06/huge-scaled-1-1024x408.jpg"/></figure></li></ul><a class="wp-block-jetpack-slideshow_button-prev swiper-button-prev swiper-button-white" role="button"></a><a class="wp-block-jetpack-slideshow_button-next swiper-button-next swiper-button-white" role="button"></a><a aria-label="Pause Slideshow" class="wp-block-jetpack-slideshow_button-pause" role="button"></a><div class="wp-block-jetpack-slideshow_pagination swiper-pagination swiper-pagination-white"></div></div></div>
+<!-- /wp:jetpack/slideshow -->';
 
 		$post = $this->create_post_fixture(
 			[
@@ -2858,6 +2853,7 @@ Logger::configure( false );
 		// Verify both IDs were updated.
 		$this->assertStringContainsString( 'data-id="' . $new_att1_id . '"', $new_post->post_content );
 		$this->assertStringContainsString( 'data-id="' . $new_att2_id . '"', $new_post->post_content );
+		$this->assertStringContainsString( '"ids":[' . $new_att1_id . ',' . $new_att2_id . ']', $new_post->post_content );
 	}
 
 	/**
