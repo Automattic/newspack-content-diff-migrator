@@ -89,9 +89,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		global $wpdb;
 
 		// Disable Logger (use NullLogger).
-		// Logger::configure( false );
-		// TODO temp
-		Logger::configure( true );
+Logger::configure( false );
+// TODO temp
+// Logger::configure( true );
 
 		// Create cdiff_* tables mirroring WP core tables.
 		$this->create_live_tables();
@@ -101,8 +101,6 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Create temp run-state directory.
 		$this->temp_data_dir = sys_get_temp_dir() . '/cdiff-test-' . uniqid();
-		// TODO do we need to create this in tests, or should it be created by RunState automatically?
-		wp_mkdir_p( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
 
 		// Initialize logic.
 		$this->logic = new ContentDiffLogic( $wpdb );
@@ -1805,23 +1803,22 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->run_migrate_command();
 
 		$new_post_id = $this->logic->get_current_post_id_by_old_id( $fixture['post']['ID'], $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category' );
 
-		// Find child category.
-		$child_category = null;
-		foreach ( $categories as $cat ) {
-			if ( 'Child Category' === $cat->name ) {
-				$child_category = $cat;
-				break;
-			}
-		}
-
-		$this->assertNotNull( $child_category, 'Child category should be assigned.' );
-		$this->assertGreaterThan( 0, $child_category->parent, 'Child should have a parent.' );
-
-		// Verify parent exists.
-		$parent = get_term( $child_category->parent, 'category' );
-		$this->assertEquals( 'Parent Category', $parent->name, 'Parent should be correct.' );
+		// Get categories.
+		$parent_category     = get_category_by_slug( 'parent-category' );
+		$child_category      = get_category_by_slug( 'child-category' );
+		$grandchild_category = get_category_by_slug( 'grandchild-category' );
+		
+		// Verify category hierarchy.
+		$this->assertEquals( $child_category->term_id, $grandchild_category->parent, 'Parent should be correct.' );
+		$this->assertEquals( $parent_category->term_id, $child_category->parent, 'Parent should be correct.' );
+		$this->assertEquals( 0, $parent_category->parent, 'Parent should be correct.' );
+		
+		// Post should have grandchild category assigned.
+		$post_categories = wp_get_post_terms( $new_post_id, 'category' );
+		$this->assertCount( 1, $post_categories, 'Should have 1 category assigned to post.' );
+		$post_category = $post_categories[0];
+		$this->assertEquals( $grandchild_category->term_id, $post_category->term_id, 'Grandchild Category should be assigned.' );
 	}
 
 	/**
@@ -2340,8 +2337,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Create attachment.
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 7401,
-				'post_type' => 'attachment',
+				'ID'          => 7401,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2374,8 +2372,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 7501,
-				'post_type' => 'attachment',
+				'ID'          => 7501,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2633,8 +2632,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Create attachment.
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 9001,
-				'post_type' => 'attachment',
+				'ID'          => 9001,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2718,8 +2718,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// First, import an attachment.
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 9301,
-				'post_type' => 'attachment',
+				'ID'          => 9301,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2770,8 +2771,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Create attachment.
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 10001,
-				'post_type' => 'attachment',
+				'ID'          => 10001,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2811,14 +2813,16 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Create attachments.
 		$attachment1 = $this->create_post_fixture(
 			[
-				'ID'        => 10101,
-				'post_type' => 'attachment',
+				'ID'          => 10101,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$attachment2 = $this->create_post_fixture(
 			[
-				'ID'        => 10102,
-				'post_type' => 'attachment',
+				'ID'          => 10102,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment1 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2864,8 +2868,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 10201,
-				'post_type' => 'attachment',
+				'ID'          => 10201,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2901,8 +2906,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 10301,
-				'post_type' => 'attachment',
+				'ID'          => 10301,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2938,8 +2944,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 10401,
-				'post_type' => 'attachment',
+				'ID'          => 10401,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -2978,6 +2985,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 				'ID'             => 10501,
 				'post_type'      => 'attachment',
 				'post_mime_type' => 'audio/mpeg',
+				'post_status'    => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3016,6 +3024,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 				'ID'             => 10601,
 				'post_type'      => 'attachment',
 				'post_mime_type' => 'video/mp4',
+				'post_status'    => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3051,8 +3060,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 10701,
-				'post_type' => 'attachment',
+				'ID'          => 10701,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3089,14 +3099,16 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment1 = $this->create_post_fixture(
 			[
-				'ID'        => 10801,
-				'post_type' => 'attachment',
+				'ID'          => 10801,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$attachment2 = $this->create_post_fixture(
 			[
-				'ID'        => 10802,
-				'post_type' => 'attachment',
+				'ID'          => 10802,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment1 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3136,18 +3148,20 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment1 = $this->create_post_fixture(
 			[
-				'ID'        => 10901,
-				'post_type' => 'attachment',
+				'ID'          => 10901,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$attachment2 = $this->create_post_fixture(
 			[
-				'ID'        => 10902,
-				'post_type' => 'attachment',
+				'ID'          => 10902,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment1 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment2 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+		$inserted = $wpdb->insert( $this->live_table_prefix . 'posts', $attachment1 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+		$inserted =$wpdb->insert( $this->live_table_prefix . 'posts', $attachment2 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		$content = '<!-- wp:jetpack/tiled-gallery {"ids":[10901,10902]} -->
 <div class="wp-block-jetpack-tiled-gallery"><figure class="tiled-gallery__item"><img src="1.jpg" data-id="10901" class="wp-image-10901"/></figure><figure class="tiled-gallery__item"><img src="2.jpg" data-id="10902" class="wp-image-10902"/></figure></div>
@@ -3180,14 +3194,16 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment1 = $this->create_post_fixture(
 			[
-				'ID'        => 11001,
-				'post_type' => 'attachment',
+				'ID'          => 11001,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$attachment2 = $this->create_post_fixture(
 			[
-				'ID'        => 11002,
-				'post_type' => 'attachment',
+				'ID'          => 11002,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment1 ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3282,6 +3298,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 				'ID'             => 14101,
 				'post_type'      => 'attachment',
 				'post_mime_type' => 'image/jpeg',
+				'post_status'    => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3339,6 +3356,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 			[
 				'ID'          => 14202,
 				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 				'post_parent' => 14201,
 			]
 		);
@@ -3362,8 +3380,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 14301,
-				'post_type' => 'attachment',
+				'ID'          => 14301,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3400,8 +3419,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 14401,
-				'post_type' => 'attachment',
+				'ID'          => 14401,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3434,6 +3454,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 			[
 				'ID'          => 14501,
 				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 				'post_parent' => 0, // No parent.
 			]
 		);
@@ -3628,6 +3649,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 			[
 				'ID'           => 13301,
 				'post_type'    => 'attachment',
+				'post_status'  => 'inherit',
 				'post_excerpt' => 'Original caption', // Caption is stored in post_excerpt.
 			]
 		);
@@ -3661,6 +3683,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 			[
 				'ID'           => 13401,
 				'post_type'    => 'attachment',
+				'post_status'  => 'inherit',
 				'post_content' => 'Original description',
 			]
 		);
@@ -3692,8 +3715,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 13501,
-				'post_type' => 'attachment',
+				'ID'          => 13501,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -3735,8 +3759,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 13601,
-				'post_type' => 'attachment',
+				'ID'          => 13601,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			] 
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -4138,8 +4163,8 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->assertEquals( $live_post_id, (int) $saved_old_id, 'Old ID postmeta should be saved.' );
 
 		// Verify postmeta was imported.
-		$custom_meta = get_post_meta( $new_post_id, 'custom_field', true );
-		$this->assertEquals( 'Custom Value', $custom_meta, 'Custom postmeta should be imported.' );
+		$custom_meta = get_post_meta( $new_post_id, 'custom_meta', true );
+		$this->assertEquals( 'custom_value', $custom_meta, 'Custom postmeta should be imported.' );
 
 		// Verify author was created or matched.
 		$new_author_id = $new_post->post_author;
@@ -4157,10 +4182,11 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		// Verify term relationships.
 		$categories = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-		$this->assertContains( 'Technology', $categories, 'Category should be assigned.' );
+		$this->assertContains( 'News', $categories, 'Category should be assigned.' );
+		$this->assertContains( 'Local News', $categories, 'Category should be assigned.' );
 
 		$tags = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
-		$this->assertContains( 'Sample Tag', $tags, 'Tag should be assigned.' );
+		$this->assertContains( 'Featured', $tags, 'Tag should be assigned.' );
 
 		// Verify run-state was updated.
 		$imported_posts_map = $this->run_state->get_imported_post_ids_map();
@@ -4461,8 +4487,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Add featured image (attachment).
 		$attachment = $this->create_post_fixture(
 			[
-				'ID'        => 5001,
-				'post_type' => 'attachment',
+				'ID'          => 5001,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
@@ -4481,8 +4508,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Change the thumbnail.
 		$new_attachment = $this->create_post_fixture(
 			[
-				'ID'        => 5002,
-				'post_type' => 'attachment',
+				'ID'          => 5002,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $new_attachment ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
