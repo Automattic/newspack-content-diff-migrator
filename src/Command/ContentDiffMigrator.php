@@ -556,7 +556,7 @@ class ContentDiffMigrator {
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Check modified objects -- according to the Migration Data Consistency Standard -- these will get reimported fully.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live (including status, author, thumbnail, taxonomies)...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
 			$modified_live_ids = $this->logic->filter_modified_live_ids(
 				$results_live_posts,
 				$results_local_posts,
