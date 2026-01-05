@@ -291,35 +291,35 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 6. get_imported_attachment_id_map_from_db Tests
+	 * 6. get_imported_post_id_mapping_from_db Tests (Attachments)
 	 * =========================================================================
 	 */
-	public function test_get_imported_attachment_id_map_from_db_should_return_old_to_new_id_map(): void {
+	public function test_get_imported_post_id_mapping_from_db_should_return_attachments_when_requested(): void {
 		$attachment_id = self::factory()->attachment->create();
 		$meta_key      = ContentDiffLogic::get_old_id_meta_key( 'attach.example.com' );
 		$old_id        = 999;
 		update_post_meta( $attachment_id, $meta_key, $old_id );
 
-		$result = $this->logic->get_imported_attachment_id_map_from_db( 'attach.example.com' );
+		$result = $this->logic->get_imported_post_id_mapping_from_db( 'attach.example.com', [ 'attachment' ] );
 
 		$this->assertArrayHasKey( (string) $old_id, $result );
 		$this->assertEquals( $attachment_id, $result[ (string) $old_id ] );
 	}
 
-	public function test_get_imported_attachment_id_map_from_db_should_return_empty_array_when_no_attachments(): void {
-		$result = $this->logic->get_imported_attachment_id_map_from_db( 'noattach.example.com' );
+	public function test_get_imported_post_id_mapping_from_db_should_return_empty_array_when_no_attachments(): void {
+		$result = $this->logic->get_imported_post_id_mapping_from_db( 'noattach.example.com', [ 'attachment' ] );
 
 		$this->assertIsArray( $result );
 		$this->assertEmpty( $result );
 	}
 
-	public function test_get_imported_attachment_id_map_from_db_should_only_include_attachment_post_type(): void {
+	public function test_get_imported_post_id_mapping_from_db_should_only_include_requested_post_type(): void {
 		// Create a post (not attachment) with the meta.
 		$post_id  = self::factory()->post->create();
 		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'attach2.example.com' );
 		update_post_meta( $post_id, $meta_key, 888 );
 
-		$result = $this->logic->get_imported_attachment_id_map_from_db( 'attach2.example.com' );
+		$result = $this->logic->get_imported_post_id_mapping_from_db( 'attach2.example.com', [ 'attachment' ] );
 
 		// Should not include the post since it's not an attachment.
 		$this->assertEmpty( $result );
@@ -327,16 +327,16 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 7. get_imported_post_id_mapping_from_db Tests
+	 * 7. get_imported_post_id_mapping_from_db Tests (Posts/CPTs)
 	 * =========================================================================
 	 */
-	public function test_get_imported_post_id_mapping_from_db_should_return_old_to_new_id_map(): void {
+	public function test_get_imported_post_id_mapping_from_db_should_return_posts_when_requested(): void {
 		$post_id  = self::factory()->post->create( [ 'post_type' => 'post' ] );
 		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'postmap.example.com' );
 		$old_id   = 777;
 		update_post_meta( $post_id, $meta_key, $old_id );
 
-		$result = $this->logic->get_imported_post_id_mapping_from_db( 'postmap.example.com' );
+		$result = $this->logic->get_imported_post_id_mapping_from_db( 'postmap.example.com', [ 'post' ] );
 
 		$this->assertArrayHasKey( (string) $old_id, $result );
 		$this->assertEquals( $post_id, $result[ (string) $old_id ] );
@@ -356,22 +356,26 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$this->assertArrayNotHasKey( '111', $result );
 	}
 
-	public function test_get_imported_post_id_mapping_from_db_should_use_default_post_types(): void {
-		$post_id  = self::factory()->post->create( [ 'post_type' => 'post' ] );
-		$page_id  = self::factory()->post->create( [ 'post_type' => 'page' ] );
-		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'default.example.com' );
+	public function test_get_imported_post_id_mapping_from_db_should_return_multiple_post_types(): void {
+		$post_id       = self::factory()->post->create( [ 'post_type' => 'post' ] );
+		$page_id       = self::factory()->post->create( [ 'post_type' => 'page' ] );
+		$attachment_id = self::factory()->attachment->create();
+		$meta_key      = ContentDiffLogic::get_old_id_meta_key( 'default.example.com' );
 		update_post_meta( $post_id, $meta_key, 333 );
 		update_post_meta( $page_id, $meta_key, 444 );
+		update_post_meta( $attachment_id, $meta_key, 555 );
 
-		$result = $this->logic->get_imported_post_id_mapping_from_db( 'default.example.com' );
+		// Request both post and page types.
+		$result = $this->logic->get_imported_post_id_mapping_from_db( 'default.example.com', [ 'post', 'page' ] );
 
-		// Default includes 'post' and 'page'.
+		// Should include post and page but NOT attachment.
 		$this->assertArrayHasKey( '333', $result );
 		$this->assertArrayHasKey( '444', $result );
+		$this->assertArrayNotHasKey( '555', $result );
 	}
 
 	public function test_get_imported_post_id_mapping_from_db_should_return_empty_array_when_no_matches(): void {
-		$result = $this->logic->get_imported_post_id_mapping_from_db( 'nomatch.example.com' );
+		$result = $this->logic->get_imported_post_id_mapping_from_db( 'nomatch.example.com', [ 'post' ] );
 
 		$this->assertIsArray( $result );
 		$this->assertEmpty( $result );
