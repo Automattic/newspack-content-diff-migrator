@@ -1589,7 +1589,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$result = $this->invoke_private_method(
 			$this->importer,
 			'import_single_term_relationship',
-			[ $term_relationship_row, $data, 1, 100, 'wp_', [ 'category', 'post_tag' ], $inserted ]
+			[ $term_relationship_row, $data, 1, 100, 'cdiff_', [ 'category', 'post_tag' ], $inserted, 'example.com' ]
 		);
 
 		$this->assertEquals( [ 5, 6, 7 ], $result ); // Unchanged.
@@ -1623,7 +1623,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$result = $this->invoke_private_method(
 			$this->importer,
 			'import_single_term_relationship',
-			[ $term_relationship_row, $data, 1, 100, 'wp_', [ 'category' ], $inserted ]
+			[ $term_relationship_row, $data, 1, 100, 'cdiff_', [ 'category' ], $inserted, 'example.com' ]
 		);
 
 		$this->assertEquals( [], $result ); // Unchanged.
@@ -1675,7 +1675,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$result = $this->invoke_private_method(
 			$this->importer,
 			'import_single_term_relationship',
-			[ $term_relationship_row, $data, $post_id, 100, $wpdb->prefix, [ 'category' ], $inserted ]
+			[ $term_relationship_row, $data, $post_id, 100, 'cdiff_', [ 'category' ], $inserted, 'example.com' ]
 		);
 
 		// Should be unchanged because it's a duplicate.
@@ -1735,7 +1735,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$result = $this->invoke_private_method(
 			$this->importer,
 			'import_single_term_relationship',
-			[ $term_relationship_row, $data, $post_id, 100, $wpdb->prefix, [ 'category' ], $inserted ]
+			[ $term_relationship_row, $data, $post_id, 100, 'cdiff_', [ 'category' ], $inserted, 'example.com' ]
 		);
 
 		// Should have one term_taxonomy_id added.
@@ -1791,7 +1791,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$result = $this->invoke_private_method(
 			$this->importer,
 			'import_single_term_relationship',
-			[ $term_relationship_row, $data, $post_id, 100, $wpdb->prefix, [ 'category' ], $inserted ]
+			[ $term_relationship_row, $data, $post_id, 100, 'cdiff_', [ 'category' ], $inserted, 'example.com' ]
 		);
 
 		$this->assertCount( 1, $result );
@@ -1849,7 +1849,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$this->invoke_private_method(
 			$this->importer,
 			'import_single_term_relationship',
-			[ $term_relationship_row, $data, $post_id, 100, $wpdb->prefix, [ 'category' ], $inserted ]
+			[ $term_relationship_row, $data, $post_id, 100, 'cdiff_', [ 'category' ], $inserted, 'example.com' ]
 		);
 
 		// Verify count incremented.
