@@ -1910,7 +1910,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$this->invoke_private_method(
 			$this->importer,
 			'import_termmeta',
-			[ $data, 555, $term['term_id'], 100, 1 ]
+			[ $data, 555, $term['term_id'], 100, 1, 'example.com' ]
 		);
 
 		$this->assertEquals( 'value_1', get_term_meta( $term['term_id'], 'term_meta_1', true ) );
@@ -1951,7 +1951,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$this->invoke_private_method(
 			$this->importer,
 			'import_termmeta',
-			[ $data, 555, $term['term_id'], 100, 1 ]
+			[ $data, 555, $term['term_id'], 100, 1, 'example.com' ]
 		);
 
 		// Meta should NOT be inserted because we skipped.
@@ -1969,7 +1969,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$this->invoke_private_method(
 			$this->importer,
 			'import_termmeta',
-			[ $data, 777, $term['term_id'], 100, 1 ]
+			[ $data, 777, $term['term_id'], 100, 1, 'example.com' ]
 		);
 
 		$imported_map = $this->get_private_property( $this->importer, 'termmeta_imported' );
@@ -2015,7 +2015,7 @@ class DataImporterTest extends WP_UnitTestCase {
 		$this->invoke_private_method(
 			$importer,
 			'import_termmeta',
-			[ $data, 555, 123, 100, 1 ]
+			[ $data, 555, 123, 100, 1, 'example.com' ]
 		);
 
 		// Verify term was marked as imported despite errors.
