@@ -191,51 +191,21 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Gets a list of all Attachments imported by Content Diff, "old_id"=>"new_id" IDs mapping from the postmeta.
+	 * Gets an array of Post IDs imported by Content Diff, their "old_id"=>"new_id" key-value pairs from the postmeta.
 	 *
 	 * @param string $source_hostname Source hostname.
+	 * @param array  $post_types      Post types to include (e.g., ['post', 'page'] or ['attachment']).
 	 *
-	 * @return array Imported attachment IDs, keys are old/live IDs, values are new/local/Staging IDs.
+	 * @return array Imported IDs, keys are old/live IDs, values are new/local IDs.
 	 */
-	public function get_imported_attachment_id_map_from_db( string $source_hostname ): array {
+	public function get_imported_post_id_mapping_from_db( string $source_hostname, array $post_types ): array {
 
-		$attachment_ids_map = [];
-		$meta_key           = $this->get_old_id_meta_key( $source_hostname );
-
-		$results = $this->wpdb->get_results(
-			$this->wpdb->prepare(
-				"SELECT wpm.post_id, wpm.meta_value
-					FROM {$this->wpdb->postmeta} wpm
-					JOIN {$this->wpdb->posts} wp ON wp.ID = wpm.post_id
-					WHERE wpm.meta_key = %s
-					AND wp.post_type = 'attachment';",
-				$meta_key,
-			),
-			ARRAY_A
-		);
-		foreach ( $results as $result ) {
-			$attachment_ids_map[ $result['meta_value'] ] = $result['post_id'];
-		}
-
-		return $attachment_ids_map;
-	}
-
-	/**
-	 * Gets an array of all Post IDs imported by Content Diff, their "old_id"=>"new_id" from the postmeta.
-	 *
-	 * @param string $source_hostname Source hostname.
-	 * @param array  $post_types  Post types to include.
-	 *
-	 * @return array Imported post and pages IDs, keys are old/live IDs, values are new/local/Staging IDs.
-	 */
-	public function get_imported_post_id_mapping_from_db( string $source_hostname, array $post_types = [ 'post', 'page' ] ): array {
-
-		$post_ids_map = [];
-		$meta_key     = $this->get_old_id_meta_key( $source_hostname );
+		$ids_map  = [];
+		$meta_key = $this->get_old_id_meta_key( $source_hostname );
 
 		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared -- placeholders generated dynamically.
 		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
-		$results = $this->wpdb->get_results(
+		$results                 = $this->wpdb->get_results(
 			$this->wpdb->prepare(
 				"SELECT wpm.post_id, wpm.meta_value
 					FROM {$this->wpdb->postmeta} wpm
@@ -252,10 +222,81 @@ class ContentDiffLogic {
 		// phpcs:enable
 
 		foreach ( $results as $result ) {
-			$post_ids_map[ $result['meta_value'] ] = $result['post_id'];
+			$ids_map[ $result['meta_value'] ] = $result['post_id'];
 		}
 
-		return $post_ids_map;
+		return $ids_map;
+	}
+
+	/**
+	 * Gets ALL imported post IDs (all post types) for a source hostname.
+	 *
+	 * Returns array of records with old_id, new_id, post_type keys.
+	 * Use filter_imported_attachments() or filter_imported_non_attachments() to filter.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return array Array of records, each with 'old_id', 'new_id', 'post_type' keys.
+	 */
+	public function get_all_imported_post_id_mapping_from_db( string $source_hostname ): array {
+		$imported_data = [];
+		$meta_key      = $this->get_old_id_meta_key( $source_hostname );
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$results       = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT wpm.post_id, wpm.meta_value, wp.post_type
+				FROM {$this->wpdb->postmeta} wpm
+				JOIN {$this->wpdb->posts} wp ON wp.ID = wpm.post_id
+				WHERE wpm.meta_key = %s;",
+				$meta_key
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		foreach ( $results as $result ) {
+			$imported_data[] = [
+				'old_id'    => $result['meta_value'],
+				'new_id'    => $result['post_id'],
+				'post_type' => $result['post_type'],
+			];
+		}
+
+		return $imported_data;
+	}
+
+	/**
+	 * Filters imported data to get only attachments.
+	 *
+	 * @param array $imported_data Result from get_all_imported_post_id_mapping_from_db().
+	 *
+	 * @return array Filtered map, keys are old/live IDs, values are new/local IDs.
+	 */
+	public function filter_imported_attachments( array $imported_data ): array {
+		$filtered = [];
+		foreach ( $imported_data as $record ) {
+			if ( 'attachment' === $record['post_type'] ) {
+				$filtered[ $record['old_id'] ] = $record['new_id'];
+			}
+		}
+		return $filtered;
+	}
+
+	/**
+	 * Filters imported data to get only non-attachments.
+	 *
+	 * @param array $imported_data Result from get_all_imported_post_id_mapping_from_db().
+	 *
+	 * @return array Filtered map, keys are old/live IDs, values are new/local IDs.
+	 */
+	public function filter_imported_non_attachments( array $imported_data ): array {
+		$filtered = [];
+		foreach ( $imported_data as $record ) {
+			if ( 'attachment' !== $record['post_type'] ) {
+				$filtered[ $record['old_id'] ] = $record['new_id'];
+			}
+		}
+		return $filtered;
 	}
 
 	/**
@@ -959,7 +1000,7 @@ class ContentDiffLogic {
 		$updated = 0;
 
 		// Get attachment ID mapping (live_id => local_id).
-		$attachment_id_map = $this->get_imported_attachment_id_map_from_db( $source_hostname );
+		$attachment_id_map = $this->get_imported_post_id_mapping_from_db( $source_hostname, [ 'attachment' ] );
 		if ( empty( $attachment_id_map ) ) {
 			return [
 				'checked' => 0,
