@@ -536,10 +536,12 @@ class ContentDiffMigrator {
 		}
 
 		// Get already migrated old_id=>new_id mappings for posts and CPTs, attachments, users, and terms (more memory efficient).
-		$post_old_id_map       = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
-		$attachment_old_id_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
-		$user_old_id_map       = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
-		$term_old_id_map       = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
+		$post_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$attachment_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, [ 'attachment' ] );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$user_old_id_map = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
+		$term_old_id_map = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		try {
@@ -571,7 +573,7 @@ class ContentDiffMigrator {
 
 			// Query live DB for attachments.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Searching live DB for attachments ...' );
-			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
+			$results_live_attachments = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Check new attachments.
@@ -757,7 +759,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
-		$this->update_attachment_ids_in_blocks( $imported_posts_data );
+		$this->update_attachment_ids_in_blocks( $imported_posts_data, $source_hostname );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Recalculate counts for all migrated taxonomies.
@@ -980,7 +982,7 @@ class ContentDiffMigrator {
 	/**
 	 * Updates all Posts' post_parent IDs.
 	 *
-	 * @param array  $all_live_posts_ids Old (Live) IDs to have their post_parent updated.
+	 * @param array  $all_live_posts_ids  Old (Live) IDs to have their post_parent updated.
 	 * @param array  $imported_posts_data {
 	 *     Return result from import_posts method, a map of all the imported post objects.
 	 *
@@ -990,7 +992,7 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
-	 * @param string $source_hostname Source hostname.
+	 * @param string $source_hostname     Source hostname.
 	 */
 	private function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname ): void {
 		global $wpdb;
@@ -1006,10 +1008,13 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d post_parent IDs were already updated, continuing from there...', count( $already_updated_ids_map ), count( $all_live_posts_ids ) ) );
 		}
 
-		// Build map of all imported IDs (old => new) from imported_posts_data.
-		$imported_ids_map = [];
-		foreach ( $imported_posts_data as $entry ) {
-			$imported_ids_map[ $entry['id_old'] ] = $entry['id_new'];
+		// Build map of all imported IDs (old => new) from DB.
+		// Fetching from DB ensures we have ALL imported posts (previous + current runs),
+		// which is critical for resume scenarios where imports are complete but parent updates weren't.
+		$all_imported_data = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
+		$imported_ids_map  = [];
+		foreach ( $all_imported_data as $record ) {
+			$imported_ids_map[ $record['old_id'] ] = $record['new_id'];
 		}
 
 		// Update parent IDs.
@@ -1084,8 +1089,12 @@ class ContentDiffMigrator {
 	 */
 	private function update_featured_image_ids( array $imported_posts_data, string $source_hostname ): void {
 
-		// Get ID map of all imported post types other than Attachments (Posts, Pages, etc). Keys are old IDs, values are new IDs.
-		$imported_nonattachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
+		// Get all imported IDs from DB and filter to attachments vs non-attachments.
+		// Fetching from DB ensures we have ALL imported posts (previous + current runs),
+		// which is critical for resume scenarios where imports are complete but featured image updates weren't.
+		$all_imported_ids               = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
+		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
+		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
 
 		// Get IDs which already had featured images updated, and skip them.
 		$already_updated_ids_map     = $this->run_state->get_updated_featured_image_post_ids_map();
@@ -1097,16 +1106,6 @@ class ContentDiffMigrator {
 		if ( count( $already_updated_ids_map ) > 0 ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d featured image IDs were already updated, continuing from there...', count( $already_updated_ids_map ), count( $imported_nonattachment_ids_map ) ) );
 		}
-
-		/**
-		 * Get a map of all migrated Attachments from the DB, not from the run-state.
-		 * That's necessary because a newly imported post might use an old featured image attachment which existed in DB before this migration.
-		 * The RunState only contains the current batch of imported objects/attachments. Fetching from DB will get us all the migrated ones.
-		 * Note that it is also due performanc reasons to fetch all imported attachments in a single DB query, rather than fetching them one by one in logic's update_featured_image().
-		 *
-		 * @var array $imported_attachment_ids_map Keys are old Live IDs, values are new local IDs.
-		 */
-		$imported_attachment_ids_map = $this->logic->get_imported_attachment_id_map_from_db( $source_hostname );
 
 		// Update featured images.
 		$progress = new Progress( count( $ids_map_for_featured_update ) );
@@ -1140,7 +1139,7 @@ class ContentDiffMigrator {
 	 * Some Gutenberg Blocks contain `id` or `ids` of Attachments attributes in their headers, and image elements contain those
 	 * IDs too.
 	 *
-	 * @param array $imported_posts_data {
+	 * @param array  $imported_posts_data {
 	 *     Return result from import_posts method, a map of all the imported post objects.
 	 *
 	 *     @type array $record {
@@ -1149,12 +1148,16 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
+	 * @param string $source_hostname Source hostname.
 	 */
-	private function update_attachment_ids_in_blocks( array $imported_posts_data ): void {
+	private function update_attachment_ids_in_blocks( array $imported_posts_data, string $source_hostname ): void {
 
-		// Get ID maps of imported Attachments, and non-attachments (Posts, Pages, etc).
-		$imported_attachment_ids_map    = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment' );
-		$imported_nonattachment_ids_map = $this->filter_post_type_from_imported_posts_data( $imported_posts_data, 'attachment', true );
+		// Get all imported IDs from DB and filter to attachments vs non-attachments.
+		// Fetching from DB ensures we have ALL imported posts (previous + current runs),
+		// which is critical for resume scenarios where imports are complete but block updates weren't.
+		$all_imported_ids               = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
+		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
+		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
 
 		// Get IDs which already had block attachment IDs updated, and skip them.
 		$already_updated_ids_map   = $this->run_state->get_updated_block_post_ids_map();
@@ -1211,25 +1214,5 @@ class ContentDiffMigrator {
 				wp_update_term_count_now( $terms, $taxonomy );
 			}
 		}
-	}
-
-	/**
-	 * Util method to filter IDs of certain $post_type from the $imported_posts_data array.
-	 *
-	 * @param array  $imported_posts_data Imported posts log data.
-	 * @param string $post_type           Post type to filter by (e.g., 'attachment').
-	 * @param bool   $exclude             If true, excludes the specified post type instead of including only it.
-	 *
-	 * @return array IDs map, keys are old/live IDs, values are new/local IDs.
-	 */
-	private function filter_post_type_from_imported_posts_data( array $imported_posts_data, string $post_type, bool $exclude = false ): array {
-		$map = [];
-		foreach ( $imported_posts_data as $entry ) {
-			$type_matches = ( $entry['post_type'] ?? '' ) === $post_type;
-			if ( $exclude ? ! $type_matches : $type_matches ) {
-				$map[ $entry['id_old'] ] = $entry['id_new'];
-			}
-		}
-		return $map;
 	}
 }
