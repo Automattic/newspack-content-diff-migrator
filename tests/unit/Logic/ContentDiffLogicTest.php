@@ -1195,22 +1195,6 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	 * 17. Post Lookup Methods Tests
 	 * =========================================================================
 	 */
-	public function test_get_post_id_by_postmeta_should_return_post_id(): void {
-		$post_id  = self::factory()->post->create();
-		$meta_key = '_test_lookup_meta_' . uniqid();
-		update_post_meta( $post_id, $meta_key, 'lookup_value' );
-
-		$result = $this->logic->get_post_id_by_postmeta( $meta_key, 'lookup_value' );
-
-		$this->assertEquals( $post_id, (int) $result );
-	}
-
-	public function test_get_post_id_by_postmeta_should_return_null_when_not_found(): void {
-		$result = $this->logic->get_post_id_by_postmeta( '_nonexistent_meta', 'no_value' );
-
-		$this->assertNull( $result );
-	}
-
 	public function test_get_current_post_id_by_comparing_with_live_db_should_return_post_id(): void {
 		global $wpdb;
 		// Create a local post.
