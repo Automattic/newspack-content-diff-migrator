@@ -387,7 +387,9 @@ class DataImporter {
 
 		// Get or create term (works for both hierarchical and non-hierarchical - non-hierarchical just has parent=0).
 		if ( ! isset( $this->taxonomy_term_id_map[ $live_term_id ] ) ) {
-			$local_term_id = $this->get_or_create_local_term( $live_term_taxonomy_row, $data, $post_id, $id_old, $live_table_prefix, $source_hostname );
+			// Merge term data (name, slug) with term_taxonomy data for get_or_create_local_term.
+			$merged_term_data = array_merge( $live_term_taxonomy_row, $live_term_row );
+			$local_term_id    = $this->get_or_create_local_term( $merged_term_data, $data, $post_id, $id_old, $live_table_prefix, $source_hostname );
 			if ( null === $local_term_id ) {
 				return $inserted_term_taxonomy_ids; // Error already logged in get_or_create_local_term.
 			}
@@ -959,17 +961,17 @@ class DataImporter {
 		$terms         = esc_sql( $table_prefix . 'terms' );
 		$term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
 		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
-		$taxonomy_format = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
+		$taxonomy_placeholders   = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
 		$hierarchical_taxonomies = $this->wpdb->get_results(
 			$this->wpdb->prepare(
 				"SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
 				FROM {$terms} t
 				JOIN {$term_taxonomy} tt
-					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_format) AND parent <> 0
+					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_placeholders) AND parent <> 0
 				LEFT JOIN {$terms} ttparent
 					ON ttparent.term_id = tt.parent
 				WHERE ttparent.term_id IS NULL;",
-				$taxonomies_to_check
+				...$taxonomies_to_check
 			),
 			ARRAY_A
 		);
@@ -980,13 +982,16 @@ class DataImporter {
 
 		// Reset their parents to 0.
 		$term_taxonomy_ids = array_column( $hierarchical_taxonomies, 'term_taxonomy_id' );
-		$placeholders      = implode( ',', array_fill( 0, count( $term_taxonomy_ids ), '%d' ) );
-		$term_taxonomy     = esc_sql( $table_prefix . 'term_taxonomy' );
+		if ( empty( $term_taxonomy_ids ) ) {
+			return [];
+		}
+		$term_taxonomy_ids_placeholders = implode( ',', array_fill( 0, count( $term_taxonomy_ids ), '%d' ) );
+		$term_taxonomy                  = esc_sql( $table_prefix . 'term_taxonomy' );
 		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
 		$this->wpdb->query(
 			$this->wpdb->prepare(
-				"UPDATE {$term_taxonomy} SET parent = 0 WHERE term_taxonomy_ID IN ( {$placeholders} );",
-				$term_taxonomy_ids
+				"UPDATE {$term_taxonomy} SET parent = 0 WHERE term_taxonomy_ID IN ( {$term_taxonomy_ids_placeholders} );",
+				...$term_taxonomy_ids
 			)
 		);
 		// phpcs:enable
@@ -997,7 +1002,7 @@ class DataImporter {
 	/**
 	 * Fetches the hierarchical taxonomy's tree by retrieving all parent taxonomies down to the top parent.
 	 *
-	 * @param string $table_prefix          DB table prefix.
+	 * @param string $table_prefix   DB table prefix.
 	 * @param array  $taxonomy_array Taxonomy data array.
 	 *
 	 * @return array Nested array of taxonomies where 'parent' is either another taxonomy array or '0'.
