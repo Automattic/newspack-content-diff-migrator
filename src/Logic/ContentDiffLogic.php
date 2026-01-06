@@ -256,8 +256,8 @@ class ContentDiffLogic {
 
 		foreach ( $results as $result ) {
 			$imported_data[] = [
-				'old_id'    => $result['meta_value'],
-				'new_id'    => $result['post_id'],
+				'old_id'    => (int) $result['meta_value'],
+				'new_id'    => (int) $result['post_id'],
 				'post_type' => $result['post_type'],
 			];
 		}
@@ -1437,6 +1437,8 @@ class ContentDiffLogic {
 		if ( empty( $known_attachment_ids_updates ) ) {
 			return;
 		}
+		// Reassert that $known_attachment_ids_updates keys and values are integers, since that affects JSON encoding.
+		$known_attachment_ids_updates = array_map( 'intval', $known_attachment_ids_updates );
 
 		// Filter the $local_hostname_aliases argument -- remove the local host if the user entered it, just leaving additional hostname aliases here.
 		if ( ! empty( $local_hostname_aliases ) ) {
