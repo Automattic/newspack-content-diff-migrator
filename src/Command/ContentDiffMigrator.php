@@ -1068,6 +1068,10 @@ class ContentDiffMigrator {
 
 			// Get new local Post ID.
 			$id_new = $imported_ids_map[ $id_old ] ?? null;
+			if ( null === $id_new ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids: Could not find local ID for live ID %d, skipping.', $id_old ) );
+				continue;
+			}
 
 			// Get the local Post's post_parent, which is still set to old live ID value.
 			$post_row      = $this->logic->select_post_row( $wpdb->prefix, $id_new );
