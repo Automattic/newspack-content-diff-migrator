@@ -943,7 +943,14 @@ class ContentDiffMigrator {
 
 		// Get IDs which were already imported, and skip them.
 		$already_imported_ids_map = $this->run_state->get_imported_post_ids_map() ?? [];
-		$live_ids_to_import       = array_values( array_diff( $new_live_ids, array_keys( $already_imported_ids_map ) ) );
+
+		// Modified posts ($deleted_modified_ids_map, they were deleted so that they could be reimported) should not be skipped.
+		$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
+		foreach ( array_keys( $deleted_modified_ids_map ) as $live_id ) {
+			unset( $already_imported_ids_map[ $live_id ] );
+		}
+
+		$live_ids_to_import = array_values( array_diff( $new_live_ids, array_keys( $already_imported_ids_map ) ) );
 		if ( empty( $live_ids_to_import ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts were already imported, moving on.' );
 			return $imported_posts_data;
