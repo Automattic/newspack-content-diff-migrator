@@ -290,6 +290,99 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Tests that when importing a child term whose parent already exists locally,
+	 * the child's parent ID is correctly set to the local parent's ID.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_set_correct_parent_when_parent_term_already_exists_locally(): void {
+		global $wpdb;
+
+		// Create parent category locally first (not imported).
+		$local_parent    = wp_insert_term( 'News', 'category', [ 'slug' => 'news' ] );
+		$local_parent_id = $local_parent['term_id'];
+
+		// Create post in live.
+		$post = $this->create_post_fixture( [ 'ID' => 6050 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create parent category in live with DIFFERENT ID than local.
+		$wpdb->insert( $this->live_table_prefix . 'terms', // phpcs:ignore
+			[
+				'term_id'    => 5001,
+				'name'       => 'News',
+				'slug'       => 'news',
+				'term_group' => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', // phpcs:ignore
+			[
+				'term_taxonomy_id' => 5001,
+				'term_id'          => 5001,
+				'taxonomy'         => 'category',
+				'description'      => 'News category',
+				'parent'           => 0,
+				'count'            => 1,
+			]
+		);
+
+		// Create child category in live with parent = 5001 (live parent ID).
+		$wpdb->insert( $this->live_table_prefix . 'terms', // phpcs:ignore
+			[
+				'term_id'    => 5002,
+				'name'       => 'Local News',
+				'slug'       => 'local-news',
+				'term_group' => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', // phpcs:ignore
+			[
+				'term_taxonomy_id' => 5002,
+				'term_id'          => 5002,
+				'taxonomy'         => 'category',
+				'description'      => 'Local news category',
+				'parent'           => 5001, // References live parent ID.
+				'count'            => 1,
+			]
+		);
+
+		// Assign child category to post.
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', // phpcs:ignore
+			[
+				'object_id'        => 6050,
+				'term_taxonomy_id' => 5002,
+			]
+		);
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was imported.
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 6050, $this->source_hostname );
+		$this->assertNotNull( $new_post_id, 'Post should be imported.' );
+
+		// Verify parent was reused (not duplicated).
+		$news_terms = get_terms(
+			[
+				'taxonomy'   => 'category',
+				'slug'       => 'news',
+				'hide_empty' => false,
+			]
+		);
+		$this->assertCount( 1, $news_terms, 'Parent category should not be duplicated.' );
+		$this->assertEquals( $local_parent_id, $news_terms[0]->term_id, 'Should reuse existing local parent.' );
+
+		// Verify child was imported with correct parent ID.
+		$child_category = get_category_by_slug( 'local-news' );
+		$this->assertNotNull( $child_category, 'Child category should be imported.' );
+		$this->assertEquals( $local_parent_id, $child_category->parent, 'Child parent should reference local parent ID, not live ID.' );
+
+		// Verify post has child category assigned.
+		$post_categories = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'slugs' ] );
+		$this->assertContains( 'local-news', $post_categories, 'Post should have child category assigned.' );
+	}
+
+	/**
 	 * @group taxonomy
 	 */
 	public function test_should_import_termmeta_for_term(): void {
