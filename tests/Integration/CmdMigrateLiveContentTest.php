@@ -1722,6 +1722,186 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that reimporting a post with a featured image correctly updates the _thumbnail_id.
+	 *
+	 * @group modified
+	 */
+	public function test_reimport_should_update_featured_image_id(): void {
+		global $wpdb;
+
+		// Create attachment in live.
+		$attachment = [
+			'ID'                    => 4050,
+			'post_author'           => 1,
+			'post_date'             => '2024-01-01 10:00:00',
+			'post_date_gmt'         => '2024-01-01 10:00:00',
+			'post_content'          => '',
+			'post_title'            => 'Featured Image',
+			'post_excerpt'          => '',
+			'post_status'           => 'inherit',
+			'comment_status'        => 'open',
+			'ping_status'           => 'closed',
+			'post_password'         => '',
+			'post_name'             => 'featured-image',
+			'to_ping'               => '',
+			'pinged'                => '',
+			'post_modified'         => '2024-01-01 10:00:00',
+			'post_modified_gmt'     => '2024-01-01 10:00:00',
+			'post_content_filtered' => '',
+			'post_parent'           => 0,
+			'guid'                  => 'http://test.local/wp-content/uploads/featured.jpg',
+			'menu_order'            => 0,
+			'post_type'             => 'attachment',
+			'post_mime_type'        => 'image/jpeg',
+			'comment_count'         => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		// Create post with featured image in live.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4051,
+				'post_title'    => 'Post With Featured Image',
+				'post_modified' => '2024-01-01 10:00:00',
+				'post_parent'   => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Add _thumbnail_id meta pointing to attachment.
+		$wpdb->insert( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			$this->live_table_prefix . 'postmeta',
+			[
+				'meta_id'    => 40501,
+				'post_id'    => 4051,
+				'meta_key'   => '_thumbnail_id',
+				'meta_value' => '4050', // phpcs:ignore -- WordPress.DB.SlowDBQuery.slow_db_query_meta_value.
+			]
+		); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$original_post_local_id       = $this->logic->get_current_post_id_by_old_id( 4051, $this->source_hostname );
+		$original_attachment_local_id = $this->logic->get_current_post_id_by_old_id( 4050, $this->source_hostname );
+		$this->assertNotNull( $original_post_local_id, 'Post should be imported.' );
+		$this->assertNotNull( $original_attachment_local_id, 'Attachment should be imported.' );
+
+		// Verify featured image was set correctly.
+		$original_thumbnail_id = get_post_meta( $original_post_local_id, '_thumbnail_id', true );
+		$this->assertEquals( $original_attachment_local_id, (int) $original_thumbnail_id, 'Featured image should point to local attachment.' );
+
+		// Modify post in live.
+		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Post With Featured Image Modified',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4051 ]
+		); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was reimported.
+		$new_post_local_id = $this->logic->get_current_post_id_by_old_id( 4051, $this->source_hostname );
+		$this->assertNotNull( $new_post_local_id, 'Post should be reimported.' );
+		$this->assertNotEquals( $original_post_local_id, $new_post_local_id, 'Post should have new local ID.' );
+
+		// Verify featured image still points to correct local attachment (not the old live ID).
+		$new_thumbnail_id = get_post_meta( $new_post_local_id, '_thumbnail_id', true );
+		$this->assertEquals( $original_attachment_local_id, (int) $new_thumbnail_id, 'Reimported post featured image should point to local attachment ID.' );
+	}
+
+	/**
+	 * Tests that reimporting a post with block content correctly updates attachment IDs in blocks.
+	 *
+	 * @group modified
+	 */
+	public function test_reimport_should_update_attachment_ids_in_blocks(): void {
+		global $wpdb;
+
+		// Create attachment in live.
+		$attachment = [
+			'ID'                    => 4060,
+			'post_author'           => 1,
+			'post_date'             => '2024-01-01 10:00:00',
+			'post_date_gmt'         => '2024-01-01 10:00:00',
+			'post_content'          => '',
+			'post_title'            => 'Block Image',
+			'post_excerpt'          => '',
+			'post_status'           => 'inherit',
+			'comment_status'        => 'open',
+			'ping_status'           => 'closed',
+			'post_password'         => '',
+			'post_name'             => 'block-image',
+			'to_ping'               => '',
+			'pinged'                => '',
+			'post_modified'         => '2024-01-01 10:00:00',
+			'post_modified_gmt'     => '2024-01-01 10:00:00',
+			'post_content_filtered' => '',
+			'post_parent'           => 0,
+			'guid'                  => 'http://test.local/wp-content/uploads/block-image.jpg',
+			'menu_order'            => 0,
+			'post_type'             => 'attachment',
+			'post_mime_type'        => 'image/jpeg',
+			'comment_count'         => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		// Create post with image block referencing the attachment.
+		$block_content = '<!-- wp:image {"id":4060} --><figure class="wp-block-image"><img src="http://test.local/block-image.jpg" class="wp-image-4060"/></figure><!-- /wp:image -->';
+		$post          = $this->create_post_fixture(
+			[
+				'ID'            => 4061,
+				'post_title'    => 'Post With Image Block',
+				'post_content'  => $block_content,
+				'post_modified' => '2024-01-01 10:00:00',
+				'post_parent'   => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$original_post_local_id       = $this->logic->get_current_post_id_by_old_id( 4061, $this->source_hostname );
+		$original_attachment_local_id = $this->logic->get_current_post_id_by_old_id( 4060, $this->source_hostname );
+		$this->assertNotNull( $original_post_local_id, 'Post should be imported.' );
+		$this->assertNotNull( $original_attachment_local_id, 'Attachment should be imported.' );
+
+		// Verify block content was updated with local attachment ID.
+		$original_post_content = get_post( $original_post_local_id )->post_content;
+		$this->assertStringContainsString( '"id":' . $original_attachment_local_id, $original_post_content, 'Block should reference local attachment ID.' );
+
+		// Modify post in live.
+		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Post With Image Block Modified',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4061 ]
+		); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was reimported.
+		$new_post_local_id = $this->logic->get_current_post_id_by_old_id( 4061, $this->source_hostname );
+		$this->assertNotNull( $new_post_local_id, 'Post should be reimported.' );
+		$this->assertNotEquals( $original_post_local_id, $new_post_local_id, 'Post should have new local ID.' );
+
+		// Verify block content still has correct local attachment ID (not the old live ID).
+		$new_post_content = get_post( $new_post_local_id )->post_content;
+		$this->assertStringContainsString( '"id":' . $original_attachment_local_id, $new_post_content, 'Reimported post block should reference local attachment ID.' );
+		$this->assertStringNotContainsString( '"id":4060', $new_post_content, 'Reimported post block should NOT reference old live attachment ID.' );
+	}
+
+	/**
 	 * Tests reimporting with post meta preserved.
 	 *
 	 * @group modified
@@ -5384,7 +5564,12 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	public function test_should_log_error_and_continue_when_comment_insert_fails(): void {
 		global $wpdb;
 
-		$post = $this->create_post_fixture( [ 'ID' => 12004 ] );
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 12004,
+				'comment_count' => '1',
+			]
+		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
 
 		// Add a comment with user_id pointing to non-existent user.
