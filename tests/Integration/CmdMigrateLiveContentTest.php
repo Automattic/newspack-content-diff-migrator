@@ -1554,19 +1554,19 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		}
 
 		// Verify hierarchy: Level 1 has no parent.
-		$level1 = $comment_map['Level 1 - Root comment.'];
+		$level1 = $comment_map['Level 1 - This is the top level comment'];
 		$this->assertEquals( 0, (int) $level1->comment_parent, 'Level 1 should have no parent.' );
 
 		// Level 2 should have Level 1 as parent.
-		$level2 = $comment_map['Level 2 - Reply to level 1.'];
+		$level2 = $comment_map['Level 2 - Reply to level 1'];
 		$this->assertEquals( $level1->comment_ID, $level2->comment_parent, 'Level 2 should have Level 1 as parent.' );
 
 		// Level 3 should have Level 2 as parent.
-		$level3 = $comment_map['Level 3 - Reply to level 2.'];
+		$level3 = $comment_map['Level 3 - Reply to level 2'];
 		$this->assertEquals( $level2->comment_ID, $level3->comment_parent, 'Level 3 should have Level 2 as parent.' );
 
 		// Level 4 should have Level 3 as parent.
-		$level4 = $comment_map['Level 4 - Reply to level 3.'];
+		$level4 = $comment_map['Level 4 - Reply to level 3'];
 		$this->assertEquals( $level3->comment_ID, $level4->comment_parent, 'Level 4 should have Level 3 as parent.' );
 	}
 
@@ -2225,12 +2225,22 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// Run search.
 		$this->run_search_command();
 
-		// Simulate partial migration by pre-populating run-state.
-		// Import first post and record it.
+		// Simulate partial migration by inserting the post, adding the old_id meta, and manually populating run-state.
+		$post1_local_id = 99001; // Simulated new ID.
+		$post1_local    = $this->create_post_fixture( [ 'ID' => $post1_local_id ] );
+		$wpdb->insert( $wpdb->prefix . 'posts', $post1_local ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+		$meta_key = $this->logic->get_old_id_meta_key( $this->source_hostname );
+		$wpdb->insert( $wpdb->prefix . 'postmeta', // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			[
+				'post_id'    => 99001,
+				'meta_key'   => $meta_key,
+				'meta_value' => '7001', // phpcs:ignore -- WordPress.DB.SlowDBQuery.slow_db_query_meta_value.
+			]
+		);
 		$this->run_state->append_imported_post(
 			[
 				'id_old'    => 7001,
-				'id_new'    => 99001, // Simulated new ID.
+				'id_new'    => $post1_local_id,
 				'post_type' => 'post',
 			]
 		);
@@ -2246,6 +2256,9 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		// 7002 and 7003 should have been imported.
 		$this->assertArrayHasKey( 7002, $imported_map );
 		$this->assertArrayHasKey( 7003, $imported_map );
+
+		// Verify count total 3.
+		$this->assertEquals( 3, count( $imported_map ) );
 
 		// Verify 7002 and 7003 have different IDs than the simulated one.
 		$this->assertNotEquals( 99001, $imported_map[7002] );
@@ -2312,7 +2325,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->run_migrate_command();
 
 		// Verify updated parents are saved to run-state.
-		$updated_parents_map = $this->run_state->get_updated_parent_ids_map();
+		$updated_parents_map = $this->run_state->get_updated_parents_post_ids_map();
 		$this->assertNotEmpty( $updated_parents_map, 'Updated parents should be saved to run-state.' );
 	}
 
@@ -2341,13 +2354,13 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->run_migrate_command();
 
 		// Get the count of updated parents.
-		$updated_parents_map_1 = $this->run_state->get_updated_parent_ids_map();
+		$updated_parents_map_1 = $this->run_state->get_updated_parents_post_ids_map();
 		$count_first           = count( $updated_parents_map_1 );
 
 		// Run migrate again - should skip already updated.
 		$this->run_migrate_command();
 
-		$updated_parents_map_2 = $this->run_state->get_updated_parent_ids_map();
+		$updated_parents_map_2 = $this->run_state->get_updated_parents_post_ids_map();
 		$count_second          = count( $updated_parents_map_2 );
 
 		// Count should be same (no duplicates added).
@@ -2386,7 +2399,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->run_migrate_command();
 
 		// Verify featured image updates are saved.
-		$updated_featured_map = $this->run_state->get_updated_featured_image_ids_map();
+		$updated_featured_map = $this->run_state->get_updated_featured_image_post_ids_map();
 		$this->assertNotEmpty( $updated_featured_map, 'Updated featured images should be saved to run-state.' );
 	}
 
@@ -2419,13 +2432,13 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
 		$this->run_migrate_command();
 
-		$count_first = count( $this->run_state->get_updated_featured_image_ids_map() );
+		$count_first = count( $this->run_state->get_updated_featured_image_post_ids_map() );
+		$this->assertEquals( 1, $count_first, 'Should have 1 updated featured image post ID.' );
 
 		// Run again.
 		$this->run_migrate_command();
 
-		$count_second = count( $this->run_state->get_updated_featured_image_ids_map() );
-
+		$count_second = count( $this->run_state->get_updated_featured_image_post_ids_map() );
 		$this->assertEquals( $count_first, $count_second, 'Should not duplicate featured image updates on rerun.' );
 	}
 
@@ -2832,7 +2845,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 	/**
 	 * @group blocks
 	 */
-	public function test_should_update_gallery_block_ids_in_post_content(): void {
+	public function test_should_update_jetpack_slideshow_gallery_block_ids_in_post_content(): void {
 		global $wpdb;
 
 		// Create attachments.
@@ -3536,6 +3549,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_user_email_when_changed_on_live(): void {
@@ -3582,6 +3596,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_user_display_name_when_changed_on_live(): void {
@@ -3622,9 +3637,10 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
-	public function test_mdcs_should_not_update_user_login_when_changed_on_live(): void {
+	public function test_mdcs_should_not_update_user_login_when_changed_on_live_and_should_create_new_user(): void {
 		global $wpdb;
 
 		$live_user = $this->create_user_fixture(
@@ -3646,7 +3662,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 		$this->run_search_command();
 		$this->run_migrate_command();
 
-		// Update user_login in live (not allowed by MDCS).
+		// Update user_login in live (not allowed by MDCS, should result in new user creation).
 		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 			$this->live_table_prefix . 'users',
 			[ 'user_login' => 'changed_login' ],
@@ -3655,16 +3671,20 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 		$this->run_migrate_command();
 
-		// Verify user_login was NOT updated.
-		$local_user = get_user_by( 'login', 'original_login' );
-		$this->assertNotFalse( $local_user, 'User login should NOT be changed.' );
+		// Verify post author user_login was NOT updated.
+		$new_post_id    = $this->logic->get_current_post_id_by_old_id( 13202, $this->source_hostname );
+		$post_author_id = get_post_field( 'post_author', $new_post_id );
+		$post_author    = get_user_by( 'ID', $post_author_id );
+		$this->assertEquals( 'original_login', $post_author->user_login, 'Post author user_login should NOT be changed.' );
 
+		// A new user was created.
 		$changed_user = get_user_by( 'login', 'changed_login' );
-		$this->assertFalse( $changed_user, 'Changed login should not exist.' );
+		$this->assertNotFalse( $changed_user, 'Changed login should not exist.' );
 	}
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_caption_when_changed_on_live(): void {
@@ -3700,6 +3720,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_description_when_changed_on_live(): void {
@@ -3735,6 +3756,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_alt_text_when_changed_on_live(): void {
@@ -3780,6 +3802,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_attachment_media_credit_when_changed_on_live(): void {
@@ -3825,6 +3848,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_term_slug_when_changed_on_live(): void {
@@ -3878,6 +3902,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_update_term_description_when_changed_on_live(): void {
@@ -3929,6 +3954,7 @@ class CmdMigrateLiveContentTest extends WP_UnitTestCase {
 
 	/**
 	 * "mdcs" stands for "Migration Data Consistency Standard".
+	 * 
 	 * @group mdcs
 	 */
 	public function test_mdcs_should_not_update_term_name_when_changed_on_live(): void {
