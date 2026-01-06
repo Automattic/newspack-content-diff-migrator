@@ -15,9 +15,9 @@ use Newspack\ContentDiffMigrator\Logic\RunState;
  *
  * @group integration
  */
-class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
+class CmdMigrateLiveContentUsersTest extends IntegrationTestCase {
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_migrate_all_live_users_to_local(): void {
 		global $wpdb;
@@ -70,7 +70,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_skip_user_migration_when_user_already_exists_locally(): void {
 		global $wpdb;
@@ -126,7 +126,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_save_old_id_usermeta_for_newly_created_user(): void {
 		global $wpdb;
@@ -163,7 +163,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_migrate_usermeta_for_newly_created_user(): void {
 		global $wpdb;
@@ -221,7 +221,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_not_duplicate_user_when_running_migration_twice(): void {
 		global $wpdb;
@@ -269,12 +269,8 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 		$this->assertCount( 1, $users, 'User should not be duplicated on second migration.' );
 	}
 
-	// =========================================================================
-	// 6. POST AUTHOR ASSIGNMENT TESTS
-	// =========================================================================
-
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_assign_existing_author_when_user_login_matches(): void {
 		global $wpdb;
@@ -317,7 +313,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_create_new_author_when_user_does_not_exist(): void {
 		global $wpdb;
@@ -355,7 +351,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_save_old_id_usermeta_for_new_author(): void {
 		global $wpdb;
@@ -390,7 +386,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_handle_post_with_zero_author_id(): void {
 		global $wpdb;
@@ -417,7 +413,7 @@ class CmdMigrateLiveContentUserTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group user
+	 * @group users
 	 */
 	public function test_should_handle_post_with_invalid_author_id(): void {
 		global $wpdb;

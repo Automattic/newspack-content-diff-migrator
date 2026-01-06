@@ -14,7 +14,7 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  *
  * @group integration
  */
-class CmdMigrateLiveContentIdempotencyTest extends IntegrationTestCase {
+class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 	/**
 	 * Tests that running migration twice produces the same result.
 	 *

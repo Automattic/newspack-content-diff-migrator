@@ -211,7 +211,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// CONSTRUCTOR TESTS (2 tests)
+	// CONSTRUCTOR TESTS
 	// =========================================================================
 
 	/**
@@ -243,7 +243,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// FILTER_ARRAY_ELEMENT TESTS (4 tests)
+	// FILTER_ARRAY_ELEMENT TESTS
 	// =========================================================================
 
 	/**
@@ -340,7 +340,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// FILTER_ARRAY_ELEMENTS TESTS (4 tests)
+	// FILTER_ARRAY_ELEMENTS TESTS
 	// =========================================================================
 
 	/**
@@ -443,7 +443,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// INSERT_POSTMETA_ROW TESTS (3 tests)
+	// INSERT_POSTMETA_ROW TESTS
 	// =========================================================================
 
 	/**
@@ -510,7 +510,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// INSERT_USERMETA_ROW TESTS (3 tests)
+	// INSERT_USERMETA_ROW TESTS
 	// =========================================================================
 
 	/**
@@ -576,7 +576,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// GET_OR_CREATE_USER TESTS (5 tests)
+	// GET_OR_CREATE_USER TESTS
 	// =========================================================================
 
 	/**
@@ -673,7 +673,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// INSERT_COMMENT TESTS (3 tests)
+	// INSERT_COMMENT TESTS
 	// =========================================================================
 
 	/**
@@ -753,7 +753,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// INSERT_COMMENTMETA_ROW TESTS (3 tests)
+	// INSERT_COMMENTMETA_ROW TESTS
 	// =========================================================================
 
 	/**
@@ -821,7 +821,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// INSERT_TERMMETA_ROW TESTS (3 tests)
+	// INSERT_TERMMETA_ROW TESTS
 	// =========================================================================
 
 	/**
@@ -889,7 +889,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// UPDATE_COMMENT_PARENT TESTS (2 tests)
+	// UPDATE_COMMENT_PARENT TESTS
 	// =========================================================================
 
 	/**
@@ -931,7 +931,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// UPDATE_POST_AUTHOR TESTS (2 tests)
+	// UPDATE_POST_AUTHOR TESTS
 	// =========================================================================
 
 	/**
@@ -965,7 +965,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// INSERT_TERM_RELATIONSHIP TESTS (2 tests)
+	// INSERT_TERM_RELATIONSHIP TESTS
 	// =========================================================================
 
 	/**
@@ -1006,7 +1006,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// GET_TERM_AND_TAXONOMY_ARRAY TESTS (4 tests)
+	// GET_TERM_AND_TAXONOMY_ARRAY TESTS
 	// =========================================================================
 
 	/**
@@ -1079,7 +1079,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// GET_COMMENT_USER_ID TESTS (4 tests) - NEW
+	// GET_COMMENT_USER_ID TESTS
 	// =========================================================================
 
 	/**
@@ -1194,7 +1194,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_SINGLE_COMMENT TESTS (4 tests) - NEW
+	// IMPORT_SINGLE_COMMENT TESTS
 	// =========================================================================
 
 	/**
@@ -1345,7 +1345,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// UPDATE_IMPORTED_COMMENT_PARENTS TESTS (4 tests) - NEW
+	// UPDATE_IMPORTED_COMMENT_PARENTS TESTS
 	// =========================================================================
 
 	/**
@@ -1494,7 +1494,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// ENSURE_TAXONOMY_REGISTERED TESTS (3 tests) - NEW
+	// ENSURE_TAXONOMY_REGISTERED TESTS
 	// =========================================================================
 
 	/**
@@ -1552,7 +1552,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_SINGLE_TERM_RELATIONSHIP TESTS (6 tests) - NEW
+	// IMPORT_SINGLE_TERM_RELATIONSHIP TESTS
 	// =========================================================================
 
 	/**
@@ -1872,7 +1872,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_TERMMETA TESTS (4 tests)
+	// IMPORT_TERMMETA TESTS
 	// =========================================================================
 
 	/**
@@ -2024,7 +2024,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_POST_META TESTS (3 tests)
+	// IMPORT_POST_META TESTS
 	// =========================================================================
 
 	/**
@@ -2111,7 +2111,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_AUTHOR TESTS (4 tests)
+	// IMPORT_AUTHOR TESTS
 	// =========================================================================
 
 	/**
@@ -2208,7 +2208,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_COMMENTS TESTS (3 tests)
+	// IMPORT_COMMENTS TESTS
 	// =========================================================================
 
 	/**
@@ -2321,7 +2321,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// IMPORT_POST_DATA TESTS (3 tests)
+	// IMPORT_POST_DATA TESTS
 	// =========================================================================
 
 	/**
@@ -2391,7 +2391,7 @@ class DataImporterTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// FIX_HIERARCHICAL_TAXONOMIES_PARENTS TESTS (4 tests)
+	// FIX_HIERARCHICAL_TAXONOMIES_PARENTS TESTS
 	// =========================================================================
 
 	/**

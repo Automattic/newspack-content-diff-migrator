@@ -14,9 +14,9 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  *
  * @group integration
  */
-class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
+class CmdMigrateLiveContentAttachmentsTest extends IntegrationTestCase {
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_import_attachment_post_type_correctly(): void {
 		$fixture = $this->load_fixture( 'attachment-basic' );
@@ -35,7 +35,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_import_custom_post_type_correctly(): void {
 		global $wpdb;
@@ -64,7 +64,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_preserve_attachment_metadata(): void {
 		global $wpdb;
@@ -118,7 +118,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_handle_attachment_with_parent_post(): void {
 		global $wpdb;
@@ -149,7 +149,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_preserve_wp_attachment_metadata_postmeta(): void {
 		global $wpdb;
@@ -188,7 +188,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_preserve_wp_attached_file_postmeta(): void {
 		global $wpdb;
@@ -221,7 +221,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_import_attachment_with_no_parent_post(): void {
 		global $wpdb;
@@ -249,7 +249,7 @@ class CmdMigrateLiveContentAttachmentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attachment post_parent is updated to the new local post ID.
 	 *
-	 * @group attachment
+	 * @group attachments
 	 */
 	public function test_should_update_attachment_parent_post_id(): void {
 		global $wpdb;

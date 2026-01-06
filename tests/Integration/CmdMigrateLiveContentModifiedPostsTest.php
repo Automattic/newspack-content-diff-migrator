@@ -14,7 +14,7 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  *
  * @group integration
  */
-class CmdMigrateLiveContentModifiedTest extends IntegrationTestCase {
+class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that posts are detected as modified when post_modified date changes.
 	 *

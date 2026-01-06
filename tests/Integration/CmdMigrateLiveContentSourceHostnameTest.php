@@ -16,7 +16,7 @@ use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
  *
  * @group integration
  */
-class CmdMigrateLiveContentHostnameTest extends IntegrationTestCase {
+class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 	/**
 	 * @group hostname
 	 */

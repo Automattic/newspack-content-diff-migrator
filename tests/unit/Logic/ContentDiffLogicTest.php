@@ -100,7 +100,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 1. Constructor Tests
+	 * Constructor Tests
 	 * =========================================================================
 	 */
 	public function test_constructor_should_use_default_dependencies_when_none_provided(): void {
@@ -141,7 +141,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 2. Getter Tests
+	 * Getter Tests
 	 * =========================================================================
 	 */
 	public function test_get_data_importer_should_return_data_importer_instance(): void {
@@ -152,7 +152,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 3. Static get_old_id_meta_key Tests
+	 * Static get_old_id_meta_key Tests
 	 * =========================================================================
 	 */
 	public function test_get_old_id_meta_key_should_return_prefixed_hostname(): void {
@@ -178,7 +178,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 4. get_migrated_source_hostnames Tests
+	 * get_migrated_source_hostnames Tests
 	 * =========================================================================
 	 */
 	public function test_get_migrated_source_hostnames_should_return_empty_array_when_no_meta_keys(): void {
@@ -223,7 +223,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 5. get_posts_rows_for_content_diff Tests
+	 * get_posts_rows_for_content_diff Tests
 	 * =========================================================================
 	 */
 	public function test_get_posts_rows_for_content_diff_should_return_posts_matching_types_and_statuses(): void {
@@ -291,7 +291,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 6. get_imported_post_id_mapping_from_db Tests (Attachments)
+	 * get_imported_post_id_mapping_from_db Tests (Attachments)
 	 * =========================================================================
 	 */
 	public function test_get_imported_post_id_mapping_from_db_should_return_attachments_when_requested(): void {
@@ -327,7 +327,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 7. get_imported_post_id_mapping_from_db Tests (Posts/CPTs)
+	 * get_imported_post_id_mapping_from_db Tests (Posts/CPTs)
 	 * =========================================================================
 	 */
 	public function test_get_imported_post_id_mapping_from_db_should_return_posts_when_requested(): void {
@@ -383,7 +383,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 8. filter_new_live_ids Tests
+	 * filter_new_live_ids Tests
 	 * =========================================================================
 	 */
 	public function test_filter_new_live_ids_should_return_empty_array_when_all_mapped(): void {
@@ -441,7 +441,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 9. filter_modified_live_ids Tests (uses old_id mapping)
+	 * filter_modified_live_ids Tests (uses old_id mapping)
 	 * =========================================================================
 	 */
 	public function test_filter_modified_live_ids_should_return_pairs_with_newer_live_modified_date(): void {
@@ -565,7 +565,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 10. match_local_to_live_posts Tests
+	 * match_local_to_live_posts Tests
 	 * =========================================================================
 	 */
 	public function test_match_local_to_live_posts_should_return_matched_pairs(): void {
@@ -682,7 +682,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 11. match_local_to_live_users Tests
+	 * match_local_to_live_users Tests
 	 * =========================================================================
 	 */
 	public function test_match_local_to_live_users_should_return_matched_pairs_by_login(): void {
@@ -747,7 +747,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 12. get_users_rows_for_attribution Tests
+	 * get_users_rows_for_attribution Tests
 	 * =========================================================================
 	 */
 	public function test_get_users_rows_for_attribution_should_return_id_and_login(): void {
@@ -780,7 +780,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 13. get_post_data Tests
+	 * get_post_data Tests
 	 * =========================================================================
 	 */
 	public function test_get_post_data_should_return_all_data_keys(): void {
@@ -991,7 +991,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 14. Select Wrapper Methods Tests
+	 * Select Wrapper Methods Tests
 	 * =========================================================================
 	 */
 	public function test_select_post_row_should_return_row_and_null_when_not_found(): void {
@@ -1118,7 +1118,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 15. Insert Methods Tests
+	 * Insert Methods Tests
 	 * =========================================================================
 	 */
 	public function test_insert_post_should_insert_and_return_new_id(): void {
@@ -1176,7 +1176,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 16. get_existing_term_taxonomy Tests
+	 * get_existing_term_taxonomy Tests
 	 * =========================================================================
 	 */
 	public function test_get_existing_term_taxonomy_should_return_term_taxonomy_id(): void {
@@ -1196,7 +1196,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 17. Post Lookup Methods Tests
+	 * Post Lookup Methods Tests
 	 * =========================================================================
 	 */
 	public function test_get_current_post_id_by_comparing_with_live_db_should_return_post_id(): void {
@@ -1228,7 +1228,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 18. update_post_parent Tests
+	 * update_post_parent Tests
 	 * =========================================================================
 	 */
 	public function test_update_post_parent_should_update_post_parent_id(): void {
@@ -1260,7 +1260,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 19. update_featured_image Tests
+	 * update_featured_image Tests
 	 * =========================================================================
 	 */
 	public function test_update_featured_image_should_update_thumbnail_id(): void {
@@ -1328,7 +1328,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 20. update_blocks_ids Tests
+	 * update_blocks_ids Tests
 	 * =========================================================================
 	 */
 	public function test_update_blocks_ids_should_return_early_when_map_empty(): void {
@@ -1434,7 +1434,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 21. attachment_url_to_postid_resolver Tests
+	 * attachment_url_to_postid_resolver Tests
 	 * =========================================================================
 	 */
 	public function test_attachment_url_to_postid_resolver_should_return_post_id(): void {
@@ -1469,7 +1469,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 22. filter_array_elements Tests
+	 * filter_array_elements Tests
 	 * =========================================================================
 	 */
 	public function test_filter_array_elements_should_return_matching_subarrays(): void {
@@ -1524,7 +1524,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 23. Private Method Tests via Reflection
+	 * Private Method Tests via Reflection
 	 * =========================================================================
 	 */
 	public function test_get_empty_data_array_should_return_all_keys_with_empty_arrays(): void {
@@ -1643,7 +1643,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 24. import_single_post Tests
+	 * import_single_post Tests
 	 * =========================================================================
 	 */
 	public function test_import_single_post_should_insert_post_and_return_result(): void {
@@ -1701,7 +1701,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 25. migrate_all_users Tests
+	 * migrate_all_users Tests
 	 * =========================================================================
 	 */
 	public function test_migrate_all_users_should_return_old_to_new_user_id_map(): void {
@@ -1780,7 +1780,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 26. filter_new_live_ids with old_id mapping Tests
+	 * filter_new_live_ids with old_id mapping Tests
 	 * =========================================================================
 	 */
 	public function test_filter_new_live_ids_should_return_ids_not_in_mapping(): void {
@@ -1857,7 +1857,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 27. filter_modified_live_ids with old_id mapping Tests
+	 * filter_modified_live_ids with old_id mapping Tests
 	 * =========================================================================
 	 */
 	public function test_filter_modified_live_ids_should_detect_post_modified_change(): void {
@@ -1956,7 +1956,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 28. get_imported_user_id_mapping_from_db Tests
+	 * get_imported_user_id_mapping_from_db Tests
 	 * =========================================================================
 	 */
 	public function test_get_imported_user_id_mapping_from_db_should_return_mapping(): void {
@@ -1984,7 +1984,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 29. get_imported_term_id_mapping_from_db Tests
+	 * get_imported_term_id_mapping_from_db Tests
 	 * =========================================================================
 	 */
 	public function test_get_imported_term_id_mapping_from_db_should_return_mapping(): void {
@@ -2004,7 +2004,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 30. count_unattributed_* Methods Tests
+	 * count_unattributed_* Methods Tests
 	 * =========================================================================
 	 */
 	public function test_count_unattributed_posts_should_count_posts_without_meta(): void {
@@ -2083,7 +2083,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 31. get_terms_rows_for_attribution Tests
+	 * get_terms_rows_for_attribution Tests
 	 * =========================================================================
 	 */
 	public function test_get_terms_rows_for_attribution_should_return_terms_with_taxonomy(): void {
@@ -2109,7 +2109,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 32. match_local_to_live_terms Tests
+	 * match_local_to_live_terms Tests
 	 * =========================================================================
 	 */
 	public function test_match_local_to_live_terms_should_match_by_slug_and_taxonomy(): void {
@@ -2180,7 +2180,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 33. update_modified_users Tests
+	 * update_modified_users Tests
 	 * =========================================================================
 	 */
 	public function test_update_modified_users_should_return_empty_when_no_mapping(): void {
@@ -2194,7 +2194,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 34. update_modified_attachments Tests
+	 * update_modified_attachments Tests
 	 * =========================================================================
 	 */
 	public function test_update_modified_attachments_should_return_empty_when_no_mapping(): void {
@@ -2208,7 +2208,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
-	 * 35. update_modified_terms Tests
+	 * update_modified_terms Tests
 	 * =========================================================================
 	 */
 	public function test_update_modified_terms_should_return_empty_when_no_mapping(): void {

@@ -14,7 +14,7 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  *
  * @group integration
  */
-class CmdMigrateLiveContentCommentTest extends IntegrationTestCase {
+class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	/**
 	 * @group comment
 	 */

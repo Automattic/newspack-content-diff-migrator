@@ -16,337 +16,6 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  */
 class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 	/**
-	 * Tests that default taxonomies (category, post_tag, author) are migrated when no --custom-taxonomies-csv is provided.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_migrate_default_taxonomies_when_no_custom_taxonomies_csv_provided(): void {
-		global $wpdb;
-
-		// Create post with category and tag.
-		$post = $this->create_post_fixture( [ 'ID' => 1001 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create category term.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 101, 'name' => 'Default Category', 'slug' => 'default-category', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 101, 'term_id' => 101, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1001, 'term_taxonomy_id' => 101 ] ); // phpcs:ignore
-
-		// Create tag term.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 102, 'name' => 'Default Tag', 'slug' => 'default-tag', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 102, 'term_id' => 102, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1001, 'term_taxonomy_id' => 102 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command(); // No custom-taxonomies-csv = defaults.
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1001, $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-		$tags        = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
-
-		$this->assertContains( 'Default Category', $categories, 'Category should be migrated by default.' );
-		$this->assertContains( 'Default Tag', $tags, 'Post tag should be migrated by default.' );
-	}
-
-	/**
-	 * Tests that only specified taxonomies are migrated when --custom-taxonomies-csv is provided.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_migrate_only_specified_taxonomies_when_custom_taxonomies_csv_provided(): void {
-		global $wpdb;
-
-		// Register custom taxonomy.
-		register_taxonomy( 'brand', 'post', [ 'public' => true ] );
-
-		$post = $this->create_post_fixture( [ 'ID' => 1002 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create category (should NOT be migrated).
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 201, 'name' => 'Skip Category', 'slug' => 'skip-category', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 201, 'term_id' => 201, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1002, 'term_taxonomy_id' => 201 ] ); // phpcs:ignore
-
-		// Create brand (should be migrated).
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 202, 'name' => 'Include Brand', 'slug' => 'include-brand', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 202, 'term_id' => 202, 'taxonomy' => 'brand', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1002, 'term_taxonomy_id' => 202 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'brand' ] ); // Only migrate 'brand'.
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1002, $this->source_hostname );
-		$brands      = wp_get_post_terms( $new_post_id, 'brand', [ 'fields' => 'names' ] );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-
-		$this->assertContains( 'Include Brand', $brands, 'Brand should be migrated.' );
-		$this->assertNotContains( 'Skip Category', $categories, 'Category should NOT be migrated when not in custom-taxonomies-csv.' );
-	}
-
-	/**
-	 * Tests that non-existent taxonomies in live DB are unset from migration.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_unset_taxonomy_from_migration_when_custom_taxonomy_does_not_exist_in_live_db(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture( [ 'ID' => 1003 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create category term.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 301, 'name' => 'Existing Category', 'slug' => 'existing-category', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 301, 'term_id' => 301, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1003, 'term_taxonomy_id' => 301 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		// Provide a taxonomy that doesn't exist in live DB - 'nonexistent_taxonomy'.
-		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category,nonexistent_taxonomy' ] );
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1003, $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-
-		// The valid taxonomy (category) should still be migrated.
-		$this->assertContains( 'Existing Category', $categories, 'Category should be migrated despite nonexistent taxonomy in CSV.' );
-	}
-
-	/**
-	 * Tests that a warning is shown when category is not in custom-taxonomies-csv.
-	 * Note: In test_env mode, WP_CLI::confirm() is bypassed, so we just verify migration proceeds.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_warn_when_category_not_in_custom_taxonomies_csv(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture( [ 'ID' => 1004 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create category.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 401, 'name' => 'Warning Cat', 'slug' => 'warning-cat', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 401, 'term_id' => 401, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1004, 'term_taxonomy_id' => 401 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		// Omit category from CSV - in test_env this proceeds without confirmation.
-		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'post_tag,author' ] );
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1004, $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-
-		// Category should NOT be migrated.
-		$this->assertNotContains( 'Warning Cat', $categories, 'Category should not be migrated when omitted from custom-taxonomies-csv.' );
-	}
-
-	/**
-	 * Tests that a warning is shown when post_tag is not in custom-taxonomies-csv.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_warn_when_post_tag_not_in_custom_taxonomies_csv(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture( [ 'ID' => 1005 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create post_tag.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 501, 'name' => 'Warning Tag', 'slug' => 'warning-tag', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 501, 'term_id' => 501, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1005, 'term_taxonomy_id' => 501 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category,author' ] );
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1005, $this->source_hostname );
-		$tags        = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
-
-		// Post tag should NOT be migrated.
-		$this->assertNotContains( 'Warning Tag', $tags, 'Post tag should not be migrated when omitted from custom-taxonomies-csv.' );
-	}
-
-	/**
-	 * Tests that a warning is shown when author taxonomy is not in custom-taxonomies-csv.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_warn_when_author_not_in_custom_taxonomies_csv(): void {
-		global $wpdb;
-
-		// Register 'author' taxonomy (used by Co-Authors Plus).
-		register_taxonomy( 'author', 'post', [ 'public' => true ] );
-
-		$post = $this->create_post_fixture( [ 'ID' => 1006 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create author term.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 601, 'name' => 'co-author-john', 'slug' => 'co-author-john', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 601, 'term_id' => 601, 'taxonomy' => 'author', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1006, 'term_taxonomy_id' => 601 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category,post_tag' ] );
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1006, $this->source_hostname );
-		$authors     = wp_get_post_terms( $new_post_id, 'author', [ 'fields' => 'names' ] );
-
-		// Author term should NOT be migrated.
-		$this->assertNotContains( 'co-author-john', $authors, 'Author term should not be migrated when omitted from custom-taxonomies-csv.' );
-	}
-
-	// =========================================================================
-	// 2. HIERARCHICAL TAXONOMY VALIDATION AND FIXING TESTS
-	// =========================================================================
-
-	/**
-	 * Tests that fix_hierarchical_taxonomies_parents fixes invalid parent IDs by setting them to 0.
-	 * This tests the DataImporter method directly since the full command flow has PHPUnit isolation.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_fix_local_hierarchical_taxonomy_with_invalid_parent_by_setting_to_zero(): void {
-		global $wpdb;
-
-		// Use a high number that definitely doesn't exist as a term.
-		$invalid_parent_id = 9999999;
-
-		// Create a local category with invalid parent.
-		$local_term    = wp_insert_term( 'Local Broken Parent Cat', 'category', [ 'slug' => 'local-broken-parent' ] );
-		$local_term_id = is_array( $local_term ) ? $local_term['term_id'] : $local_term;
-
-		// Manually set invalid parent.
-		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-			$wpdb->term_taxonomy,
-			[ 'parent' => $invalid_parent_id ],
-			[
-				'term_id'  => $local_term_id,
-				'taxonomy' => 'category',
-			]
-		); // phpcs:ignore
-
-		// Verify the invalid parent was set.
-		$before = $wpdb->get_var( $wpdb->prepare( "SELECT parent FROM {$wpdb->term_taxonomy} WHERE term_id = %d AND taxonomy = 'category'", $local_term_id ) ); // phpcs:ignore
-		$this->assertEquals( $invalid_parent_id, (int) $before, 'Invalid parent should be set before test.' );
-
-		// Call fix method directly (since the full command flow has PHPUnit transaction isolation issues).
-		$fixed = $this->logic->get_data_importer()->fix_hierarchical_taxonomies_parents( $wpdb->prefix, [ 'category', 'post_tag', 'author' ] );
-		$this->assertNotEmpty( $fixed, 'Fix should return non-empty array of fixed terms.' );
-
-		// Verify local category parent was fixed to 0.
-		$after = $wpdb->get_var( $wpdb->prepare( "SELECT parent FROM {$wpdb->term_taxonomy} WHERE term_id = %d AND taxonomy = 'category'", $local_term_id ) ); // phpcs:ignore
-		$this->assertEquals( 0, (int) $after, 'Invalid parent should be fixed to 0.' );
-	}
-
-	/**
-	 * Tests that live hierarchical taxonomies with invalid parent IDs are fixed by setting parent to 0.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_fix_live_hierarchical_taxonomy_with_invalid_parent_by_setting_to_zero(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture( [ 'ID' => 2002 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create live category with invalid parent (pointing to non-existent term_id 88888).
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 701, 'name' => 'Live Broken Parent', 'slug' => 'live-broken-parent', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 701, 'term_id' => 701, 'taxonomy' => 'category', 'description' => '', 'parent' => 88888, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 2002, 'term_taxonomy_id' => 701 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		// Verify live table category parent was fixed.
-		$live_term_taxonomy = $wpdb->get_row( $wpdb->prepare( "SELECT parent FROM {$this->live_table_prefix}term_taxonomy WHERE term_id = %d", 701 ), ARRAY_A ); // phpcs:ignore
-		$this->assertEquals( 0, (int) $live_term_taxonomy['parent'], 'Invalid parent in live DB should be fixed to 0.' );
-
-		// Verify the post was migrated and category was assigned.
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 2002, $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-		$this->assertContains( 'Live Broken Parent', $categories, 'Category should still be migrated after parent fix.' );
-	}
-
-	/**
-	 * Tests that hierarchical taxonomies with valid parents are NOT modified.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_not_modify_hierarchical_taxonomy_with_valid_parent(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture( [ 'ID' => 2003 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create parent category first.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 801, 'name' => 'Parent Cat', 'slug' => 'parent-cat', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 801, 'term_id' => 801, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 0 ] ); // phpcs:ignore
-
-		// Create child category with valid parent.
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 802, 'name' => 'Child Cat', 'slug' => 'child-cat', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 802, 'term_id' => 802, 'taxonomy' => 'category', 'description' => '', 'parent' => 801, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 2003, 'term_taxonomy_id' => 802 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		// Verify parent was NOT changed.
-		$live_term_taxonomy = $wpdb->get_row( $wpdb->prepare( "SELECT parent FROM {$this->live_table_prefix}term_taxonomy WHERE term_id = %d", 802 ), ARRAY_A ); // phpcs:ignore
-		$this->assertEquals( 801, (int) $live_term_taxonomy['parent'], 'Valid parent should NOT be modified.' );
-
-		// Verify category hierarchy was imported correctly.
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 2003, $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'all' ] );
-		$child_cat   = null;
-		foreach ( $categories as $cat ) {
-			if ( 'Child Cat' === $cat->name ) {
-				$child_cat = $cat;
-				break;
-			}
-		}
-		$this->assertNotNull( $child_cat, 'Child category should be migrated.' );
-		$this->assertNotEquals( 0, $child_cat->parent, 'Child category should have a parent in local DB.' );
-	}
-
-	/**
-	 * Tests that deeply nested hierarchical taxonomy with a broken chain is handled.
-	 * A "broken chain" means one middle parent is missing/invalid.
-	 *
-	 * @group taxonomy
-	 */
-	public function test_should_handle_deeply_nested_hierarchical_taxonomy_with_broken_chain(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture( [ 'ID' => 2004 ] );
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		// Create grandparent (valid).
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 901, 'name' => 'Grandparent', 'slug' => 'grandparent', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 901, 'term_id' => 901, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 0 ] ); // phpcs:ignore
-
-		// Intentionally skip creating parent (term_id 902) - it's missing/deleted.
-
-		// Create child pointing to missing parent 902 (broken chain).
-		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 903, 'name' => 'Orphan Child', 'slug' => 'orphan-child', 'term_group' => 0 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 903, 'term_id' => 903, 'taxonomy' => 'category', 'description' => '', 'parent' => 902, 'count' => 1 ] ); // phpcs:ignore
-		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 2004, 'term_taxonomy_id' => 903 ] ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		// Verify orphan child's parent was fixed to 0.
-		$live_term_taxonomy = $wpdb->get_row( $wpdb->prepare( "SELECT parent FROM {$this->live_table_prefix}term_taxonomy WHERE term_id = %d", 903 ), ARRAY_A ); // phpcs:ignore
-		$this->assertEquals( 0, (int) $live_term_taxonomy['parent'], 'Orphan child parent should be fixed to 0.' );
-
-		// Verify category was still migrated.
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 2004, $this->source_hostname );
-		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
-		$this->assertContains( 'Orphan Child', $categories, 'Orphan child category should be migrated.' );
-	}
-
-	// =========================================================================
-	// 8. TAXONOMY AND TERM RELATIONSHIP IMPORT TESTS
-	// =========================================================================
-
-	/**
 	 * @group taxonomy
 	 */
 	public function test_should_import_category_term_relationships(): void {
@@ -1011,10 +680,6 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 		$this->assertContains( 'Featured Product', $prod_names, 'Product category term should be migrated.' );
 	}
 
-	// =========================================================================
-	// 14. TERM COUNT RECALCULATION TESTS
-	// =========================================================================
-
 	/**
 	 * Tests that term counts are recalculated after migration.
 	 *
@@ -1116,5 +781,328 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 
 		$local_term = get_term_by( 'slug', 'europe', 'region' );
 		$this->assertEquals( 4, $local_term->count, 'Custom taxonomy count should be 4.' );
+	}
+
+	/**
+	 * Tests that default taxonomies (category, post_tag, author) are migrated when no --custom-taxonomies-csv is provided.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_migrate_default_taxonomies_when_no_custom_taxonomies_csv_provided(): void {
+		global $wpdb;
+
+		// Create post with category and tag.
+		$post = $this->create_post_fixture( [ 'ID' => 1001 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 101, 'name' => 'Default Category', 'slug' => 'default-category', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 101, 'term_id' => 101, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1001, 'term_taxonomy_id' => 101 ] ); // phpcs:ignore
+
+		// Create tag term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 102, 'name' => 'Default Tag', 'slug' => 'default-tag', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 102, 'term_id' => 102, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1001, 'term_taxonomy_id' => 102 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command(); // No custom-taxonomies-csv = defaults.
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1001, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+		$tags        = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
+
+		$this->assertContains( 'Default Category', $categories, 'Category should be migrated by default.' );
+		$this->assertContains( 'Default Tag', $tags, 'Post tag should be migrated by default.' );
+	}
+
+	/**
+	 * Tests that only specified taxonomies are migrated when --custom-taxonomies-csv is provided.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_migrate_only_specified_taxonomies_when_custom_taxonomies_csv_provided(): void {
+		global $wpdb;
+
+		// Register custom taxonomy.
+		register_taxonomy( 'brand', 'post', [ 'public' => true ] );
+
+		$post = $this->create_post_fixture( [ 'ID' => 1002 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category (should NOT be migrated).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 201, 'name' => 'Skip Category', 'slug' => 'skip-category', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 201, 'term_id' => 201, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1002, 'term_taxonomy_id' => 201 ] ); // phpcs:ignore
+
+		// Create brand (should be migrated).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 202, 'name' => 'Include Brand', 'slug' => 'include-brand', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 202, 'term_id' => 202, 'taxonomy' => 'brand', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1002, 'term_taxonomy_id' => 202 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'brand' ] ); // Only migrate 'brand'.
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1002, $this->source_hostname );
+		$brands      = wp_get_post_terms( $new_post_id, 'brand', [ 'fields' => 'names' ] );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+
+		$this->assertContains( 'Include Brand', $brands, 'Brand should be migrated.' );
+		$this->assertNotContains( 'Skip Category', $categories, 'Category should NOT be migrated when not in custom-taxonomies-csv.' );
+	}
+
+	/**
+	 * Tests that non-existent taxonomies in live DB are unset from migration.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_unset_taxonomy_from_migration_when_taxonomy_does_not_exist_in_live_db(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 1003 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 301, 'name' => 'Existing Category', 'slug' => 'existing-category', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 301, 'term_id' => 301, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1003, 'term_taxonomy_id' => 301 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		// Provide a taxonomy that doesn't exist in live DB - 'nonexistent_taxonomy'.
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category,nonexistent_taxonomy' ] );
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1003, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+
+		// The valid taxonomy (category) should still be migrated.
+		$this->assertContains( 'Existing Category', $categories, 'Category should be migrated despite nonexistent taxonomy in CSV.' );
+	}
+
+	/**
+	 * Tests that a warning is shown when category is not in custom-taxonomies-csv.
+	 * Note: In test_env mode, WP_CLI::confirm() is bypassed, so we just verify migration proceeds.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_warn_when_category_not_in_custom_taxonomies_csv(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 1004 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 401, 'name' => 'Warning Cat', 'slug' => 'warning-cat', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 401, 'term_id' => 401, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1004, 'term_taxonomy_id' => 401 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		// Omit category from CSV - in test_env this proceeds without confirmation.
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'post_tag,author' ] );
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1004, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+
+		// Category should NOT be migrated.
+		$this->assertNotContains( 'Warning Cat', $categories, 'Category should not be migrated when omitted from custom-taxonomies-csv.' );
+	}
+
+	/**
+	 * Tests that a warning is shown when post_tag is not in custom-taxonomies-csv.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_warn_when_post_tag_not_in_custom_taxonomies_csv(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 1005 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create post_tag.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 501, 'name' => 'Warning Tag', 'slug' => 'warning-tag', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 501, 'term_id' => 501, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1005, 'term_taxonomy_id' => 501 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category,author' ] );
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1005, $this->source_hostname );
+		$tags        = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
+
+		// Post tag should NOT be migrated.
+		$this->assertNotContains( 'Warning Tag', $tags, 'Post tag should not be migrated when omitted from custom-taxonomies-csv.' );
+	}
+
+	/**
+	 * Tests that a warning is shown when author taxonomy is not in custom-taxonomies-csv.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_warn_when_author_not_in_custom_taxonomies_csv(): void {
+		global $wpdb;
+
+		// Register 'author' taxonomy (used by Co-Authors Plus).
+		register_taxonomy( 'author', 'post', [ 'public' => true ] );
+
+		$post = $this->create_post_fixture( [ 'ID' => 1006 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create author term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 601, 'name' => 'co-author-john', 'slug' => 'co-author-john', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 601, 'term_id' => 601, 'taxonomy' => 'author', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 1006, 'term_taxonomy_id' => 601 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category,post_tag' ] );
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 1006, $this->source_hostname );
+		$authors     = wp_get_post_terms( $new_post_id, 'author', [ 'fields' => 'names' ] );
+
+		// Author term should NOT be migrated.
+		$this->assertNotContains( 'co-author-john', $authors, 'Author term should not be migrated when omitted from custom-taxonomies-csv.' );
+	}
+
+	/**
+	 * Tests that fix_hierarchical_taxonomies_parents fixes invalid parent IDs by setting them to 0.
+	 * This tests the DataImporter method directly since the full command flow has PHPUnit isolation.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_fix_local_hierarchical_taxonomy_with_invalid_parent_by_setting_to_zero(): void {
+		global $wpdb;
+
+		// Use a high number that definitely doesn't exist as a term.
+		$invalid_parent_id = 9999999;
+
+		// Create a local category with invalid parent.
+		$local_term    = wp_insert_term( 'Local Broken Parent Cat', 'category', [ 'slug' => 'local-broken-parent' ] );
+		$local_term_id = is_array( $local_term ) ? $local_term['term_id'] : $local_term;
+
+		// Manually set invalid parent.
+		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			$wpdb->term_taxonomy,
+			[ 'parent' => $invalid_parent_id ],
+			[
+				'term_id'  => $local_term_id,
+				'taxonomy' => 'category',
+			]
+		); // phpcs:ignore
+
+		// Verify the invalid parent was set.
+		$before = $wpdb->get_var( $wpdb->prepare( "SELECT parent FROM {$wpdb->term_taxonomy} WHERE term_id = %d AND taxonomy = 'category'", $local_term_id ) ); // phpcs:ignore
+		$this->assertEquals( $invalid_parent_id, (int) $before, 'Invalid parent should be set before test.' );
+
+		// Call fix method directly (since the full command flow has PHPUnit transaction isolation issues).
+		$fixed = $this->logic->get_data_importer()->fix_hierarchical_taxonomies_parents( $wpdb->prefix, [ 'category', 'post_tag', 'author' ] );
+		$this->assertNotEmpty( $fixed, 'Fix should return non-empty array of fixed terms.' );
+
+		// Verify local category parent was fixed to 0.
+		$after = $wpdb->get_var( $wpdb->prepare( "SELECT parent FROM {$wpdb->term_taxonomy} WHERE term_id = %d AND taxonomy = 'category'", $local_term_id ) ); // phpcs:ignore
+		$this->assertEquals( 0, (int) $after, 'Invalid parent should be fixed to 0.' );
+	}
+
+	/**
+	 * Tests that live hierarchical taxonomies with invalid parent IDs are fixed by setting parent to 0.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_fix_live_hierarchical_taxonomy_with_invalid_parent_by_setting_to_zero(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 2002 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create live category with invalid parent (pointing to non-existent term_id 88888).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 701, 'name' => 'Live Broken Parent', 'slug' => 'live-broken-parent', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 701, 'term_id' => 701, 'taxonomy' => 'category', 'description' => '', 'parent' => 88888, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 2002, 'term_taxonomy_id' => 701 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify live table category parent was fixed.
+		$live_term_taxonomy = $wpdb->get_row( $wpdb->prepare( "SELECT parent FROM {$this->live_table_prefix}term_taxonomy WHERE term_id = %d", 701 ), ARRAY_A ); // phpcs:ignore
+		$this->assertEquals( 0, (int) $live_term_taxonomy['parent'], 'Invalid parent in live DB should be fixed to 0.' );
+
+		// Verify the post was migrated and category was assigned.
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 2002, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+		$this->assertContains( 'Live Broken Parent', $categories, 'Category should still be migrated after parent fix.' );
+	}
+
+	/**
+	 * Tests that hierarchical taxonomies with valid parents are NOT modified.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_not_modify_hierarchical_taxonomy_with_valid_parent(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 2003 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create parent category first.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 801, 'name' => 'Parent Cat', 'slug' => 'parent-cat', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 801, 'term_id' => 801, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 0 ] ); // phpcs:ignore
+
+		// Create child category with valid parent.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 802, 'name' => 'Child Cat', 'slug' => 'child-cat', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 802, 'term_id' => 802, 'taxonomy' => 'category', 'description' => '', 'parent' => 801, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 2003, 'term_taxonomy_id' => 802 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify parent was NOT changed.
+		$live_term_taxonomy = $wpdb->get_row( $wpdb->prepare( "SELECT parent FROM {$this->live_table_prefix}term_taxonomy WHERE term_id = %d", 802 ), ARRAY_A ); // phpcs:ignore
+		$this->assertEquals( 801, (int) $live_term_taxonomy['parent'], 'Valid parent should NOT be modified.' );
+
+		// Verify category hierarchy was imported correctly.
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 2003, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'all' ] );
+		$child_cat   = null;
+		foreach ( $categories as $cat ) {
+			if ( 'Child Cat' === $cat->name ) {
+				$child_cat = $cat;
+				break;
+			}
+		}
+		$this->assertNotNull( $child_cat, 'Child category should be migrated.' );
+		$this->assertNotEquals( 0, $child_cat->parent, 'Child category should have a parent in local DB.' );
+	}
+
+	/**
+	 * Tests that deeply nested hierarchical taxonomy with a broken chain is handled.
+	 * A "broken chain" means one middle parent is missing/invalid.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_handle_deeply_nested_hierarchical_taxonomy_with_broken_chain(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 2004 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create grandparent (valid).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 901, 'name' => 'Grandparent', 'slug' => 'grandparent', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 901, 'term_id' => 901, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 0 ] ); // phpcs:ignore
+
+		// Intentionally skip creating parent (term_id 902) - it's missing/deleted.
+
+		// Create child pointing to missing parent 902 (broken chain).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 903, 'name' => 'Orphan Child', 'slug' => 'orphan-child', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 903, 'term_id' => 903, 'taxonomy' => 'category', 'description' => '', 'parent' => 902, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 2004, 'term_taxonomy_id' => 903 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify orphan child's parent was fixed to 0.
+		$live_term_taxonomy = $wpdb->get_row( $wpdb->prepare( "SELECT parent FROM {$this->live_table_prefix}term_taxonomy WHERE term_id = %d", 903 ), ARRAY_A ); // phpcs:ignore
+		$this->assertEquals( 0, (int) $live_term_taxonomy['parent'], 'Orphan child parent should be fixed to 0.' );
+
+		// Verify category was still migrated.
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 2004, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+		$this->assertContains( 'Orphan Child', $categories, 'Orphan child category should be migrated.' );
 	}
 }

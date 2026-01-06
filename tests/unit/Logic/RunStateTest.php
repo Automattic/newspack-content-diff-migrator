@@ -101,7 +101,7 @@ class RunStateTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// CONSTRUCTOR TESTS (3 tests)
+	// CONSTRUCTOR TESTS
 	// =========================================================================
 
 	/**
@@ -140,7 +140,7 @@ class RunStateTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// PRIVATE CORE METHODS VIA REFLECTION (10 tests)
+	// PRIVATE CORE METHODS VIA REFLECTION
 	// =========================================================================
 
 	/**
@@ -285,7 +285,7 @@ class RunStateTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// NEW IDS TESTS (5 tests)
+	// NEW IDS TESTS
 	// =========================================================================
 
 	/**
@@ -357,7 +357,7 @@ class RunStateTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// MODIFIED IDS TESTS (4 tests)
+	// MODIFIED IDS TESTS
 	// =========================================================================
 
 	/**
@@ -770,7 +770,7 @@ class RunStateTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// UPDATED BLOCKS TESTS (5 tests)
+	// UPDATED BLOCKS TESTS
 	// =========================================================================
 
 	/**
@@ -863,7 +863,7 @@ class RunStateTest extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// MANIFEST TESTS (2 tests)
+	// MANIFEST TESTS
 	// =========================================================================
 
 	/**
