@@ -535,11 +535,17 @@ class ContentDiffMigrator {
 			$post_types_non_attachments = array_values( $post_types_non_attachments );
 		}
 
-		// Get already migrated old_id=>new_id mappings for posts and CPTs, attachments, users, and terms (more memory efficient).
-		$post_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$attachment_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, [ 'attachment' ] );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		// Get already migrated old_id=>new_id mappings for all objects: posts/CPTs, attachments, users, terms (more memory efficient).
+		$post_old_id_map = [];
+		if ( ! empty( $post_types_non_attachments ) ) {
+			$post_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, $post_types_non_attachments );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		}
+		$attachment_old_id_map = [];
+		if ( in_array( 'attachment', $post_types ) ) {
+			$attachment_old_id_map = $this->logic->get_imported_post_id_mapping_from_db( $source_hostname, [ 'attachment' ] );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		}
 		$user_old_id_map = $this->logic->get_imported_user_id_mapping_from_db( $source_hostname );
 		$term_old_id_map = $this->logic->get_imported_term_id_mapping_from_db( $source_hostname );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
@@ -547,9 +553,13 @@ class ContentDiffMigrator {
 		try {
 			// Query live DB for posts and CPTs.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Searching live DB for CPTs: %s ...', implode( ',', $post_types_non_attachments ) ) );
-			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
-			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			$results_live_posts  = [];
+			$results_local_posts = [];
+			if ( ! empty( $post_types_non_attachments ) ) {
+				$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
+				$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, [ 'publish', 'future', 'draft', 'pending', 'private' ] );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			}
 
 			// Check new objects.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking for new ones...', count( $results_live_posts ) ) );
