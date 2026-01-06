@@ -1031,7 +1031,14 @@ class ContentDiffMigrator {
 		global $wpdb;
 
 		// Get IDs which already had their post_parent updated, and skip them.
-		$already_updated_ids_map     = $this->run_state->get_updated_parents_post_ids_map();
+		$already_updated_ids_map = $this->run_state->get_updated_parents_post_ids_map();
+
+		// Modified posts (deleted and reimported) need their parents updated again.
+		$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
+		foreach ( array_keys( $deleted_modified_ids_map ) as $live_id ) {
+			unset( $already_updated_ids_map[ $live_id ] );
+		}
+
 		$live_ids_for_parents_update = array_values( array_diff( $all_live_posts_ids, array_keys( $already_updated_ids_map ) ) );
 		if ( empty( $live_ids_for_parents_update ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their post_parent updated, moving on.' );
@@ -1130,7 +1137,14 @@ class ContentDiffMigrator {
 		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
 
 		// Get IDs which already had featured images updated, and skip them.
-		$already_updated_ids_map     = $this->run_state->get_updated_featured_image_post_ids_map();
+		$already_updated_ids_map = $this->run_state->get_updated_featured_image_post_ids_map();
+
+		// Modified posts (deleted and reimported) need their featured images updated again.
+		$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
+		foreach ( array_keys( $deleted_modified_ids_map ) as $live_id ) {
+			unset( $already_updated_ids_map[ $live_id ] );
+		}
+
 		$ids_map_for_featured_update = array_diff_key( $imported_nonattachment_ids_map, $already_updated_ids_map );
 		if ( empty( $ids_map_for_featured_update ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their featured images updated, moving on.' );
@@ -1193,7 +1207,14 @@ class ContentDiffMigrator {
 		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
 
 		// Get IDs which already had block attachment IDs updated, and skip them.
-		$already_updated_ids_map   = $this->run_state->get_updated_block_post_ids_map();
+		$already_updated_ids_map = $this->run_state->get_updated_block_post_ids_map();
+
+		// Modified posts (deleted and reimported) need their blocks updated again.
+		$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
+		foreach ( array_keys( $deleted_modified_ids_map ) as $live_id ) {
+			unset( $already_updated_ids_map[ $live_id ] );
+		}
+
 		$ids_map_for_blocks_update = array_diff_key( $imported_nonattachment_ids_map, $already_updated_ids_map );
 		if ( empty( $ids_map_for_blocks_update ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All posts already had their blocks\' attachment IDs updated, moving on.' );
