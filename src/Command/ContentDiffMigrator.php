@@ -360,8 +360,12 @@ class ContentDiffMigrator {
 			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Save metas for matched posts.
+			// Save metas for matched posts, skip if already attributed.
 			foreach ( $matched_posts as $match ) {
+				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
+				if ( ! empty( $existing_meta ) ) {
+					continue;
+				}
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
 				$context = [
 					'local_id' => $match['local_id'],
@@ -385,8 +389,12 @@ class ContentDiffMigrator {
 			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Attribute matched attachments to source hostname.
+			// Attribute matched attachments to source hostname, skip if already attributed.
 			foreach ( $matched_attachments as $match ) {
+				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
+				if ( ! empty( $existing_meta ) ) {
+					continue;
+				}
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
 				// Detailed log to file only.
 				$context = [
@@ -408,8 +416,12 @@ class ContentDiffMigrator {
 		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Attribute matched users to source hostname.
+		// Attribute matched users to source hostname, skip if already attributed.
 		foreach ( $matched_users as $match ) {
+			$existing_meta = get_user_meta( $match['local_id'], $meta_key, true );
+			if ( ! empty( $existing_meta ) ) {
+				continue;
+			}
 			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
 			// Detailed log to file only.
 			$context = [
@@ -430,8 +442,12 @@ class ContentDiffMigrator {
 		$matched_terms = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Attribute matched terms to source hostname.
+		// Attribute matched terms to source hostname, skip if already attributed.
 		foreach ( $matched_terms as $match ) {
+			$existing_meta = get_term_meta( $match['local_id'], $meta_key, true );
+			if ( ! empty( $existing_meta ) ) {
+				continue;
+			}
 			update_term_meta( $match['local_id'], $meta_key, $match['live_id'] );
 			// Detailed log to file only.
 			$context = [
