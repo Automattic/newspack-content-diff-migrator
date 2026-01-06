@@ -394,6 +394,33 @@ HTML;
 	}
 
 	// =========================================================================
+	// CORE GALLERY BLOCK TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers BlockUpdater::update_image_blocks_ids
+	 */
+	public function core_gallery_block_updates_all_ids_using_update_image_blocks_ids(): void {
+		$content = $this->load_fixture( 'core-gallery-block' );
+
+		$known_ids = [
+			7001 => 99991,
+			7002 => 99992,
+			7003 => 99993,
+		];
+		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
+
+		$this->assertStringContainsString( '"id":99991', $result );
+		$this->assertStringContainsString( '"id":99992', $result );
+		$this->assertStringContainsString( '"id":99993', $result );
+		$this->assertStringContainsString( 'class="wp-image-99991"', $result );
+		$this->assertStringContainsString( 'class="wp-image-99992"', $result );
+		$this->assertStringContainsString( 'class="wp-image-99993"', $result );
+	}
+
+
+	// =========================================================================
 	// AUDIO BLOCK TESTS
 	// =========================================================================
 
