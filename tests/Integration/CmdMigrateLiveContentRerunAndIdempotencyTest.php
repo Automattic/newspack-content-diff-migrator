@@ -183,4 +183,69 @@ class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 			$this->assertNotNull( $local_id, "Post 1610{$i} should exist." );
 		}
 	}
+
+	/**
+	 * Tests that a new migration in the same data-dir works correctly after a previous migration completed.
+	 *
+	 * This is a key idempotency test: the search command always freshly queries the DB for what's
+	 * already migrated, so reusing the same --data-dir should not cause issues. The search command
+	 * overwrites the run-state files with fresh data.
+	 *
+	 * @group rerun-and-idempotency
+	 */
+	public function test_should_handle_new_migration_in_same_data_dir_after_completed_migration(): void {
+		global $wpdb;
+
+		// === First Migration: import post A ===
+		$post_a = $this->create_post_fixture(
+			[
+				'ID'         => 16201,
+				'post_title' => 'Post A - First Migration',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post_a ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$post_a_local_id = $this->logic->get_current_post_id_by_old_id( 16201, $this->source_hostname );
+		$this->assertNotNull( $post_a_local_id, 'Post A should be imported.' );
+
+		// Verify run-state has Post A recorded.
+		$imported_after_first = $this->run_state->get_imported_post_ids_map();
+		$this->assertArrayHasKey( 16201, $imported_after_first, 'Post A should be in run-state after first migration.' );
+
+		// === Second Migration (same data-dir): import post B ===
+		// Add a new post to live.
+		$post_b = $this->create_post_fixture(
+			[
+				'ID'         => 16202,
+				'post_title' => 'Post B - Second Migration',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post_b ); // phpcs:ignore
+
+		// Run search again - this should overwrite run-state with fresh data.
+		$this->run_search_command();
+
+		// Verify new_ids only contains Post B (Post A is already migrated per DB).
+		$new_ids = $this->run_state->get_new_ids();
+		$this->assertContains( 16202, $new_ids, 'Post B should be in new_ids.' );
+		$this->assertNotContains( 16201, $new_ids, 'Post A should NOT be in new_ids (already migrated).' );
+
+		// Run migrate.
+		$this->run_migrate_command();
+
+		// Verify both posts exist locally.
+		$post_a_local_id_after = $this->logic->get_current_post_id_by_old_id( 16201, $this->source_hostname );
+		$post_b_local_id       = $this->logic->get_current_post_id_by_old_id( 16202, $this->source_hostname );
+
+		$this->assertNotNull( $post_a_local_id_after, 'Post A should still exist.' );
+		$this->assertNotNull( $post_b_local_id, 'Post B should be imported.' );
+		$this->assertEquals( $post_a_local_id, $post_a_local_id_after, 'Post A ID should remain unchanged.' );
+
+		// Verify no duplicates of Post A.
+		$count_post_a = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_title = 'Post A - First Migration'" ); // phpcs:ignore
+		$this->assertEquals( 1, (int) $count_post_a, 'Post A should not be duplicated.' );
+	}
 }

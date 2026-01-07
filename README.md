@@ -61,6 +61,34 @@ wp newspack-content-diff-migrator migrate-live-content \
     [--custom-taxonomies-csv=category,post_tag,author,custom_taxonomy]
 ```
 
+## Understanding the Data Directory (`--data-dir`)
+
+The `--data-dir` parameter stores temporary run-state data in the `run-state` subfolder. It contains information about the migration progress and the IDs of the content that has been migrated, so that if a migration is interrupted, it can be resumed from the last known state.
+
+### Resuming an Interrupted Migration
+
+If a migration command is interrupted (e.g., timeout, crash), you can resume it by running the same command with the **same `--data-dir`**. The migration will pick up from where it left off.
+
+```bash
+# If this gets interrupted...
+wp newspack-content-diff-migrator migrate-live-content \
+    --data-dir=/tmp/cdiff_data ...
+
+# ...just run the same command again to resume
+wp newspack-content-diff-migrator migrate-live-content \
+    --data-dir=/tmp/cdiff_data ...
+```
+
+### Starting a New Migration
+
+Once a migration completes successfully, you can start a fresh migration at any time. The search command always queries the **database directly** to determine what content has already been migrated, and it does not rely on previous run-state files.
+
+It is recommended to start a new migration with a new `--data-dir`, to keep separate migration records for each migration run.
+
+However, it is also possible to safely reuse the same `--data-dir` for a grand new migration run -- in that case, the search command will overwrite the previous run-state files with fresh migration data, based on the current state of the database.
+
+> **⚠️ Important:** Do not run the `migrate-live-content` command without first running `search-new-content-on-live` for a new migration cycle. The migrate command relies on the run-state files created by the search command.
+
 ## Best Practices
 
 1. **Backup First**: Always backup your local staging site before running migrations
@@ -68,6 +96,7 @@ wp newspack-content-diff-migrator migrate-live-content \
 3. **Monitor Logs**: Check log files for any issues or warnings
 4. **Batch Processing**: Use appropriate batch sizes for large migrations
 5. **Memory Limits**: Ensure sufficient PHP memory limits for large content sets, coupled with smaller batches
+6. **Always Run Search Before Migrate**: For each new migration cycle, always run `search-new-content-on-live` before `migrate-live-content` to ensure fresh run-state data
 
 ## Development
 
