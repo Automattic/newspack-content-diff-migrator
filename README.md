@@ -89,6 +89,54 @@ However, it is also possible to safely reuse the same `--data-dir` for a grand n
 
 > **⚠️ Important:** Do not run the `migrate-live-content` command without first running `search-new-content-on-live` for a new migration cycle. The migrate command relies on the run-state files created by the search command.
 
+## Migration Data Consistency Standard
+
+The Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details) defines how previously migrated content is handled on subsequent migration runs. It ensures that changes made on the live site are properly reflected on the local site without creating duplicates.
+
+### Posts (post_type = 'post')
+
+When a post has already been migrated, the search command checks if any of the following fields have changed on live. If so, the post is marked as **modified** and will be fully reimported:
+
+- `post_modified` date
+- `post_status`
+- `post_author`
+- Featured image (`_thumbnail_id`)
+- Taxonomy term relationships (categories, tags, and custom taxonomies) -- includes **CoAuthors Plus co-author** assignments, if the `author` taxonomy terms assigned to a post change on live, the post will be reimported with the updated co-authors
+
+### Pages (post_type = 'page')
+
+Pages are **imported only once**. Existing pages are not updated on subsequent migration runs, even if their content changes on live. New pages will still be imported.
+
+### Attachments
+
+Attachments are imported once, but the following fields are **updated** if they change on live (without reimporting the entire attachment):
+
+- Caption (`post_excerpt`)
+- Description (`post_content`)
+- Alt Text (`_wp_attachment_image_alt`)
+- Media Credit (`_media_credit`)
+- Media Credit URL (`_media_credit_url`)
+
+### Users
+
+Migrated users have the following fields **updated** if they change on live:
+
+- Email (`user_email`)
+- Display Name (`display_name`)
+
+### Categories and Tags
+
+Migrated categories and post tags have the following fields **updated** if they change on live:
+
+- Slug (`wp_terms.slug`)
+- Description (`wp_term_taxonomy.description`)
+
+> **Note:** This also applies to CoAuthors Plus author terms (taxonomy = 'author'), ensuring co-author metadata stays synchronized.
+
+### Custom Post Types
+
+Custom post types (CPTs) are **imported only once**, similar to pages. They are not checked for modifications on subsequent runs.
+
 ## Best Practices
 
 1. **Backup First**: Always backup your local staging site before running migrations
