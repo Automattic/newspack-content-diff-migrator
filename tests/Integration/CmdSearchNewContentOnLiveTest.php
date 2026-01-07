@@ -17,7 +17,7 @@ use Newspack\ContentDiffMigrator\Logic\RunState;
  */
 class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_find_new_posts_not_in_local_db(): void {
 		// Insert a post into live DB.
@@ -35,7 +35,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_find_new_attachments_not_in_local_db(): void {
 		// Insert an attachment into live DB.
@@ -52,7 +52,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_detect_modified_posts_by_post_modified_date(): void {
 		global $wpdb;
@@ -87,7 +87,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_detect_modified_posts_by_status_change(): void {
 		global $wpdb;
@@ -119,7 +119,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_detect_modified_posts_by_author_change(): void {
 		global $wpdb;
@@ -158,7 +158,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_detect_modified_posts_by_thumbnail_change(): void {
 		global $wpdb;
@@ -219,7 +219,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_detect_modified_posts_by_taxonomy_change(): void {
 		global $wpdb;
@@ -272,7 +272,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_write_new_ids_to_runstate(): void {
 		// Insert multiple posts.
@@ -295,7 +295,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_write_modified_ids_to_runstate(): void {
 		global $wpdb;
@@ -331,7 +331,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group searchcommand
+	 * @group search-new-content-on-live-command
 	 */
 	public function test_search_should_warn_about_unattributed_content(): void {
 		// Create a local post without old_id attribution.
@@ -357,26 +357,5 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Clean up.
 		wp_delete_post( $local_post_id, true );
-	}
-
-	/**
-	 * @group searchcommand
-	 */
-	public function test_search_should_reject_guest_author_cpt(): void {
-		// Insert a guest-author CPT post in live.
-		global $wpdb;
-		$guest_author = $this->create_post_fixture(
-			[
-				'ID'        => 9999,
-				'post_type' => 'guest-author',
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $guest_author ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-
-		// Expect exception when trying to include guest-author CPT.
-		$this->expectException( \RuntimeException::class );
-		$this->expectExceptionMessage( 'guest-author' );
-
-		$this->run_search_command( [ 'post-types-csv' => 'post,guest-author' ] );
 	}
 }

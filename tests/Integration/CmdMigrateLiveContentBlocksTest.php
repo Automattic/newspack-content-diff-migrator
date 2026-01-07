@@ -11,6 +11,7 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
 
 /**
  * Integration test class for command cmd_migrate_live_content, blocks migration.
+ * Detailed tests for specific block types is covered by unit test BlockUpdater unit tests.
  *
  * @group integration
  */

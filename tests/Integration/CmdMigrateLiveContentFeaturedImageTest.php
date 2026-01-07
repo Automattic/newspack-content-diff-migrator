@@ -17,7 +17,7 @@ use Newspack\ContentDiffMigrator\Logic\RunState;
  */
 class CmdMigrateLiveContentFeaturedImageTest extends IntegrationTestCase {
 	/**
-	 * @group featuredimage
+	 * @group featured-image
 	 */
 	public function test_should_update_thumbnail_id_from_old_to_new(): void {
 		global $wpdb;
@@ -55,7 +55,7 @@ class CmdMigrateLiveContentFeaturedImageTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group featuredimage
+	 * @group featured-image
 	 */
 	public function test_should_not_update_thumbnail_when_attachment_not_in_map(): void {
 		global $wpdb;
@@ -84,7 +84,7 @@ class CmdMigrateLiveContentFeaturedImageTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group featuredimage
+	 * @group featured-image
 	 */
 	public function test_should_not_update_thumbnail_when_post_has_no_featured_image(): void {
 		global $wpdb;
@@ -103,7 +103,7 @@ class CmdMigrateLiveContentFeaturedImageTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group featuredimage
+	 * @group featured-image
 	 */
 	public function test_should_use_db_attachment_map_not_just_current_batch(): void {
 		global $wpdb;

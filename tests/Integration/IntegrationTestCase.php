@@ -1,8 +1,6 @@
 <?php
 /**
- * Parent class for integration tests for cmd_migrate_live_content command.
- *
- * Contains common functionality for integration tests for cmd_migrate_live_content command.
+ * Parent class for integration tests with common functionality.
  *
  * @package Newspack_Content_Diff_Migrator
  */
@@ -16,10 +14,9 @@ use Newspack\ContentDiffMigrator\Utils\Logger;
 use WP_UnitTestCase;
 
 /**
- * Integration test class for cmd_migrate_live_content command.
+ * Parent integration test class.
  *
  * @group integration
- * @group migrate
  */
 class IntegrationTestCase extends WP_UnitTestCase {
 
@@ -150,7 +147,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Drops cdiff_* tables.
+	 * Drops live site tables.
 	 */
 	protected function drop_live_tables(): void {
 		global $wpdb;
@@ -165,6 +162,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 
 	/**
 	 * Recursively removes a directory and its contents.
+	 * Made for RunState directory cleanup.
 	 *
 	 * @param string $dir Directory path.
 	 */

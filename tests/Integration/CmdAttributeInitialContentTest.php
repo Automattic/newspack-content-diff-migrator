@@ -18,7 +18,7 @@ class CmdAttributeInitialContentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attribution command matches local posts to live posts by composite key.
 	 *
-	 * @group attributecommand
+	 * @group attribute-command
 	 */
 	public function test_attribute_should_match_local_posts_to_live_by_composite_key(): void {
 		global $wpdb;
@@ -74,7 +74,7 @@ class CmdAttributeInitialContentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attribution command matches local attachments to live attachments.
 	 *
-	 * @group attributecommand
+	 * @group attribute-command
 	 */
 	public function test_attribute_should_match_local_attachments_to_live(): void {
 		global $wpdb;
@@ -127,7 +127,7 @@ class CmdAttributeInitialContentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attribution command matches local users to live users by user_login.
 	 *
-	 * @group attributecommand
+	 * @group attribute-command
 	 */
 	public function test_attribute_should_match_local_users_to_live_by_user_login(): void {
 		global $wpdb;
@@ -161,7 +161,7 @@ class CmdAttributeInitialContentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attribution command matches local terms to live terms by slug and taxonomy.
 	 *
-	 * @group attributecommand
+	 * @group attribute-command
 	 */
 	public function test_attribute_should_match_local_terms_to_live_by_slug_and_taxonomy(): void {
 		global $wpdb;
@@ -184,7 +184,7 @@ class CmdAttributeInitialContentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attribution command saves old_id meta for all matched object types.
 	 *
-	 * @group attributecommand
+	 * @group attribute-command
 	 */
 	public function test_attribute_should_save_old_id_meta_for_matched_objects(): void {
 		global $wpdb;
@@ -259,7 +259,7 @@ class CmdAttributeInitialContentTest extends IntegrationTestCase {
 	/**
 	 * Tests that attribution command skips objects that are already attributed.
 	 *
-	 * @group attributecommand
+	 * @group attribute-command
 	 */
 	public function test_attribute_should_skip_already_attributed_objects(): void {
 		global $wpdb;

@@ -18,7 +18,7 @@ use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
  */
 class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 	/**
-	 * @group hostname
+	 * @group source-hostname
 	 */
 	public function test_should_import_content_independently_for_different_source_hostnames(): void {
 		global $wpdb;
@@ -65,7 +65,7 @@ class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group hostname
+	 * @group source-hostname
 	 */
 	public function test_should_not_cross_contaminate_old_ids_between_source_hostnames(): void {
 		global $wpdb;
@@ -87,7 +87,7 @@ class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group hostname
+	 * @group source-hostname
 	 */
 	public function test_should_use_source_specific_meta_key_for_old_ids(): void {
 		// Get meta keys for different sources.
@@ -100,7 +100,7 @@ class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group hostname
+	 * @group source-hostname
 	 */
 	public function test_should_list_all_migrated_source_hostnames(): void {
 		global $wpdb;

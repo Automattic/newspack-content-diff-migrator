@@ -41,7 +41,8 @@ class BlockUpdater {
 	/**
 	 * Constructor.
 	 *
-	 * @param callable $attachment_url_to_postid_resolver Optional callback that takes (url, aliases) and returns post ID.
+	 * @param callable $attachment_url_to_postid_resolver Callback that takes ( string $attachment_url, array $local_hostname_aliases ) and 
+	 *                                                    returns int|null attachment post ID (or null if not found). @see resolve_new_attachment_id().
 	 */
 	public function __construct( callable $attachment_url_to_postid_resolver ) {
 		$this->wp_block_manipulator              = new WpBlockManipulator();

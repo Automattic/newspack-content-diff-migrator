@@ -17,7 +17,7 @@ use Newspack\ContentDiffMigrator\Logic\RunState;
  */
 class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_save_imported_post_to_runstate(): void {
 		$fixture = $this->load_fixture( 'post-basic' );
@@ -36,7 +36,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_skip_already_imported_posts_on_resume(): void {
 		global $wpdb;
@@ -93,7 +93,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_continue_from_last_imported_post_on_resume(): void {
 		global $wpdb;
@@ -127,7 +127,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_save_updated_parent_to_runstate(): void {
 		global $wpdb;
@@ -157,7 +157,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_skip_already_updated_parents_on_resume(): void {
 		global $wpdb;
@@ -195,7 +195,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_save_updated_featured_image_to_runstate(): void {
 		global $wpdb;
@@ -231,7 +231,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_skip_already_updated_featured_images_on_resume(): void {
 		global $wpdb;
@@ -272,7 +272,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that block-updated post IDs are saved to run-state.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_save_updated_blocks_to_runstate(): void {
 		global $wpdb;
@@ -307,7 +307,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that already block-updated posts are skipped on resume.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_skip_already_updated_blocks_on_resume(): void {
 		global $wpdb;
@@ -346,7 +346,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that migration handles empty new_ids.json file gracefully.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_handle_empty_new_ids_json_file(): void {
 		global $wpdb;
@@ -372,7 +372,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that migration handles empty modified_ids.json file gracefully.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_handle_empty_modified_ids_json_file(): void {
 		global $wpdb;
@@ -394,7 +394,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that run-state directory is created if it doesn't exist.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_create_runstate_directory_if_not_exists(): void {
 		global $wpdb;
@@ -422,7 +422,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that manifest.json is written with migration summary.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_write_manifest_json_with_migration_summary(): void {
 		global $wpdb;
@@ -446,7 +446,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that manifest.json can be read correctly.
 	 *
-	 * @group runstate
+	 * @group run-state
 	 */
 	public function test_should_read_manifest_json_correctly(): void {
 		global $wpdb;

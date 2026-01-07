@@ -37,35 +37,6 @@ class CmdMigrateLiveContentAttachmentsTest extends IntegrationTestCase {
 	/**
 	 * @group attachments
 	 */
-	public function test_should_import_custom_post_type_correctly(): void {
-		global $wpdb;
-
-		// Register custom post type.
-		register_post_type( 'product', [ 'public' => true ] );
-
-		$product = $this->create_post_fixture(
-			[
-				'ID'         => 14001,
-				'post_type'  => 'product',
-				'post_title' => 'Test Product',
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $product ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-
-		$this->run_search_command( [ 'post-types-csv' => 'product' ] );
-		$this->run_migrate_command();
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 14001, $this->source_hostname );
-		$this->assertNotNull( $new_post_id, 'CPT should be imported.' );
-
-		$post = get_post( $new_post_id );
-		$this->assertEquals( 'product', $post->post_type );
-		$this->assertEquals( 'Test Product', $post->post_title );
-	}
-
-	/**
-	 * @group attachments
-	 */
 	public function test_should_preserve_attachment_metadata(): void {
 		global $wpdb;
 

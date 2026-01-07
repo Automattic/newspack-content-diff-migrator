@@ -1,6 +1,6 @@
 <?php
 /**
- * Manages migration run-state data and progress.
+ * Manages migration run-state and keeps track of the migration progress.
  *
  * @package Newspack_Content_Diff_Migrator
  */
@@ -11,9 +11,9 @@ use Newspack\ContentDiffMigrator\Utils\Logger;
 use Psr\Log\LogLevel;
 
 /**
- * RunState keeps track of IDs/objects which needs to be migrated, and the progress of the migration.
- * If the migration is interrupted, it will be resumed based on this info.
- * This data is kept in formatted JSON/JSONL files in $run_state_dir path.
+ * RunState keeps track of IDs/objects which need to be migrated, and progress of the migration.
+ * If a migration is interrupted, RunState is used to resume the migration from the last known state.
+ * This data is persisted in JSON/JSONL files in the $run_state_dir path.
  */
 class RunState {
 
@@ -48,8 +48,8 @@ class RunState {
 	}
 
 	/**
-	 * Writes migration manifest, it's basically just a "migration Table of Contents".
-	 * Makes it easy to review when the migration was started and what was migrated.
+	 * Writes a migration manifest, which is basically just a "migration Table of Contents".
+	 * It makes it easier to review when the migration was started and what was migrated.
 	 *
 	 * @param array $manifest Manifest data.
 	 *

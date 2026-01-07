@@ -1,7 +1,7 @@
 <?php
 /**
- * Content Diff migrator exports and imports the content differential from one site to the local site
- * while keeping the existing local content.
+ * Content Diff migrator exports the content differential from an external WordPress site and imports it to the local
+ * WordPress site while keeping the existing local content.
  *
  * @package Newspack_Content_Diff_Migrator
  */
@@ -21,7 +21,6 @@ use WP_CLI;
  * Content Diff Migrator CLI commands class.
  */
 class ContentDiffMigrator {
-
 
 	/**
 	 * Content Diff logic class.
@@ -74,7 +73,7 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Set RunState instance (for testing environment).
+	 * Set RunState instance, used in testing environment.
 	 *
 	 * @param RunState $run_state RunState instance.
 	 */

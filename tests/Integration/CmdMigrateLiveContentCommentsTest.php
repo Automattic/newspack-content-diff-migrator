@@ -16,7 +16,7 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  */
 class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_import_comments_with_correct_post_id(): void {
 		global $wpdb;
@@ -83,7 +83,7 @@ class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_import_commentmeta_for_comment(): void {
 		global $wpdb;
@@ -147,7 +147,7 @@ class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_assign_existing_user_to_comment_when_user_login_matches(): void {
 		global $wpdb;
@@ -210,7 +210,7 @@ class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_create_new_user_for_comment_when_user_does_not_exist(): void {
 		global $wpdb;
@@ -265,7 +265,7 @@ class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_handle_anonymous_comment_with_user_id_zero(): void {
 		global $wpdb;
@@ -313,7 +313,7 @@ class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_update_comment_parent_ids_after_import(): void {
 		global $wpdb;
@@ -388,7 +388,7 @@ class CmdMigrateLiveContentCommentsTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * @group comment
+	 * @group comments
 	 */
 	public function test_should_handle_nested_comment_thread_with_multiple_levels(): void {
 		$fixture = $this->load_fixture( 'post-with-nested-comments' );

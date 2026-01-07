@@ -14,11 +14,11 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  *
  * @group integration
  */
-class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
+class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 	/**
 	 * Tests that posts are detected as modified when post_modified date changes.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_filter_modified_posts_when_post_modified_date_changed(): void {
 		global $wpdb;
@@ -60,7 +60,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that posts are detected as modified when post_status changes.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_filter_modified_posts_when_post_status_changed(): void {
 		global $wpdb;
@@ -88,7 +88,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that posts are detected as modified when post_author changes.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_filter_modified_posts_when_post_author_changed(): void {
 		global $wpdb;
@@ -132,7 +132,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that posts are detected as modified when thumbnail_id changes.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_filter_modified_posts_when_thumbnail_id_changed(): void {
 		global $wpdb;
@@ -174,7 +174,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that posts are detected as modified when taxonomies change.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_filter_modified_posts_when_taxonomies_changed(): void {
 		global $wpdb;
@@ -205,7 +205,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	 * Tests that modified posts are deleted when reimporting.
 	 * Note: Tests deletion behavior only - uses simple post without parent to avoid update_post_parent edge case.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_delete_local_post_before_reimporting_modified_post(): void {
 		global $wpdb;
@@ -254,7 +254,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that deleted modified IDs are saved to run-state.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_update_runstate_with_deleted_modified_ids(): void {
 		global $wpdb;
@@ -292,7 +292,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that modified IDs are correctly identified alongside new IDs and both are imported.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_append_modified_ids_to_new_live_ids_for_reimport(): void {
 		global $wpdb;
@@ -359,7 +359,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	 * Tests that deleted modified ID entries are stored in the run-state for resume capability,
 	 * and subsequent runs correctly skip already-deleted IDs while still reimporting.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_should_skip_already_deleted_modified_ids_on_resume(): void {
 		global $wpdb;
@@ -422,7 +422,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that reimported posts preserve the old_id meta pointing to the live ID.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_should_preserve_old_id_meta(): void {
 		global $wpdb;
@@ -474,7 +474,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that reimporting a post with a parent correctly updates parent relationships.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_post_with_parent_should_update_parent_correctly(): void {
 		global $wpdb;
@@ -540,7 +540,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that reimporting updates post content correctly.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_should_update_post_content(): void {
 		global $wpdb;
@@ -595,7 +595,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that multiple modified posts are all reimported correctly.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_multiple_modified_posts_should_all_reimport(): void {
 		global $wpdb;
@@ -657,7 +657,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests reimporting a child post when the parent was also modified.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_parent_and_child_together(): void {
 		global $wpdb;
@@ -741,7 +741,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that reimporting a post with a featured image correctly updates the _thumbnail_id.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_should_update_featured_image_id(): void {
 		global $wpdb;
@@ -835,7 +835,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests that reimporting a post with block content correctly updates attachment IDs in blocks.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_should_update_attachment_ids_in_blocks(): void {
 		global $wpdb;
@@ -921,7 +921,7 @@ class CmdMigrateLiveContentModifiedPostsTest extends IntegrationTestCase {
 	/**
 	 * Tests reimporting with post meta preserved.
 	 *
-	 * @group modified
+	 * @group posts-modified
 	 */
 	public function test_reimport_should_include_updated_post_meta(): void {
 		global $wpdb;

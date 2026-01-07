@@ -71,9 +71,9 @@ class ContentDiffLogic {
 	 * ContentDiffMigrator constructor.
 	 *
 	 * @param wpdb              $wpdb          Global $wpdb.
-	 * @param BlockUpdater|null $block_updater Optional BlockUpdater instance (for testing).
-	 * @param DataImporter|null $data_importer Optional DataImporter instance (for testing).
-	 * @param DB|null           $db            Optional DB instance (for testing).
+	 * @param BlockUpdater|null $block_updater Optional BlockUpdater instance (null for testing environment).
+	 * @param DataImporter|null $data_importer Optional DataImporter instance (null for testing environment).
+	 * @param DB|null           $db            Optional DB instance (null for testing environment).
 	 */
 	public function __construct(
 		wpdb $wpdb,
@@ -1903,6 +1903,7 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Wrapper which ensures that standardized fields are used for post ID and comparison.
 	 * Builds a composite key for posts, using the standard post field sets for comparison.
 	 * These fields are in line with the Migration Data Consistency Standard which defines the fields that should be used to compare and update posts.
 	 *

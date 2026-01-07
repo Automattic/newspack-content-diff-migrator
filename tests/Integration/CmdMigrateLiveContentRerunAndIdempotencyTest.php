@@ -18,7 +18,7 @@ class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 	/**
 	 * Tests that running migration twice produces the same result.
 	 *
-	 * @group idempotency
+	 * @group rerun-and-idempotency
 	 */
 	public function test_should_produce_same_result_when_running_migration_twice(): void {
 		global $wpdb;
@@ -52,7 +52,7 @@ class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 	/**
 	 * Tests that duplicate posts are not created on rerun.
 	 *
-	 * @group idempotency
+	 * @group rerun-and-idempotency
 	 */
 	public function test_should_not_create_duplicate_posts_on_rerun(): void {
 		global $wpdb;
@@ -83,7 +83,7 @@ class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 	/**
 	 * Tests that duplicate terms are not created on rerun.
 	 *
-	 * @group idempotency
+	 * @group rerun-and-idempotency
 	 */
 	public function test_should_not_create_duplicate_terms_on_rerun(): void {
 		global $wpdb;
@@ -113,7 +113,7 @@ class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 	/**
 	 * Tests that duplicate users are not created on rerun.
 	 *
-	 * @group idempotency
+	 * @group rerun-and-idempotency
 	 */
 	public function test_should_not_create_duplicate_users_on_rerun(): void {
 		global $wpdb;
@@ -152,7 +152,7 @@ class CmdMigrateLiveContentRerunAndIdempotencyTest extends IntegrationTestCase {
 	/**
 	 * Tests that completed steps are skipped on resume.
 	 *
-	 * @group idempotency
+	 * @group rerun-and-idempotency
 	 */
 	public function test_should_skip_completed_steps_on_resume(): void {
 		global $wpdb;

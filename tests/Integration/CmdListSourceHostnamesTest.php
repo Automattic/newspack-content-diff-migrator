@@ -18,7 +18,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that no hostnames are returned when no content has been imported.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_return_empty_when_no_imported_content(): void {
 		$hostnames = $this->logic->get_migrated_source_hostnames();
@@ -28,7 +28,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that hostname is returned after importing content from a single source.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_return_single_hostname_after_import(): void {
 		// Import a post from live DB.
@@ -46,7 +46,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that hostname is detected from post old_id meta.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_detect_hostname_from_post_meta(): void {
 		// Create a local post with old_id meta.
@@ -61,7 +61,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that hostname is detected from user old_id meta.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_detect_hostname_from_user_meta(): void {
 		// Create a local user with old_id meta.
@@ -82,7 +82,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that multiple hostnames are returned when content from different sources exists.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_return_multiple_hostnames_from_different_sources(): void {
 		// Create posts with different source hostnames.
@@ -104,7 +104,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that hostnames are unique even when multiple objects have the same source.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_return_unique_hostnames(): void {
 		// Create multiple posts with same source hostname.
@@ -125,7 +125,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that hostnames from both posts and users are combined.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_combine_hostnames_from_posts_and_users(): void {
 		// Create post with one source.
@@ -151,7 +151,7 @@ class CmdListSourceHostnamesTest extends IntegrationTestCase {
 	/**
 	 * Tests that same hostname from posts and users is deduplicated.
 	 *
-	 * @group listhostnames
+	 * @group list-source-hostnames-command
 	 */
 	public function test_should_deduplicate_hostname_across_posts_and_users(): void {
 		$shared_hostname = 'shared-source.example.com';

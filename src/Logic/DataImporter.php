@@ -13,11 +13,7 @@ use WP_User;
 use wpdb;
 
 /**
- * Imports post-related data including meta, users, comments, and taxonomies.
- *
- * Note: This class references ContentDiffLogic::DATAKEY_* constants for data structure keys,
- * and ContentDiffLogic::get_old_id_meta_key() for meta key generation,
- * as ContentDiffLogic orchestrates the data structure and this class executes persistence.
+ * Imports post-related data for ContentDiffLogic.
  */
 class DataImporter {
 

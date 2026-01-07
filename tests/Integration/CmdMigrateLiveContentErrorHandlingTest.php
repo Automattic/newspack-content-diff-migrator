@@ -19,7 +19,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	/**
 	 * Tests that migration throws exception when new_ids run-state file is not found.
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_throw_when_new_ids_runstate_file_not_found(): void {
 		$this->expectException( \RuntimeException::class );
@@ -34,7 +34,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	 * Note: In practice, DB insert failures are hard to simulate in integration tests.
 	 * This test verifies the command handles posts with unusual but valid data.
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_throw_when_post_insert_fails(): void {
 		global $wpdb;
@@ -55,7 +55,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	 * Tests that old_id postmeta is saved correctly.
 	 * Note: Testing actual insert failure is difficult in integration tests.
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_throw_when_old_id_postmeta_insert_fails(): void {
 		global $wpdb;
@@ -77,7 +77,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	 * Tests that migration continues when postmeta insert encounters issues.
 	 * Tests with a post that has unusual but valid postmeta.
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_log_error_and_continue_when_postmeta_insert_fails(): void {
 		global $wpdb;
@@ -102,7 +102,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	 * Tests that migration continues when comment data has issues.
 	 * Tests with a post that has a comment with missing user reference.
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_log_error_and_continue_when_comment_insert_fails(): void {
 		global $wpdb;
@@ -150,7 +150,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	 * Tests that migration continues when user data has issues.
 	 * Tests with a user that has minimal valid data.
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_log_error_and_continue_when_user_insert_fails(): void {
 		global $wpdb;
@@ -185,7 +185,7 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 	 * Tests that migration continues when term data has issues.
 	 * Tests with a term that has empty description (valid but edge case).
 	 *
-	 * @group errorhandling
+	 * @group error-handling
 	 */
 	public function test_should_log_error_and_continue_when_term_insert_fails(): void {
 		global $wpdb;

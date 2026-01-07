@@ -18,7 +18,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_user_email_when_changed_on_live(): void {
+	public function test_should_update_user_email_when_changed_on_live(): void {
 		global $wpdb;
 
 		// Create and import a user.
@@ -63,7 +63,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_user_display_name_when_changed_on_live(): void {
+	public function test_should_update_user_display_name_when_changed_on_live(): void {
 		global $wpdb;
 
 		$live_user = $this->create_user_fixture(
@@ -102,7 +102,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_not_update_user_login_when_changed_on_live_and_should_create_new_user(): void {
+	public function test_should_not_update_user_login_when_changed_on_live_and_should_create_new_user(): void {
 		global $wpdb;
 
 		$live_user = $this->create_user_fixture(
@@ -147,7 +147,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_attachment_caption_when_changed_on_live(): void {
+	public function test_should_update_attachment_caption_when_changed_on_live(): void {
 		global $wpdb;
 
 		$attachment = $this->create_post_fixture(
@@ -181,7 +181,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_attachment_description_when_changed_on_live(): void {
+	public function test_should_update_attachment_description_when_changed_on_live(): void {
 		global $wpdb;
 
 		$attachment = $this->create_post_fixture(
@@ -215,7 +215,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_attachment_alt_text_when_changed_on_live(): void {
+	public function test_should_update_attachment_alt_text_when_changed_on_live(): void {
 		global $wpdb;
 
 		$attachment = $this->create_post_fixture(
@@ -259,7 +259,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_attachment_media_credit_when_changed_on_live(): void {
+	public function test_should_update_attachment_media_credit_when_changed_on_live(): void {
 		global $wpdb;
 
 		$attachment = $this->create_post_fixture(
@@ -303,7 +303,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_term_slug_when_changed_on_live(): void {
+	public function test_should_update_term_slug_when_changed_on_live(): void {
 		global $wpdb;
 
 		// Create post with category.
@@ -355,7 +355,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_update_term_description_when_changed_on_live(): void {
+	public function test_should_update_term_description_when_changed_on_live(): void {
 		global $wpdb;
 
 		$post = $this->create_post_fixture( [ 'ID' => 13801 ] );
@@ -405,7 +405,7 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	/**
 	 * @group migration-data-consistency-standard
 	 */
-	public function test_mdcs_should_not_update_term_name_when_changed_on_live(): void {
+	public function test_should_not_update_term_name_when_changed_on_live(): void {
 		global $wpdb;
 
 		$post = $this->create_post_fixture( [ 'ID' => 13901 ] );
