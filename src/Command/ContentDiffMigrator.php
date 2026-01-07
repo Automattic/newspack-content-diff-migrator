@@ -115,7 +115,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'CSV of post types to attribute. Default: post,page,attachment.',
+						'description' => 'CSV of post types to attribute. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -189,7 +189,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'custom-taxonomies-csv',
-						'description' => 'CSV of all the taxonomies to import. If you are adding custom taxonomies and modifying this list, make sure to include default WP taxonomies (category,post_tag,author), e.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
+						'description' => 'CSV of all the taxonomies to import. If you are adding custom taxonomies and modifying the defaults, make sure to include default WP taxonomies (category,post_tag,author), e.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -472,7 +472,7 @@ class ContentDiffMigrator {
 		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
-		$post_types        = explode( ',', $assoc_args['post-types-csv'] );
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
 		
 		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
@@ -576,10 +576,13 @@ class ContentDiffMigrator {
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Check modified objects -- according to the Migration Data Consistency Standard -- these will get reimported fully.
+			// Note: Only 'post' type is checked for modifications per the standard. Pages, attachments (handled separately), and CPTs are excluded.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
-			$modified_live_ids = $this->logic->filter_modified_live_ids(
-				$results_live_posts,
-				$results_local_posts,
+			$results_live_posts_for_modified_check  = array_filter( $results_live_posts, fn( $p ) => 'post' === $p['post_type'] );
+			$results_local_posts_for_modified_check = array_filter( $results_local_posts, fn( $p ) => 'post' === $p['post_type'] );
+			$modified_live_ids                      = $this->logic->filter_modified_live_ids(
+				$results_live_posts_for_modified_check,
+				$results_local_posts_for_modified_check,
 				$post_old_id_map,
 				$live_table_prefix,
 				$user_old_id_map,
@@ -641,9 +644,10 @@ class ContentDiffMigrator {
 	public function cmd_migrate_live_content( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		global $wpdb;
 
-		$data_dir          = $assoc_args['data-dir'] ?? false;
-		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
-		$source_hostname   = $assoc_args['source-hostname'] ?? false;
+		$data_dir              = $assoc_args['data-dir'] ?? false;
+		$live_table_prefix     = $assoc_args['live-table-prefix'] ?? false;
+		$source_hostname       = $assoc_args['source-hostname'] ?? false;
+		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 		
 		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
@@ -655,10 +659,8 @@ class ContentDiffMigrator {
 			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
 		}
 
-		// Taxonomies which will be migrated.
-		$taxonomies_to_migrate = explode( ',', $assoc_args['custom-taxonomies-csv'] );
-		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
-		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
+		// In case custom taxonomies were explicitly provided, but category/post_tag/author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
+		if ( isset( $assoc_args['custom-taxonomies-csv'] ) ) {
 			if ( ! in_array( 'category', $taxonomies_to_migrate ) ) {
 				if ( ! $this->test_env ) {
 					WP_CLI::confirm( 'Warning, category was not given in --custom-taxonomies-csv argument and so categories will not be migrated. Continue?' );
