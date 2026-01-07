@@ -152,7 +152,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,some_cpt. Default value is post,attachment.',
+						'description' => 'CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -189,7 +189,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'custom-taxonomies-csv',
-						'description' => 'CSV of all the taxonomies to import, no extra spaces. NOTE, if you are modifying this list, make sure to include category,post_tag,author or else these will not be migrated. E.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
+						'description' => 'CSV of all the taxonomies to import. If you are adding custom taxonomies and modifying this list, make sure to include default WP taxonomies (category,post_tag,author), e.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -466,14 +466,13 @@ class ContentDiffMigrator {
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 * 
-	 * @throws \RuntimeException If file not found or empty.
 	 * @throws \Exception If error occurs.
 	 */
 	public function cmd_search_new_content_on_live( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
-		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'attachment' ];
+		$post_types        = explode( ',', $assoc_args['post-types-csv'] );
 		
 		// Init logger.
 		Logger::instance()->init( __FUNCTION__ );
@@ -483,12 +482,6 @@ class ContentDiffMigrator {
 		global $wpdb;
 		if ( null === $this->run_state ) {
 			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
-		}
-
-		// Disable CAP's "guest-author" CPT.
-		if ( in_array( 'guest-author', $post_types ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
-			throw new \RuntimeException( "CAP's 'guest-author' CPT is not supported at this point as CAP data requires a dedicated migrator for its complexity and special cases. Please remove 'guest-author' from the list of CPTs to migrate and re-run the command." );
 		}
 
 		try {
@@ -662,8 +655,8 @@ class ContentDiffMigrator {
 			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
 		}
 
-		// Default taxonomies which are migrated are defined here.
-		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
+		// Taxonomies which will be migrated.
+		$taxonomies_to_migrate = explode( ',', $assoc_args['custom-taxonomies-csv'] );
 		// In case some custom taxonomies were provided, but category,post_tag,author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( ! empty( $assoc_args['custom-taxonomies-csv'] ) ) {
 			if ( ! in_array( 'category', $taxonomies_to_migrate ) ) {

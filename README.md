@@ -50,7 +50,7 @@ wp newspack-content-diff-migrator search-new-content-on-live \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com \
     --data-dir=/tmp/cdiff_data \
-    [--post-types-csv=post,page,attachment,custom_cpt]
+    [--post-types-csv=post,page,attachment,custom_cpt1,custom_cpt2,guest-author]
 ```
 5. **Migrate Content**: Import the identified content differential to the local site
 ```bash
