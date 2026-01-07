@@ -452,4 +452,128 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 		$term = get_term_by( 'slug', 'name-term', 'category' );
 		$this->assertEquals( 'Original Name', $term->name, 'Term name should NOT be changed per MDCS.' );
 	}
+
+
+	/**
+	 * Tests that pages are NOT detected as modified even when their fields change.
+	 *
+	 * Per the Migration Data Consistency Standard: "Pages only get imported once during the first import
+	 * (and new pages on consecutive migration runs), but existing (already migrated) pages and their fields
+	 * do not get updated later on (even if they change on live)."
+	 *
+	 * @group posts-modified
+	 */
+	public function test_should_not_detect_pages_as_modified_per_standard(): void {
+		global $wpdb;
+
+		// Import a page.
+		$page = $this->create_post_fixture(
+			[
+				'ID'            => 4050,
+				'post_type'     => 'page',
+				'post_title'    => 'Original Page Title',
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $page ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,page,attachment' ] );
+		$this->run_migrate_command();
+
+		$original_page_id = $this->logic->get_current_post_id_by_old_id( 4050, $this->source_hostname );
+		$this->assertNotNull( $original_page_id, 'Page should be imported.' );
+		$original_title = get_post( $original_page_id )->post_title;
+
+		// Modify the page in live (change title and post_modified).
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Modified Page Title',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4050 ]
+		);
+
+		// Run search again.
+		$this->run_search_command( [ 'post-types-csv' => 'post,page,attachment' ] );
+
+		// Page should NOT be in modified IDs.
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4050, $modified_ids, 'Page should NOT be detected as modified per the standard.' );
+
+		// Run migrate to verify page is not reimported.
+		$this->run_migrate_command();
+
+		// Page should still have same local ID (not reimported).
+		$page_id_after = $this->logic->get_current_post_id_by_old_id( 4050, $this->source_hostname );
+		$this->assertEquals( $original_page_id, $page_id_after, 'Page should not be reimported.' );
+
+		// Title should remain unchanged (original value).
+		$title_after = get_post( $page_id_after )->post_title;
+		$this->assertEquals( $original_title, $title_after, 'Page title should not be updated.' );
+	}
+
+	/**
+	 * Tests that posts ARE detected as modified while pages in the same run are NOT.
+	 *
+	 * @group posts-modified
+	 */
+	public function test_should_detect_modified_posts_but_not_pages_in_same_run(): void {
+		global $wpdb;
+
+		// Import both a post and a page.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4051,
+				'post_type'     => 'post',
+				'post_title'    => 'Original Post',
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$page = $this->create_post_fixture(
+			[
+				'ID'            => 4052,
+				'post_type'     => 'page',
+				'post_title'    => 'Original Page',
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'posts', $page ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,page,attachment' ] );
+		$this->run_migrate_command();
+
+		// Modify both in live.
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Modified Post',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4051 ]
+		);
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Modified Page',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4052 ]
+		);
+
+		// Run search.
+		$this->run_search_command( [ 'post-types-csv' => 'post,page,attachment' ] );
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+
+		// Post should be detected as modified.
+		$this->assertArrayHasKey( 4051, $modified_ids, 'Post should be detected as modified.' );
+
+		// Page should NOT be detected as modified.
+		$this->assertArrayNotHasKey( 4052, $modified_ids, 'Page should NOT be detected as modified.' );
+	}
 }
