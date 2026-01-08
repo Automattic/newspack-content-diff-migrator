@@ -38,9 +38,9 @@ This plugin operates exclusively through WP-CLI commands. It's designed to be ru
 
 1. **Prepare Live Site Data**: Ensure you have access to the live site's database
 2. **Import Live Tables**: Import live site database tables with a specific prefix
-3. **Attribute Initial Content** (if local site was cloned from source): Create source-specific metadata for existing content
+3. **Attribute Existing Content** (e.g. if local site was cloned from source): Create source-specific metadata for this content so that it can be matched (properly compared) during subsequent migration runs
 ```bash
-wp newspack-content-diff-migrator attribute-initial-content \
+wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com
 ```
@@ -256,10 +256,12 @@ wp newspack-content-diff-migrator migrate-live-content \
 
 ### Attributing Initial Content
 
-If your local site was initially cloned from a source hostname, you should attribute existing content before running content-diff. This creates the necessary source-specific metadata for proper tracking:
+If your local site was initially cloned from a source hostname, since the content will not have the specific source-hostname metadata telling Content Diff Migrator which source site it belongs to, you should first attribute that existing content to a source hostname before running the content-diff commands.
+
+This creates the necessary source-specific metadata for proper tracking, so that the content can be matched (properly compared) during subsequent migration runs:
 
 ```bash
-wp newspack-content-diff-migrator attribute-initial-content \
+wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com
 ```
@@ -301,7 +303,7 @@ DELETE FROM wp_usermeta WHERE meta_key = 'newspackcontentdiff_live_id';
 After cleaning legacy metadata, attribute the existing content on site the source hostname you are migrating:
 
 ```bash
-wp newspack-content-diff-migrator attribute-initial-content \
+wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
     --live-table-prefix=eg1_ \
     --source-hostname=www.example-1.com
 ```

@@ -93,8 +93,8 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-diff-migrator attribute-initial-content',
-			[ __CLASS__, 'cmd_attribute_initial_content' ],
+			'newspack-content-diff-migrator attribute-existing-content-to-hostname',
+			[ __CLASS__, 'cmd_attribute_existing_content_to_hostname' ],
 			[
 				'shortdesc' => 'Attributes existing local content to a source hostname by comparing with those live DB tables and adding source-specific metadata.',
 				'synopsis'  => [
@@ -296,15 +296,15 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-diff-migrator attribute-initial-content`.
+	 * Callable for `newspack-content-diff-migrator attribute-existing-content-to-hostname`.
 	 *
-	 * Attributes/assigns existing local content to a source hostname by comparing with live DB
-	 * and adding source-specific metadata.
+	 * Attributes existing local content to a source hostname by comparing with live DB and adding
+	 * source-specific metadata.
 	 *
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 */
-	public function cmd_attribute_initial_content( array $args, array $assoc_args ): void {
+	public function cmd_attribute_existing_content_to_hostname( array $args, array $assoc_args ): void {
 		global $wpdb;
 
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
@@ -524,7 +524,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					'Found %d objects without old_id meta for source %s (posts and CPTs: %d, attachments: %d, users: %d, terms: %d). Consider running `attribute-initial-content` if you wish to match these objects during migration.',
+					'Found %d objects without old_id meta for source %s (posts and CPTs: %d, attachments: %d, users: %d, terms: %d). Consider running `attribute-existing-content-to-hostname` if you wish to match these objects during migration.',
 					$unattributed_total,
 					$source_hostname,
 					$unattributed_posts,

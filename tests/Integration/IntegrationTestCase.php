@@ -375,7 +375,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Calls cmd_attribute_initial_content with given arguments.
+	 * Calls cmd_attribute_existing_content_to_hostname with given arguments.
 	 *
 	 * @param array $assoc_args Associative arguments for the command.
 	 */
@@ -385,7 +385,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 			'source-hostname'   => $this->source_hostname,
 		];
 
-		$this->command->cmd_attribute_initial_content( [], array_merge( $default_args, $assoc_args ) );
+		$this->command->cmd_attribute_existing_content_to_hostname( [], array_merge( $default_args, $assoc_args ) );
 	}
 
 	/**

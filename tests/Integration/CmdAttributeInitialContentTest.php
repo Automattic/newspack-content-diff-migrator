@@ -1,6 +1,6 @@
 <?php
 /**
- * Integration tests for cmd_attribute_initial_content command.
+ * Integration tests for cmd_attribute_existing_content_to_hostname command.
  *
  * @package Newspack_Content_Diff_Migrator
  */
@@ -10,7 +10,7 @@ namespace Newspack\ContentDiffMigrator\Tests\Integration;
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
 
 /**
- * Integration test class for cmd_attribute_initial_content command.
+ * Integration test class for cmd_attribute_existing_content_to_hostname command.
  *
  * @group integration
  */
