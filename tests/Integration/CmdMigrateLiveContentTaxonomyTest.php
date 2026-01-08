@@ -1198,4 +1198,212 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
 		$this->assertContains( 'Orphan Child', $categories, 'Orphan child category should be migrated.' );
 	}
+
+	/**
+	 * Tests that when a post is reimported after a tag is removed on live,
+	 * the reimported post no longer has that tag.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_not_have_the_tag_assigned_when_reimporting_modified_post_with_tag_removed_on_live(): void {
+		global $wpdb;
+
+		// Create post with a tag.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 7001,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create tag.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7101, 'name' => 'Tag To Remove', 'slug' => 'tag-to-remove', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7101, 'term_id' => 7101, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7001, 'term_taxonomy_id' => 7101 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 7001, $this->source_hostname );
+		$tags        = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
+		$this->assertContains( 'Tag To Remove', $tags, 'Tag should be assigned after initial import.' );
+
+		// Remove tag relationship on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7001, 'term_taxonomy_id' => 7101 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 7001 ]
+		);
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify tag was removed after reimport.
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 7001, $this->source_hostname );
+		$tags_after         = wp_get_post_terms( $reimported_post_id, 'post_tag', [ 'fields' => 'names' ] );
+		$this->assertNotContains( 'Tag To Remove', $tags_after, 'Tag should be removed after reimport.' );
+	}
+
+	/**
+	 * Tests that when a post has multiple tags and one is removed on live,
+	 * the reimported post has only the remaining tags.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_not_have_the_tag_assigned_when_post_has_multiple_tags_and_one_removed(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 7002,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create three tags.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7201, 'name' => 'Tag Alpha', 'slug' => 'tag-alpha', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7201, 'term_id' => 7201, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7002, 'term_taxonomy_id' => 7201 ] ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7202, 'name' => 'Tag Beta', 'slug' => 'tag-beta', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7202, 'term_id' => 7202, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7002, 'term_taxonomy_id' => 7202 ] ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7203, 'name' => 'Tag Gamma', 'slug' => 'tag-gamma', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7203, 'term_id' => 7203, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7002, 'term_taxonomy_id' => 7203 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 7002, $this->source_hostname );
+		$tags        = wp_get_post_terms( $new_post_id, 'post_tag', [ 'fields' => 'names' ] );
+		$this->assertCount( 3, $tags, 'Post should have 3 tags after initial import.' );
+
+		// Remove Tag Beta on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7002, 'term_taxonomy_id' => 7202 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 7002 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 7002, $this->source_hostname );
+		$tags_after         = wp_get_post_terms( $reimported_post_id, 'post_tag', [ 'fields' => 'names' ] );
+
+		$this->assertCount( 2, $tags_after, 'Post should have 2 tags after reimport.' );
+		$this->assertContains( 'Tag Alpha', $tags_after, 'Tag Alpha should remain.' );
+		$this->assertNotContains( 'Tag Beta', $tags_after, 'Tag Beta should be removed.' );
+		$this->assertContains( 'Tag Gamma', $tags_after, 'Tag Gamma should remain.' );
+	}
+
+	/**
+	 * Tests that when a post is reimported after a category is removed on live,
+	 * the reimported post no longer has that category.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_not_have_the_category_assigned_when_reimporting_modified_post_with_category_removed_on_live(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 7003,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7301, 'name' => 'Category To Remove', 'slug' => 'category-to-remove', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7301, 'term_id' => 7301, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7003, 'term_taxonomy_id' => 7301 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 7003, $this->source_hostname );
+		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+		$this->assertContains( 'Category To Remove', $categories, 'Category should be assigned after initial import.' );
+
+		// Remove category relationship on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7003, 'term_taxonomy_id' => 7301 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 7003 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 7003, $this->source_hostname );
+		$categories_after   = wp_get_post_terms( $reimported_post_id, 'category', [ 'fields' => 'names' ] );
+		$this->assertNotContains( 'Category To Remove', $categories_after, 'Category should be removed after reimport.' );
+	}
+
+	/**
+	 * Tests that categories that exist in live but are not assigned to any imported post
+	 * are not created locally.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_not_import_category_when_not_assigned_to_any_post(): void {
+		global $wpdb;
+
+		// Create a post that DOES get imported.
+		$post = $this->create_post_fixture( [ 'ID' => 7004 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category assigned to the post.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7401, 'name' => 'Used Category', 'slug' => 'used-category', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7401, 'term_id' => 7401, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 7004, 'term_taxonomy_id' => 7401 ] ); // phpcs:ignore
+
+		// Create unused category (exists in live but NOT assigned to any post).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 7402, 'name' => 'Unused Category', 'slug' => 'unused-category', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 7402, 'term_id' => 7402, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 0 ] ); // phpcs:ignore
+		// No term_relationships for 7402 - it's not used.
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify used category was imported.
+		$used_term = get_term_by( 'slug', 'used-category', 'category' );
+		$this->assertNotFalse( $used_term, 'Used category should be imported.' );
+
+		// Verify unused category was NOT imported.
+		$unused_term = get_term_by( 'slug', 'unused-category', 'category' );
+		$this->assertFalse( $unused_term, 'Unused category should NOT be imported.' );
+	}
 }

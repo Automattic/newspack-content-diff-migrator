@@ -1141,4 +1141,283 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 		$new_meta = get_post_meta( $new_local_id, 'custom_meta_key', true );
 		$this->assertEquals( 'updated_value', $new_meta, 'Reimported post should have updated meta.' );
 	}
+
+
+	/**
+	 * Tests that when a post is reimported after a comment is deleted on live,
+	 * the reimported post no longer has that comment.
+	 *
+	 * @group comments
+	 */
+	public function test_should_remove_comment_when_reimporting_modified_post_with_comment_deleted_on_live(): void {
+		global $wpdb;
+
+		// Create post with a comment.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 8001,
+				'post_modified' => '2024-01-01 10:00:00',
+				'comment_count' => '2',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create comment.
+		$comment = [
+			'comment_ID'           => 8101,
+			'comment_post_ID'      => 8001,
+			'comment_author'       => 'Test Commenter',
+			'comment_author_email' => 'commenter@example.com',
+			'comment_author_url'   => '',
+			'comment_author_IP'    => '127.0.0.1',
+			'comment_date'         => '2024-01-01 12:00:00',
+			'comment_date_gmt'     => '2024-01-01 12:00:00',
+			'comment_content'      => 'This comment will be deleted.',
+			'comment_karma'        => 0,
+			'comment_approved'     => '1',
+			'comment_agent'        => '',
+			'comment_type'         => 'comment',
+			'comment_parent'       => 0,
+			'user_id'              => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'comments', $comment ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 8001, $this->source_hostname );
+		$comments    = get_comments( [ 'post_id' => $new_post_id ] );
+		$this->assertCount( 1, $comments, 'Post should have 1 comment after initial import.' );
+		$this->assertEquals( 'This comment will be deleted.', $comments[0]->comment_content );
+
+		// Delete comment on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'comments', [ 'comment_ID' => 8101 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 8001 ]
+		);
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify comment was removed after reimport.
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 8001, $this->source_hostname );
+		$comments_after     = get_comments( [ 'post_id' => $reimported_post_id ] );
+		$this->assertCount( 0, $comments_after, 'Post should have no comments after reimport with comment deleted on live.' );
+	}
+
+	/**
+	 * Tests that when a post has multiple comments and one is deleted on live,
+	 * only the remaining comments exist after reimport.
+	 *
+	 * @group comments
+	 */
+	public function test_should_remove_one_comment_when_post_has_multiple_comments_and_one_deleted(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 8002,
+				'post_modified' => '2024-01-01 10:00:00',
+				'comment_count' => 1,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create three comments.
+		$comment_base = [
+			'comment_post_ID'      => 8002,
+			'comment_author'       => 'Commenter',
+			'comment_author_email' => 'commenter@example.com',
+			'comment_author_url'   => '',
+			'comment_author_IP'    => '127.0.0.1',
+			'comment_date'         => '2024-01-01 12:00:00',
+			'comment_date_gmt'     => '2024-01-01 12:00:00',
+			'comment_karma'        => 0,
+			'comment_approved'     => '1',
+			'comment_agent'        => '',
+			'comment_type'         => 'comment',
+			'comment_parent'       => 0,
+			'user_id'              => 0,
+		];
+
+		$wpdb->insert( $this->live_table_prefix . 'comments', array_merge( $comment_base, [ 'comment_ID' => 8201, 'comment_content' => 'Comment Alpha' ] ) ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'comments', array_merge( $comment_base, [ 'comment_ID' => 8202, 'comment_content' => 'Comment Beta' ] ) ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'comments', array_merge( $comment_base, [ 'comment_ID' => 8203, 'comment_content' => 'Comment Gamma' ] ) ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 8002, $this->source_hostname );
+		$comments    = get_comments(
+			[
+				'post_id' => $new_post_id,
+				'orderby' => 'comment_content',
+				'order'   => 'ASC',
+			] 
+		);
+		$this->assertCount( 3, $comments, 'Post should have 3 comments after initial import.' );
+
+		// Delete Comment Beta on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'comments', [ 'comment_ID' => 8202 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 8002 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 8002, $this->source_hostname );
+		$comments_after     = get_comments(
+			[
+				'post_id' => $reimported_post_id,
+				'orderby' => 'comment_content',
+				'order'   => 'ASC',
+			] 
+		);
+
+		$this->assertCount( 2, $comments_after, 'Post should have 2 comments after reimport.' );
+
+		$comment_contents = wp_list_pluck( $comments_after, 'comment_content' );
+		$this->assertContains( 'Comment Alpha', $comment_contents, 'Comment Alpha should remain.' );
+		$this->assertNotContains( 'Comment Beta', $comment_contents, 'Comment Beta should be removed.' );
+		$this->assertContains( 'Comment Gamma', $comment_contents, 'Comment Gamma should remain.' );
+	}
+
+
+	/**
+	 * Tests that when a post is reimported after a postmeta entry is deleted on live,
+	 * the reimported post no longer has that postmeta.
+	 *
+	 * @group posts
+	 */
+	public function test_should_remove_postmeta_when_reimporting_modified_post_with_meta_deleted_on_live(): void {
+		global $wpdb;
+
+		// Create post with custom meta.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 15001,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Add postmeta.
+		$wpdb->insert( // phpcs:ignore
+			$this->live_table_prefix . 'postmeta',
+			[
+				'meta_id'    => 15101,
+				'post_id'    => 15001,
+				'meta_key'   => 'custom_meta_to_delete',
+				'meta_value' => 'This meta will be deleted.', // phpcs:ignore
+			]
+		);
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 15001, $this->source_hostname );
+		$meta_value  = get_post_meta( $new_post_id, 'custom_meta_to_delete', true );
+		$this->assertEquals( 'This meta will be deleted.', $meta_value, 'Meta should exist after initial import.' );
+
+		// Delete meta on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 15101 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 15001 ]
+		);
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify meta was removed after reimport.
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 15001, $this->source_hostname );
+		$meta_after         = get_post_meta( $reimported_post_id, 'custom_meta_to_delete', true );
+		$this->assertEmpty( $meta_after, 'Meta should be removed after reimport with meta deleted on live.' );
+	}
+
+	/**
+	 * Tests that when a post has multiple postmeta entries and one is deleted on live,
+	 * only the remaining metas exist after reimport.
+	 *
+	 * @group posts
+	 */
+	public function test_should_remove_one_postmeta_when_post_has_multiple_metas_and_one_deleted(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 15002,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Add three postmeta entries.
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 15201, 'post_id' => 15002, 'meta_key' => 'meta_alpha', 'meta_value' => 'Alpha Value' ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 15202, 'post_id' => 15002, 'meta_key' => 'meta_beta', 'meta_value' => 'Beta Value' ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 15203, 'post_id' => 15002, 'meta_key' => 'meta_gamma', 'meta_value' => 'Gamma Value' ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 15002, $this->source_hostname );
+		$this->assertEquals( 'Alpha Value', get_post_meta( $new_post_id, 'meta_alpha', true ) );
+		$this->assertEquals( 'Beta Value', get_post_meta( $new_post_id, 'meta_beta', true ) );
+		$this->assertEquals( 'Gamma Value', get_post_meta( $new_post_id, 'meta_gamma', true ) );
+
+		// Delete meta_beta on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 15202 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 15002 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 15002, $this->source_hostname );
+
+		$this->assertEquals( 'Alpha Value', get_post_meta( $reimported_post_id, 'meta_alpha', true ), 'Meta Alpha should remain.' );
+		$this->assertEmpty( get_post_meta( $reimported_post_id, 'meta_beta', true ), 'Meta Beta should be removed.' );
+		$this->assertEquals( 'Gamma Value', get_post_meta( $reimported_post_id, 'meta_gamma', true ), 'Meta Gamma should remain.' );
+	}
 }
