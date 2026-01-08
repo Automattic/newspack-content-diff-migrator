@@ -1,6 +1,6 @@
 <?php
 /**
- * Integration tests for cmd_list_previously_migrated_source_hostnames command.
+ * Integration tests for cmd_list_migrated_source_hostnames command.
  *
  * @package Newspack_Content_Diff_Migrator
  */
@@ -10,7 +10,7 @@ namespace Newspack\ContentDiffMigrator\Tests\Integration;
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
 
 /**
- * Integration test class for cmd_list_previously_migrated_source_hostnames command.
+ * Integration test class for cmd_list_migrated_source_hostnames command.
  *
  * @group integration
  */

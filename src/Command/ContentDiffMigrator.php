@@ -87,7 +87,7 @@ class ContentDiffMigrator {
 	public static function register_commands(): void {
 		WP_CLI::add_command(
 			'newspack-content-diff-migrator list-previously-migrated-source-hostnames',
-			[ __CLASS__, 'cmd_list_previously_migrated_source_hostnames' ],
+			[ __CLASS__, 'cmd_list_migrated_source_hostnames' ],
 			[
 				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
 			]
@@ -279,7 +279,7 @@ class ContentDiffMigrator {
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 */
-	public function cmd_list_previously_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_list_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		Logger::instance()->init( __FUNCTION__ );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
 
@@ -498,7 +498,7 @@ class ContentDiffMigrator {
 		}
 
 		// List previously migrated source hostnames.
-		$this->cmd_list_previously_migrated_source_hostnames( [], [] );
+		$this->cmd_list_migrated_source_hostnames( [], [] );
 
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
@@ -680,7 +680,7 @@ class ContentDiffMigrator {
 		}
 
 		// List previously migrated source hostnames.
-		$this->cmd_list_previously_migrated_source_hostnames( [], [] );
+		$this->cmd_list_migrated_source_hostnames( [], [] );
 
 		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
 		// Read post_types from manifest (saved by search command).
