@@ -41,8 +41,10 @@ class BlockUpdater {
 	/**
 	 * Constructor.
 	 *
-	 * @param callable $attachment_url_to_postid_resolver Callback that takes ( string $attachment_url, array $local_hostname_aliases ) and 
-	 *                                                    returns int|null attachment post ID (or null if not found). @see resolve_new_attachment_id().
+	 * @param callable $attachment_url_to_postid_resolver Callback that takes ( string $attachment_url, array $local_hostname_aliases ) and
+	 *                                                    returns int|null attachment post ID (or null if not found).
+	 *                                                    This resolver is used to look up local attachment IDs by URL when updating block content.
+	 *                                                    @see resolve_new_attachment_id().
 	 */
 	public function __construct( callable $attachment_url_to_postid_resolver ) {
 		$this->wp_block_manipulator              = new WpBlockManipulator();
@@ -61,6 +63,17 @@ class BlockUpdater {
 
 	/**
 	 * Updates attachment IDs in all supported block types.
+	 *
+	 * Supported block types:
+	 * - wp:image (also covers native wp:gallery block)
+	 * - wp:audio
+	 * - wp:video
+	 * - wp:file
+	 * - wp:cover
+	 * - wp:media-text
+	 * - wp:jetpack/tiled-gallery
+	 * - wp:jetpack/slideshow
+	 * - wp:jetpack/image-compare
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference, will be updated.

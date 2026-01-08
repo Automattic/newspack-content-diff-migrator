@@ -1,6 +1,6 @@
 <?php
 /**
- * Simple Local Avatars helper htility.
+ * Simple Local Avatars helper utility.
  *
  * @package Newspack_Content_Diff_Migrator
  */

@@ -200,7 +200,10 @@ class DB {
 	/**
 	 * This function will handle the operation to move data from the
 	 * incompatibly collated table to the new compatible table.
-	 * Speed settings are auto-determined based on total size of tables being fixed.
+	 *
+	 * Speed settings are auto-determined based on total size of tables being fixed:
+	 * - Small datasets (< 4GB): 250K records/batch, no sleep between batches
+	 * - Large datasets (>= 4GB): 100K records/batch, 5s sleep between batches
 	 *
 	 * @param string $prefix           Live table prefix.
 	 * @param string $table            The Core WP Table to address.
@@ -213,8 +216,8 @@ class DB {
 		$four_gb_in_bytes = 4 * 1024 * 1024 * 1024;
 		$is_small_dataset = $total_size_bytes < $four_gb_in_bytes;
 
-		// Speed settings: small datasets get aggressive batching, large datasets get throttled.
-		$records_per_transaction = $is_small_dataset ? 1000000 : 500000;
+		// Speed settings: small datasets get faster batching, large datasets get throttled.
+		$records_per_transaction = $is_small_dataset ? 250000 : 100000;
 		$sleep_between_batches   = $is_small_dataset ? 0 : 5;
 		$sleep_after_table       = 10;
 

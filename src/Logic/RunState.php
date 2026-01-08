@@ -189,13 +189,10 @@ class RunState {
 
 	/**
 	 * Returns a map of "old => new" post IDs which already had their post_parent updated.
-	 * 
-	 * The updated parent run-state data contains some more keys and values, not all are returned here:
-	 * - id_old: int Old Live ID.
-	 * - id_new: int New Local ID.
-	 * - parent_id_old: int Old Live Parent ID.
-	 * - parent_id_new: int New Local Parent ID.
-	 * 
+	 *
+	 * Note: The underlying run-state file contains additional data (parent_id_old, parent_id_new)
+	 * which is not included in this simplified ID mapping return value.
+	 *
 	 * @return array Keys are old live post IDs, values are new local post IDs, or empty array if file doesn't exist.
 	 */
 	public function get_updated_parents_post_ids_map(): array {

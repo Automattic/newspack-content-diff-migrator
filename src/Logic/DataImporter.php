@@ -104,7 +104,7 @@ class DataImporter {
 	}
 
 	/**
-	 * Imports author/user and updates post author.
+	 * Gets or creates the post author user, then updates the post's author ID if needed.
 	 *
 	 * @param array  $data            Post data array.
 	 * @param int    $post_id         New post ID.
@@ -925,7 +925,7 @@ class DataImporter {
 	}
 
 	/**
-	 * Filters a multidimensional array and searches for all subarray elemens containing a key and value.
+	 * Filters a multidimensional array and searches for all subarray elements containing a key and value.
 	 *
 	 * @param array $data  Array being searched and filtered.
 	 * @param mixed $key   Array key to search for.
@@ -1116,17 +1116,17 @@ class DataImporter {
 	 *
 	 * @param string $table_prefix    DB table prefix.
 	 * @param string $term_name       Term name.
-	 * @param string $taxonomy_array        Taxonomy type.
-	 * @param string $taxonomy_parent Parent term_id.
+	 * @param string $taxonomy_name   Taxonomy type/name.
+	 * @param int    $taxonomy_parent Parent term_id.
 	 *
 	 * @return array|null Taxonomy data or null.
 	 */
-	private function get_taxonomy_array_by_name_and_parent( string $table_prefix, string $term_name, string $taxonomy_array, $taxonomy_parent ): ?array {
+	private function get_taxonomy_array_by_name_and_parent( string $table_prefix, string $term_name, string $taxonomy_name, $taxonomy_parent ): ?array {
 		$table_terms         = esc_sql( $table_prefix . 'terms' );
 		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
 
 		// phpcs:disable -- wpdb::prepare used.
-		$taxonomy_array = $this->wpdb->get_row(
+		$taxonomy_data = $this->wpdb->get_row(
 			$this->wpdb->prepare(
 				"SELECT t.term_id, tt.taxonomy, t.name, t.slug, tt.parent, tt.description, tt.count
 				FROM $table_terms t
@@ -1134,7 +1134,7 @@ class DataImporter {
 				WHERE tt.taxonomy = %s
 				AND tt.parent = %s
 				AND t.name = %s;",
-				$taxonomy_array,
+				$taxonomy_name,
 				$taxonomy_parent,
 				$term_name
 			),
@@ -1142,7 +1142,7 @@ class DataImporter {
 		);
 		// phpcs:enable
 
-		return $taxonomy_array;
+		return $taxonomy_data;
 	}
 
 	/**
