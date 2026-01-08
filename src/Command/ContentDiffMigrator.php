@@ -115,7 +115,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'CSV of post types to attribute. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -152,7 +152,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -189,7 +189,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'custom-taxonomies-csv',
-						'description' => 'CSV of all the taxonomies to import. If you are adding custom taxonomies and modifying the defaults, make sure to include default WP taxonomies (category,post_tag,author), e.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $taxonomies_to_migrate. CSV of all the taxonomies to import. If you are adding custom taxonomies and modifying the defaults, make sure to include default WP taxonomies (category,post_tag,author), e.g. --custom-taxonomies-csv=post_tag,category,author,brand,custom_taxonomy.',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -293,6 +293,8 @@ class ContentDiffMigrator {
 		foreach ( $source_sites as $site ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '  - %s', $site ) );
 		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
 	}
 
 	/**
@@ -345,7 +347,7 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
 		}
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching local content (CPTs %s and suers) to live DB, and attributing matches to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching local content (CPTs %s and users) to live DB, and attributing matches to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
 		
 		// Process non-attachment post types.
 		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
@@ -456,8 +458,7 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
 		}
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done!' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
 	}
 
 	/**
@@ -631,6 +632,7 @@ class ContentDiffMigrator {
 			],
 		];
 		$this->run_state->write_manifest( $manifest );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
 	}
 
 	/**
@@ -811,6 +813,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', RunState::FILE_MANIFEST ) );
 
 		wp_cache_flush();
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
 	}
 
 	/**
