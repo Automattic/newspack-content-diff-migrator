@@ -151,15 +151,15 @@ class CmdMigrateLiveContentE2ETest extends IntegrationTestCase {
 		// Run migrate command.
 		$this->run_migrate_command();
 
-		// Verify post was reimported (new ID should be different).
+		// Verify post was reimported with preserved ID.
 		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( $live_post_id, $this->source_hostname );
 		$this->assertNotNull( $reimported_post_id, 'Post should have been reimported.' );
-		// The reimported post will have a different ID.
-		$this->assertNotEquals( $new_post_id, $reimported_post_id, 'Reimported post should have different ID.' );
+		// The reimported post preserves its local ID.
+		$this->assertEquals( $new_post_id, $reimported_post_id, 'Reimported post should preserve its local ID.' );
 
-		// Verify old post was deleted.
-		$old_post = get_post( $new_post_id );
-		$this->assertNull( $old_post, 'Old post should have been deleted.' );
+		// Verify post exists at the preserved ID.
+		$post = get_post( $reimported_post_id );
+		$this->assertNotNull( $post, 'Reimported post should exist at preserved ID.' );
 	}
 
 	/**
