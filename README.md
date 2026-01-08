@@ -91,7 +91,20 @@ However, it is also possible to safely reuse the same `--data-dir` for a grand n
 
 ## Migration Data Consistency Standard
 
-The Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details) defines how previously migrated content is handled on subsequent migration runs. It ensures that changes made on the live site are properly reflected on the local site without creating duplicates.
+The Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details) defines how previously migrated content is handled and which fields get updated on subsequent migration runs. It ensures that changes made on the live site are reflected on the local site with a curated set of rules which match Newspack's optimal migration workflow.
+
+### How It Works
+
+The plugin uses two complementary update strategies, depending on the object type:
+
+| Object Type | Detection | Update Method |
+|-------------|-----------|---------------|
+| **Posts** | 5 fields checked on each run | Full reimport (delete + reimport) |
+| **Pages** | Not checked | Import once only |
+| **Attachments** | Checked on each run | Individual field updates |
+| **Users** | Checked on each run | Individual field updates |
+| **Terms** (categories, tags) | Checked on each run | Individual field updates |
+| **Custom Post Types** | Not checked | Import once only |
 
 ### Posts (post_type = 'post')
 
@@ -103,13 +116,31 @@ When a post has already been migrated, the search command checks if any of the f
 - Featured image (`_thumbnail_id`)
 - Taxonomy term relationships (categories, tags, and custom taxonomies) -- includes **CoAuthors Plus co-author** assignments, if the `author` taxonomy terms assigned to a post change on live, the post will be reimported with the updated co-authors
 
+> **Why Full Reimport for Posts?**
+>
+> Modified posts use a "full reimport" strategy: the local post is deleted and then reimported fresh from the live site.
+
+However this reimport of the modified post **preserves its local `wp_posts.ID`**. The post gets reimported with the same ID, ensuring any external references to the reimported local post ID remain valid. The original live ID is also preserved in the `newspackcontentdiff_oldid_{hostname}` postmeta for mapping.
+
+This approach elegantly handles the complexity of post updates:
+>
+> - **Block content**: Attachment IDs embedded in Gutenberg blocks are automatically updated to local IDs
+> - **Featured images**: Thumbnail references are properly mapped to local attachment IDs
+> - **Taxonomies**: All term relationships are reimported fresh
+> - **Postmeta**: All post metadata is synchronized
+> - **Comments**: All comments and comment metadata are reimported
+> - **Parent references**: Post parent IDs are updated to local IDs
+>
+> This single operation ensures all related data is consistent, rather than attempting to diff and update individual fields which could miss embedded ID references in content.
+>
+
 ### Pages (post_type = 'page')
 
 Pages are **imported only once**. Existing pages are not updated on subsequent migration runs, even if their content changes on live. New pages will still be imported.
 
 ### Attachments
 
-Attachments are imported once, but the following fields are **updated** if they change on live (without reimporting the entire attachment):
+Attachments are imported once, but the following fields are **updated individually** if they change on live (without reimporting the entire attachment):
 
 - Caption (`post_excerpt`)
 - Description (`post_content`)
@@ -117,21 +148,25 @@ Attachments are imported once, but the following fields are **updated** if they 
 - Media Credit (`_media_credit`)
 - Media Credit URL (`_media_credit_url`)
 
+> Individual field updates preserve the attachment's local ID, which is important since this ID may be referenced in post content blocks and featured image settings.
+
 ### Users
 
-Migrated users have the following fields **updated** if they change on live:
+Migrated users have the following fields **updated individually** if they change on live:
 
 - Email (`user_email`)
 - Display Name (`display_name`)
 
+> Individual field updates preserve the user's local ID, which is important since this ID is used as `post_author` in posts.
+
 ### Categories and Tags
 
-Migrated categories and post tags have the following fields **updated** if they change on live:
+Migrated categories and post tags have the following fields **updated individually** if they change on live:
 
 - Slug (`wp_terms.slug`)
 - Description (`wp_term_taxonomy.description`)
 
-> **Note:** This also applies to CoAuthors Plus author terms (taxonomy = 'author'), ensuring co-author metadata stays synchronized.
+> Individual field updates preserve the term's local ID, which is important since this ID is used in term relationships with posts. This also applies to CoAuthors Plus author terms (taxonomy = 'author'), ensuring co-author metadata stays synchronized.
 
 ### Custom Post Types
 
