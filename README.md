@@ -225,7 +225,7 @@ The source hostname is used to namespace the "old ID" metadata, ensuring that ol
 To see which source hostnames have already been imported:
 
 ```bash
-wp newspack-content-diff-migrator list-source-hostnames
+wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 ```
 
 ### Workflow for Multiple Sources

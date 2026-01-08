@@ -86,8 +86,8 @@ class ContentDiffMigrator {
 	 */
 	public static function register_commands(): void {
 		WP_CLI::add_command(
-			'newspack-content-diff-migrator list-source-hostnames',
-			[ __CLASS__, 'cmd_list_source_hostnames' ],
+			'newspack-content-diff-migrator list-previously-migrated-source-hostnames',
+			[ __CLASS__, 'cmd_list_previously_migrated_source_hostnames' ],
 			[
 				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
 			]
@@ -272,29 +272,27 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-diff-migrator list-source-hostnames`.
+	 * Callable for `newspack-content-diff-migrator list-previously-migrated-source-hostnames`.
 	 *
 	 * Lists all source hostnames from which content has been imported.
 	 *
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 */
-	public function cmd_list_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_list_previously_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		Logger::instance()->init( __FUNCTION__ );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
 		if ( empty( $source_sites ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No source hostnames found.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previously migrated source hostnames found.' );
 			return;
 		}
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrated source hostnames:' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Previously migrated source hostnames:' );
 		foreach ( $source_sites as $site ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '  - %s', $site ) );
 		}
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
 	}
 
 	/**
@@ -499,6 +497,9 @@ class ContentDiffMigrator {
 			);
 		}
 
+		// Call command to list previously migrated source hostnames.
+		$this->cmd_list_previously_migrated_source_hostnames( [], [] );
+
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" ); // phpcs:ignore -- table prefix string value was escaped.
@@ -695,6 +696,9 @@ class ContentDiffMigrator {
 				]
 			);
 		}
+
+		// Call command to list previously migrated source hostnames.
+		$this->cmd_list_previously_migrated_source_hostnames( [], [] );
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
