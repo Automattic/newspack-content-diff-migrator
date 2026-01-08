@@ -954,9 +954,15 @@ class ContentDiffMigrator {
 		// Get IDs which were already imported, and skip them.
 		$already_imported_ids_map = $this->run_state->get_imported_post_ids_map() ?? [];
 
-		// Modified posts ($deleted_modified_ids_map, they were deleted so that they could be reimported) should not be skipped.
+		// Modified posts (which were deleted and should be reimported) should not be skipped, unless their reimport already completed.
+		// Check if the post actually exists at the preserved ID to determine if reimport is already completed.
 		$deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
-		foreach ( array_keys( $deleted_modified_ids_map ) as $live_id ) {
+		foreach ( $deleted_modified_ids_map as $live_id => $deleted_local_id ) {
+			// If the post exists at the preserved ID, reimport already completed - don't force reimport.
+			if ( null !== get_post( (int) $deleted_local_id ) ) {
+				continue;
+			}
+			// Post was deleted but not yet reimported - force reimport by removing from skip list.
 			unset( $already_imported_ids_map[ $live_id ] );
 		}
 
@@ -978,13 +984,19 @@ class ContentDiffMigrator {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
 			}
 
+			// Check if this is a modified post being reimported - if so, preserve its local ID.
+			$existing_local_id = isset( $deleted_modified_ids_map[ (int) $id_live ] )
+				? (int) $deleted_modified_ids_map[ (int) $id_live ]
+				: null;
+
 			// Import single post via Logic.
 			try {
 				$result                = $this->logic->import_single_post(
 					(int) $id_live,
 					$this->live_table_prefix,
 					$taxonomies_to_migrate,
-					$source_hostname
+					$source_hostname,
+					$existing_local_id
 				);
 				$imported_posts_data[] = $result;
 
