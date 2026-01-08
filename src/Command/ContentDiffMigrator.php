@@ -294,6 +294,13 @@ class ContentDiffMigrator {
 		Logger::instance()->init( __FUNCTION__ );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
+		// Introductory message (CLI only).
+		Logger::instance()->log(
+			Logger::OUTPUT_CLI,
+			LogLevel::INFO,
+			sprintf( 'This command will match existing local content to live DB records (assign migration metas) and thereby attribute this content to source hostname "%s". That will let Content Diff know that this content came from this specificsource hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences.', $source_hostname )
+		);
+
 		// Validate DBs.
 		try {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
@@ -307,6 +314,18 @@ class ContentDiffMigrator {
 					'skip-tables'       => 'options',
 				]
 			);
+		}
+
+		// Show count of unattributed content that will be processed.
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types, null );
+		if ( 0 === $unattributed_count ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, 'No unattributed content found. Nothing to do.' );
+			return;
+		}
+
+		// Confirmation prompt.
+		if ( ! $this->test_env ) {
+			WP_CLI::confirm( sprintf( 'This will attribute ALL matched content to source hostname "%s". Continue?', $source_hostname ) );
 		}
 
 		// Variables.
@@ -493,7 +512,10 @@ class ContentDiffMigrator {
 		);
 
 		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
-		$this->check_and_warn_if_there_is_unattributed_content( $post_types, $source_hostname );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types, $source_hostname );
+		if ( $unattributed_count > 0 && ! $this->test_env ) {
+			WP_CLI::confirm( 'This content will not be considered/compared during migration. Continue anyway, or stop now in order to first run `attribute-existing-content-to-hostname`?' );
+		}
 
 		// Get post types other than attachments.
 		$post_types_non_attachments = $post_types;
@@ -664,7 +686,10 @@ class ContentDiffMigrator {
 		if ( is_null( $manifest ) ) {
 			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', esc_html( RunState::FILE_MANIFEST ) ) );
 		}
-		$this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'], $source_hostname );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'], $source_hostname );
+		if ( $unattributed_count > 0 && ! $this->test_env ) {
+			WP_CLI::confirm( 'This content will not be considered/compared during migration. Continue anyway, or stop now in order to first run `attribute-existing-content-to-hostname`?' );
+		}
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
@@ -916,14 +941,16 @@ class ContentDiffMigrator {
 	 *   - terms
 	 * that don't have old_id meta attribution.
 	 * 
-	 * If any unattributed content is found, it logs a warning suggesting to run the
-	 * `attribute-existing-content-to-hostname` command.
+	 * If any unattributed content is found, it logs a warning. The caller is responsible for
+	 * handling the confirmation/flow based on the returned count.
 	 *
 	 * @param array   $post_types      Post types to check for unattributed content.
 	 * @param ?string $source_hostname If provided, checks for content without attribution to this specific hostname.
 	 *                                 If null, checks for content without ANY old_id attribution.
+	 *
+	 * @return int Total count of unattributed objects.
 	 */
-	private function check_and_warn_if_there_is_unattributed_content( array $post_types, ?string $source_hostname = null ): void {
+	private function check_and_warn_if_there_is_unattributed_content( array $post_types, ?string $source_hostname = null ): int {
 		$posts_info = $this->logic->get_unattributed_posts_info( $source_hostname, $post_types );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		$attachments_info = in_array( 'attachment', $post_types, true )
@@ -944,7 +971,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					'Found %d objects without old_id meta for %s (posts and CPTs: %s, attachments: %s, users: %s, terms: %s). Consider running `attribute-existing-content-to-hostname` if you wish to match these objects during migration.',
+					'Found %d objects without old_id meta for %s (posts/CPTs: %s, attachments: %s, users: %s, terms: %s).',
 					$total,
 					$source_description,
 					$this->format_count_with_ids_log_message_info( $posts_info ),
@@ -953,11 +980,9 @@ class ContentDiffMigrator {
 					$this->format_count_with_ids_log_message_info( $terms_info )
 				)
 			);
-			// Prompt if user wants to stop and exit now, in order to first run the `attribute-existing-content-to-hostname` command.
-			if ( ! $this->test_env ) {
-				WP_CLI::confirm( 'Note, this existing content will not be considered/compared during migration. Do you want to stop and exit now, in order to first run the `attribute-existing-content-to-hostname` command?' );
-			}
 		}
+
+		return $total;
 	}
 
 	/**
