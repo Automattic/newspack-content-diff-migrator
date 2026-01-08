@@ -1292,10 +1292,12 @@ class ContentDiffLogic {
 	 * Fetches post data, inserts the post, imports all related data (meta, author, comments, taxonomies),
 	 * and saves the source-specific old ID meta.
 	 *
-	 * @param int    $id_live                               Live post ID to import.
-	 * @param string $live_table_prefix     Live database table prefix.
-	 * @param array  $taxonomies_to_migrate List of taxonomies allowed to be migrated.
-	 * @param string $source_hostname       Source hostname for meta key.
+	 * @param int      $id_live               Live post ID to import.
+	 * @param string   $live_table_prefix     Live database table prefix.
+	 * @param array    $taxonomies_to_migrate List of taxonomies allowed to be migrated.
+	 * @param string   $source_hostname       Source hostname for meta key.
+	 * @param int|null $existing_local_id     Optional. If provided, the post will be inserted with this ID
+	 *                                        (for reimporting modified posts while preserving their local ID).
 	 *
 	 * @throws \RuntimeException If post insertion fails.
 	 *
@@ -1304,21 +1306,22 @@ class ContentDiffLogic {
 	 *
 	 *     @type string $post_type Post type of the imported post.
 	 *     @type int    $id_old    Original live post ID.
-	 *     @type int    $id_new    New local post ID.
+	 *     @type int    $id_new    New local post ID (either preserved or auto-generated).
 	 * }
 	 */
 	public function import_single_post(
 		int $id_live,
 		string $live_table_prefix,
 		array $taxonomies_to_migrate,
-		string $source_hostname
+		string $source_hostname,
+		?int $existing_local_id = null
 	): array {
 		// Get all post data from live DB.
 		$post_data = $this->get_post_data( $id_live, $live_table_prefix );
 		$post_type = $post_data[ self::DATAKEY_POST ]['post_type'];
 
-		// Insert the post row to get the new ID.
-		$post_id_new = $this->insert_post( $post_data[ self::DATAKEY_POST ] );
+		// Insert the post row (optionally preserving an existing local ID for reimports).
+		$post_id_new = $this->insert_post( $post_data[ self::DATAKEY_POST ], $existing_local_id );
 
 		// Import all related post data (meta, author, comments, taxonomies). Errors are logged directly by DataImporter.
 		$this->data_importer->import_post_data( $post_id_new, $post_data, $live_table_prefix, $taxonomies_to_migrate, $source_hostname );
@@ -1730,23 +1733,32 @@ class ContentDiffLogic {
 	/**
 	 * Inserts Post.
 	 *
-	 * @param array $post_row `post` row.
+	 * @param array    $post_row    `post` row.
+	 * @param int|null $preserve_id Optional. If provided, the post will be inserted with this specific ID.
+	 *                              This is useful for reimporting modified posts while preserving their local ID.
 	 *
 	 * @throws \RuntimeException In case insert fails.
 	 *
 	 * @return int Inserted Post ID.
 	 */
-	public function insert_post( array $post_row ): int {
+	public function insert_post( array $post_row, ?int $preserve_id = null ): int {
 		$insert_post_row = $post_row;
 		$orig_id         = $insert_post_row['ID'];
-		unset( $insert_post_row['ID'] );
+
+		if ( null !== $preserve_id ) {
+			// Preserve the specified ID (for reimporting modified posts).
+			$insert_post_row['ID'] = $preserve_id;
+		} else {
+			// Let MySQL auto-increment assign a new ID.
+			unset( $insert_post_row['ID'] );
+		}
 
 		$inserted = $this->wpdb->insert( $this->wpdb->posts, $insert_post_row );
 		if ( 1 != $inserted ) {
 			throw new \RuntimeException( sprintf( 'Error inserting post, ID %d, post row %s', $orig_id, wp_json_encode( $post_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
 
-		return $this->wpdb->insert_id;
+		return $preserve_id ?? $this->wpdb->insert_id;
 	}
 
 	/**
