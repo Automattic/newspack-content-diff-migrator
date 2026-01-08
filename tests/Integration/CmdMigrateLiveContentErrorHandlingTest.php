@@ -25,7 +25,21 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 		$this->expectException( \RuntimeException::class );
 		$this->expectExceptionMessage( RunState::FILE_NEW_IDS );
 
-		// Don't run search command (so new_ids.json won't exist).
+		// Write manifest (required before migrate can proceed).
+		$this->run_state->write_manifest(
+			[
+				'created_at'        => gmdate( 'Y-m-d H:i:s' ),
+				'source_hostname'   => $this->source_hostname,
+				'live_table_prefix' => $this->live_table_prefix,
+				'post_types'        => [ 'post', 'page', 'attachment' ],
+				'counts'            => [
+					'new_ids'      => 0,
+					'modified_ids' => 0,
+				],
+			] 
+		);
+
+		// Don't write new_ids.json (so it won't exist).
 		$this->run_migrate_command();
 	}
 

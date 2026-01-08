@@ -424,110 +424,117 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Counts posts that don't have old_id attribution for a given source hostname.
+	 * Gets informative logger info about posts that don't have old_id attribution.
 	 *
-	 * @param string $source_hostname Source hostname.
-	 * @param array  $post_types      Post types to check (excludes 'attachment').
+	 * @param ?string $source_hostname If provided, checks for posts without attribution to this hostname.
+	 *                                 If null, checks for posts without ANY old_id attribution.
+	 * @param array   $post_types      Post types to check (excludes 'attachment').
 	 *
-	 * @return int Count of unattributed posts.
+	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function count_unattributed_posts( string $source_hostname, array $post_types ): int {
-		$meta_key = $this->get_old_id_meta_key( $source_hostname );
-
+	public function get_unattributed_posts_info( ?string $source_hostname, array $post_types ): array {
 		// Filter out attachments - they have their own method.
-		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
-		if ( empty( $post_types_non_attachments ) ) {
-			return 0;
+		$post_types_filtered = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
+		if ( empty( $post_types_filtered ) ) {
+			return [ 'count' => 0, 'sample_ids' => [] ];
 		}
 
+		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types_filtered ), '%s' ) );
+		$meta_condition          = null !== $source_hostname
+			? $this->wpdb->prepare( 'pm.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
+			: $this->wpdb->prepare( 'pm.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
+
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types_non_attachments ), '%s' ) );
-		$result = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
-				"SELECT COUNT(*) FROM {$this->wpdb->posts} p
-				LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = %s
-				WHERE p.post_type IN ( {$post_types_placeholders} )
-				AND p.post_status IN ('publish', 'future', 'draft', 'pending', 'private')
-				AND pm.meta_id IS NULL;",
-				array_merge( [ $meta_key ], $post_types_non_attachments )
-			)
+		$base_query = "FROM {$this->wpdb->posts} p
+			LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND {$meta_condition}
+			WHERE p.post_type IN ( {$post_types_placeholders} )
+			AND p.post_status IN ('publish', 'future', 'draft', 'pending', 'private')
+			AND pm.meta_id IS NULL";
+
+		$count = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare( "SELECT COUNT(*) {$base_query}", $post_types_filtered )
 		);
+		$sample_ids = array_map( 'intval', $this->wpdb->get_col(
+			$this->wpdb->prepare( "SELECT p.ID {$base_query} LIMIT 10", $post_types_filtered )
+		) );
 		// phpcs:enable
 
-		return $result;
+		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
 	}
 
 	/**
-	 * Counts attachments that don't have old_id attribution for a given source hostname.
+	 * Gets informative logger info about attachments that don't have old_id attribution.
 	 *
-	 * @param string $source_hostname Source hostname.
+	 * @param ?string $source_hostname If provided, checks for attachments without attribution to this hostname.
+	 *                                 If null, checks for attachments without ANY old_id attribution.
 	 *
-	 * @return int Count of unattributed attachments.
+	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function count_unattributed_attachments( string $source_hostname ): int {
-		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+	public function get_unattributed_attachments_info( ?string $source_hostname ): array {
+		$meta_condition = null !== $source_hostname
+			? $this->wpdb->prepare( 'pm.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
+			: $this->wpdb->prepare( 'pm.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
 
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$result = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
-				"SELECT COUNT(*) FROM {$this->wpdb->posts} p
-				LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = %s
-				WHERE p.post_type = 'attachment'
-				AND p.post_status = 'inherit'
-				AND pm.meta_id IS NULL;",
-				$meta_key
-			)
-		);
+		$base_query = "FROM {$this->wpdb->posts} p
+			LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND {$meta_condition}
+			WHERE p.post_type = 'attachment' AND p.post_status = 'inherit' AND pm.meta_id IS NULL";
+
+		$count      = (int) $this->wpdb->get_var( "SELECT COUNT(*) {$base_query}" );
+		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT p.ID {$base_query} LIMIT 10" ) );
 		// phpcs:enable
 
-		return $result;
+		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
 	}
 
 	/**
-	 * Counts users that don't have old_id attribution for a given source hostname.
+	 * Gets informative logger info about users that don't have old_id attribution.
 	 *
-	 * @param string $source_hostname Source hostname.
+	 * @param ?string $source_hostname If provided, checks for users without attribution to this hostname.
+	 *                                 If null, checks for users without ANY old_id attribution.
 	 *
-	 * @return int Count of unattributed users.
+	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function count_unattributed_users( string $source_hostname ): int {
-		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+	public function get_unattributed_users_info( ?string $source_hostname ): array {
+		$meta_condition = null !== $source_hostname
+			? $this->wpdb->prepare( 'um.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
+			: $this->wpdb->prepare( 'um.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
 
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$result = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
-				"SELECT COUNT(*) FROM {$this->wpdb->users} u
-				LEFT JOIN {$this->wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = %s
-				WHERE um.umeta_id IS NULL;",
-				$meta_key
-			)
-		);
+		$base_query = "FROM {$this->wpdb->users} u
+			LEFT JOIN {$this->wpdb->usermeta} um ON u.ID = um.user_id AND {$meta_condition}
+			WHERE um.umeta_id IS NULL";
+
+		$count      = (int) $this->wpdb->get_var( "SELECT COUNT(*) {$base_query}" );
+		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT u.ID {$base_query} LIMIT 10" ) );
 		// phpcs:enable
-		
-		return $result;
+
+		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
 	}
 
 	/**
-	 * Counts terms that don't have old_id attribution for a given source hostname.
+	 * Gets informative logger info about terms that don't have old_id attribution.
 	 *
-	 * @param string $source_hostname Source hostname.
+	 * @param ?string $source_hostname If provided, checks for terms without attribution to this hostname.
+	 *                                 If null, checks for terms without ANY old_id attribution.
 	 *
-	 * @return int Count of unattributed terms.
+	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function count_unattributed_terms( string $source_hostname ): int {
-		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+	public function get_unattributed_terms_info( ?string $source_hostname ): array {
+		$meta_condition = null !== $source_hostname
+			? $this->wpdb->prepare( 'tm.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
+			: $this->wpdb->prepare( 'tm.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
 
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$result = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
-				"SELECT COUNT(*) FROM {$this->wpdb->terms} t
-				LEFT JOIN {$this->wpdb->termmeta} tm ON t.term_id = tm.term_id AND tm.meta_key = %s
-				WHERE tm.meta_id IS NULL;",
-				$meta_key
-			)
-		);
+		$base_query = "FROM {$this->wpdb->terms} t
+			LEFT JOIN {$this->wpdb->termmeta} tm ON t.term_id = tm.term_id AND {$meta_condition}
+			WHERE tm.meta_id IS NULL";
+
+		$count      = (int) $this->wpdb->get_var( "SELECT COUNT(*) {$base_query}" );
+		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT t.term_id {$base_query} LIMIT 10" ) );
 		// phpcs:enable
-		return $result;
+
+		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
 	}
 
 	/**

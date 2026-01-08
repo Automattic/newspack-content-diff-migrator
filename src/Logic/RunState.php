@@ -60,6 +60,15 @@ class RunState {
 	}
 
 	/**
+	 * Gets the manifest data.
+	 *
+	 * @return array|null Manifest data, or null if file doesn't exist.
+	 */
+	public function get_manifest(): ?array {
+		return $this->read_json( self::FILE_MANIFEST );
+	}
+
+	/**
 	 * Writes new IDs to be migrated.
 	 *
 	 * @param array $ids Array of IDs.

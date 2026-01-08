@@ -497,7 +497,7 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// Call command to list previously migrated source hostnames.
+		// List previously migrated source hostnames.
 		$this->cmd_list_previously_migrated_source_hostnames( [], [] );
 
 		// Search distinct Post types in live DB.
@@ -515,27 +515,8 @@ class ContentDiffMigrator {
 			}
 		);
 
-		// Check is there is any unattributed content on local site (posts and CPTs, attachments, users, terms which already exist on local site, and have not been attributed to source hostname, i.e. no "old_id meta", so they will not be considered/compared during migration), and warn if found.
-		$unattributed_posts       = $this->logic->count_unattributed_posts( $source_hostname, $post_types );
-		$unattributed_attachments = in_array( 'attachment', $post_types, true ) ? $this->logic->count_unattributed_attachments( $source_hostname ) : 0;
-		$unattributed_users       = $this->logic->count_unattributed_users( $source_hostname );
-		$unattributed_terms       = $this->logic->count_unattributed_terms( $source_hostname );
-		$unattributed_total       = $unattributed_posts + $unattributed_attachments + $unattributed_users + $unattributed_terms;
-		if ( $unattributed_total > 0 ) {
-			Logger::instance()->log(
-				Logger::OUTPUT_BOTH,
-				LogLevel::WARNING,
-				sprintf(
-					'Found %d objects without old_id meta for source %s (posts and CPTs: %d, attachments: %d, users: %d, terms: %d). Consider running `attribute-existing-content-to-hostname` if you wish to match these objects during migration.',
-					$unattributed_total,
-					$source_hostname,
-					$unattributed_posts,
-					$unattributed_attachments,
-					$unattributed_users,
-					$unattributed_terms
-				)
-			);
-		}
+		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
+		$this->check_and_warn_if_there_is_unattributed_content( $post_types, $source_hostname );
 
 		// Get post types other than attachments.
 		$post_types_non_attachments = $post_types;
@@ -627,6 +608,7 @@ class ContentDiffMigrator {
 			'created_at'        => gmdate( 'Y-m-d H:i:s' ),
 			'source_hostname'   => $source_hostname,
 			'live_table_prefix' => $live_table_prefix,
+			'post_types'        => $post_types,
 			'counts'            => [
 				'new_ids'      => count( $new_live_ids ),
 				'modified_ids' => count( $modified_live_ids ),
@@ -642,7 +624,7 @@ class ContentDiffMigrator {
 	 * @param array $args       CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 * 
-	 * @throws \RuntimeException If file not found or empty.
+	 * @throws \RuntimeException If run-state file not found or empty.
 	 */
 	public function cmd_migrate_live_content( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		global $wpdb;
@@ -697,8 +679,16 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// Call command to list previously migrated source hostnames.
+		// List previously migrated source hostnames.
 		$this->cmd_list_previously_migrated_source_hostnames( [], [] );
+
+		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
+		// Read post_types from manifest (saved by search command).
+		$manifest = $this->run_state->get_manifest();
+		if ( is_null( $manifest ) ) {
+			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', esc_html( RunState::FILE_MANIFEST ) ) );
+		}
+		$this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'], $source_hostname );
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
@@ -936,6 +926,76 @@ class ContentDiffMigrator {
 		}
 
 		return $taxonomies_to_migrate;
+	}
+
+	/**
+	 * Checks for unattributed content and logs a warning if found. Checks for:
+	 *   - posts and CPTs,
+	 *   - attachments,
+	 *   - users, and
+	 *   - terms
+	 * that don't have old_id meta attribution.
+	 * 
+	 * If any unattributed content is found, it logs a warning suggesting to run the
+	 * `attribute-existing-content-to-hostname` command.
+	 *
+	 * @param array   $post_types      Post types to check for unattributed content.
+	 * @param ?string $source_hostname If provided, checks for content without attribution to this specific hostname.
+	 *                                 If null, checks for content without ANY old_id attribution.
+	 */
+	private function check_and_warn_if_there_is_unattributed_content( array $post_types, ?string $source_hostname = null ): void {
+		$posts_info = $this->logic->get_unattributed_posts_info( $source_hostname, $post_types );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$attachments_info = in_array( 'attachment', $post_types, true )
+			? $this->logic->get_unattributed_attachments_info( $source_hostname )
+			: [
+				'count'      => 0,
+				'sample_ids' => [],
+			];
+		$users_info       = $this->logic->get_unattributed_users_info( $source_hostname );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$terms_info = $this->logic->get_unattributed_terms_info( $source_hostname );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		$total = $posts_info['count'] + $attachments_info['count'] + $users_info['count'] + $terms_info['count'];
+		if ( $total > 0 ) {
+			$source_description = null !== $source_hostname ? "source '{$source_hostname}'" : 'any source';
+			Logger::instance()->log(
+				Logger::OUTPUT_BOTH,
+				LogLevel::WARNING,
+				sprintf(
+					'Found %d objects without old_id meta for %s (posts and CPTs: %s, attachments: %s, users: %s, terms: %s). Consider running `attribute-existing-content-to-hostname` if you wish to match these objects during migration.',
+					$total,
+					$source_description,
+					$this->format_count_with_ids_log_message_info( $posts_info ),
+					$this->format_count_with_ids_log_message_info( $attachments_info ),
+					$this->format_count_with_ids_log_message_info( $users_info ),
+					$this->format_count_with_ids_log_message_info( $terms_info )
+				)
+			);
+			// Prompt if user wants to stop and exit now, in order to first run the `attribute-existing-content-to-hostname` command.
+			if ( ! $this->test_env ) {
+				WP_CLI::confirm( 'Note, this existing content will not be considered/compared during migration. Do you want to stop and exit now, in order to first run the `attribute-existing-content-to-hostname` command?' );
+			}
+		}
+	}
+
+	/**
+	 * Formats a count with sample IDs for display.
+	 *
+	 * @param array $info Array with 'count' and 'sample_ids' keys.
+	 *
+	 * @return string Formatted like "5 [IDs: 1,2,3,4,5]" or "15 [IDs: 1,2,...,10,...]" or "0".
+	 */
+	private function format_count_with_ids_log_message_info( array $info ): string {
+		if ( 0 === $info['count'] ) {
+			return '0';
+		}
+		$ids_str = implode( ',', $info['sample_ids'] );
+		if ( $info['count'] > count( $info['sample_ids'] ) ) {
+			$ids_str .= ',...';
+		}
+		return sprintf( '%d [IDs: %s]', $info['count'], $ids_str );
 	}
 
 	/**

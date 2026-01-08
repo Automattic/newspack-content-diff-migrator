@@ -90,7 +90,19 @@ class CmdMigrateLiveContentE2ETest extends IntegrationTestCase {
 	 * @group e2e
 	 */
 	public function test_should_complete_migration_with_empty_new_ids_list(): void {
-		// Write empty new_ids file.
+		// Write manifest and empty new_ids file.
+		$this->run_state->write_manifest(
+			[
+				'created_at'        => gmdate( 'Y-m-d H:i:s' ),
+				'source_hostname'   => $this->source_hostname,
+				'live_table_prefix' => $this->live_table_prefix,
+				'post_types'        => [ 'post', 'page', 'attachment' ],
+				'counts'            => [
+					'new_ids'      => 0,
+					'modified_ids' => 0,
+				],
+			] 
+		);
 		$this->run_state->write_new_ids( [] );
 		$this->run_state->write_modified_ids( [] );
 
@@ -166,7 +178,19 @@ class CmdMigrateLiveContentE2ETest extends IntegrationTestCase {
 	 * @group e2e
 	 */
 	public function test_should_return_early_when_no_new_or_modified_posts(): void {
-		// Write empty new_ids and modified_ids.
+		// Write manifest and empty new_ids and modified_ids.
+		$this->run_state->write_manifest(
+			[
+				'created_at'        => gmdate( 'Y-m-d H:i:s' ),
+				'source_hostname'   => $this->source_hostname,
+				'live_table_prefix' => $this->live_table_prefix,
+				'post_types'        => [ 'post', 'page', 'attachment' ],
+				'counts'            => [
+					'new_ids'      => 0,
+					'modified_ids' => 0,
+				],
+			] 
+		);
 		$this->run_state->write_new_ids( [] );
 		$this->run_state->write_modified_ids( [] );
 
