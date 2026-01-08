@@ -229,7 +229,7 @@ class ContentDiffMigrator {
 			'newspack-content-diff-migrator correct-collations-for-live-wp-tables',
 			[ __CLASS__, 'cmd_correct_collations_for_live_wp_tables' ],
 			[
-				'shortdesc' => 'This command will handle the necessary operations to match collations across Live and Core WP tables',
+				'shortdesc' => 'This command will handle the necessary operations to match collations across Live and Core WP tables. Speed is auto-determined based on total table size.',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
@@ -240,30 +240,9 @@ class ContentDiffMigrator {
 					],
 					[
 						'type'        => 'assoc',
-						'name'        => 'mode',
-						'description' => 'Determines how large the SQL insert transactions are and the latency between them.',
-						'optional'    => true,
-						'default'     => 'regular',
-						'options'     => [
-							'aggressive',
-							'regular',
-							'slow',
-						],
-						'repeating'   => false,
-					],
-					[
-						'type'        => 'assoc',
 						'name'        => 'skip-tables',
 						'description' => 'Skip checking a particular set of tables from the collation checks.',
 						'optional'    => true,
-						'repeating'   => false,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'backup-table-prefix',
-						'description' => 'Prefix to use when backing up the Live tables.',
-						'optional'    => true,
-						'default'     => 'bak_',
 						'repeating'   => false,
 					],
 				],
@@ -325,7 +304,6 @@ class ContentDiffMigrator {
 				[],
 				[
 					'live-table-prefix' => $live_table_prefix,
-					'mode'              => 'generous',
 					'skip-tables'       => 'options',
 				]
 			);
@@ -486,12 +464,11 @@ class ContentDiffMigrator {
 		try {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " - about to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " About to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
 					'live-table-prefix' => $live_table_prefix,
-					'mode'              => 'regular',
 					'skip-tables'       => 'options',
 				]
 			);
@@ -668,12 +645,11 @@ class ContentDiffMigrator {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --mode=regular --skip-tables=options` ..." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now running command `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
 					'live-table-prefix' => $live_table_prefix,
-					'mode'              => 'regular',
 					'skip-tables'       => 'options',
 				]
 			);
@@ -854,51 +830,44 @@ class ContentDiffMigrator {
 	/**
 	 * This function will execute the necessary steps to get Live WP
 	 * tables to match the collation of Core WP tables.
+	 * Speed is auto-determined based on total size of tables to fix.
 	 *
 	 * @param array $args Positional arguments.
 	 * @param array $assoc_args Optional arguments.
 	 */
 	public function cmd_correct_collations_for_live_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$live_table_prefix = $assoc_args['live-table-prefix'];
-		$mode              = $assoc_args['mode'];
-		$backup_prefix     = isset( $assoc_args['backup-table-prefix'] ) ? $assoc_args['backup-table-prefix'] : 'collationbak_';
 		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 		
 		Logger::instance()->init( __FUNCTION__ );
 
 		$tables_with_differing_collations = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
 
-		if ( ! empty( $tables_with_differing_collations ) ) {
-			ob_start();
-			\WP_CLI\Utils\format_items( 'table', $tables_with_differing_collations, array_keys( $tables_with_differing_collations[0] ) );
-			$output = ob_get_clean();
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $output );
-
+		if ( empty( $tables_with_differing_collations ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All table collations already match. Nothing to fix.' );
+			return;
 		}
 
+		ob_start();
+		\WP_CLI\Utils\format_items( 'table', $tables_with_differing_collations, array_keys( $tables_with_differing_collations[0] ) );
+		$output = ob_get_clean();
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $output );
+
+		// Calculate total size of tables to fix for speed determination.
+		$table_names      = array_map( fn( $t ) => $t['live_table_name'], $tables_with_differing_collations );
+		$total_size_bytes = $this->db->get_total_table_size_bytes( $table_names );
+		$total_size_gb    = round( $total_size_bytes / ( 1024 * 1024 * 1024 ), 2 );
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Total size of tables to fix: %.2f GB', $total_size_gb ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Using %s mode.', $total_size_bytes < 4 * 1024 * 1024 * 1024 ? 'fast (< 4GB)' : 'throttled (>= 4GB)' ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, "Now fixing $live_table_prefix tables collations..." );
-		switch ( $mode ) {
-			case 'aggressive':
-				$records_per_transaction = 50000;
-				$sleep_in_seconds        = 1;
-				break;
-			case 'regular':
-				$records_per_transaction = 10000;
-				$sleep_in_seconds        = 2;
-				break;
-			case 'slow':
-				$records_per_transaction = 1000;
-				$sleep_in_seconds        = 3;
-				break;
-			default:
-				$records_per_transaction = 10000;
-				$sleep_in_seconds        = 2;
-				break;
-		}
+
 		foreach ( $tables_with_differing_collations as $result ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Addressing ' . $result['table'] . ' table...' );
-			$this->db->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $records_per_transaction, $sleep_in_seconds, $backup_prefix );
+			$this->db->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $total_size_bytes );
 		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Collation fixing complete. All backup tables have been deleted.' );
 	}
 
 	/**

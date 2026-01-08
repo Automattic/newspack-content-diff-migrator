@@ -171,26 +171,61 @@ class DB {
 	}
 
 	/**
+	 * Calculates the total size (data + index) in bytes for the given tables.
+	 *
+	 * @param array $table_names Full table names (with prefix).
+	 *
+	 * @return int Total size in bytes.
+	 */
+	public function get_total_table_size_bytes( array $table_names ): int {
+		if ( empty( $table_names ) ) {
+			return 0;
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $table_names ), '%s' ) );
+		$db_name      = DB_NAME;
+		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+		$query = $this->wpdb->prepare(
+			"SELECT SUM(DATA_LENGTH + INDEX_LENGTH) as total_bytes
+			FROM information_schema.TABLES
+			WHERE TABLE_SCHEMA = %s AND TABLE_NAME IN ($placeholders)",
+			array_merge( [ $db_name ], $table_names )
+		);
+		$result = $this->wpdb->get_var( $query );
+		// phpcs:enable
+
+		return (int) ( $result ?? 0 );
+	}
+
+	/**
 	 * This function will handle the operation to move data from the
 	 * incompatibly collated table to the new compatible table.
+	 * Speed settings are auto-determined based on total size of tables being fixed.
 	 *
-	 * @param string $prefix Live table prefix.
-	 * @param string $table The Core WP Table to address.
-	 * @param int    $records_per_transaction The amount of records to process per transaction.
-	 * @param int    $sleep_in_seconds Delay in seconds between each DB transaction.
-	 * @param string $prefix_for_backup Custom prefix for table to be backed up to.
+	 * @param string $prefix           Live table prefix.
+	 * @param string $table            The Core WP Table to address.
+	 * @param int    $total_size_bytes Total size of all tables being fixed (for speed determination).
 	 *
 	 * @throws \RuntimeException Throws various exceptions if unable to complete required SQL operations.
 	 */
-	public function copy_table_data_using_proper_collation( string $prefix, string $table, int $records_per_transaction = 5000, int $sleep_in_seconds = 1, string $prefix_for_backup = 'bak_' ): void {
-		$backup_table              = esc_sql( $prefix_for_backup . $prefix . $table );
+	public function copy_table_data_using_proper_collation( string $prefix, string $table, int $total_size_bytes = 0 ): void {
+		// Auto-determine speed based on total size of tables being fixed.
+		$four_gb_in_bytes = 4 * 1024 * 1024 * 1024;
+		$is_small_dataset = $total_size_bytes < $four_gb_in_bytes;
+
+		// Speed settings: small datasets get aggressive batching, large datasets get throttled.
+		$records_per_transaction = $is_small_dataset ? 1000000 : 500000;
+		$sleep_between_batches   = $is_small_dataset ? 0 : 5;
+		$sleep_after_table       = 10;
+
+		$backup_prefix             = 'collationbak_';
+		$backup_table              = esc_sql( $backup_prefix . $prefix . $table );
 		$source_table              = esc_sql( $prefix . $table );
 		$match_collation_for_table = esc_sql( $this->wpdb->prefix . $table );
 
 		$rename_sql = "RENAME TABLE $source_table TO $backup_table";
 		// phpcs:ignore -- query fully sanitized.
 		$rename_result = $this->wpdb->query( $rename_sql );
-
 		if ( is_wp_error( $rename_result ) ) {
 			throw new \RuntimeException( "Unable to rename table: '$rename_sql'\n" . $rename_result->get_error_message() ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		}
@@ -216,8 +251,12 @@ class DB {
 		// phpcs:ignore -- query fully sanitized.
 		$count = $this->wpdb->get_row( "SELECT COUNT(*) as counter FROM $backup_table;" );
 
+		// Handle empty tables - just delete backup and return.
 		if ( empty( $count ) || 0 === (int) $count->counter ) {
-			throw new \RuntimeException( "Table '$backup_table' has 0 rows. No need to continue." ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			// phpcs:ignore -- query fully sanitized.
+			$this->wpdb->query( "DROP TABLE IF EXISTS $backup_table" );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( "Table '%s' has 0 rows, backup deleted.", $backup_table ) );
+			return;
 		}
 
 		$iterations = ceil( $count->counter / $limiter['limit'] );
@@ -233,9 +272,23 @@ class DB {
 				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( "Got up to (not including) %s. Failed running SQL '%s'. %s", $limiter['start'], $insert_sql, $db_error ) );
 			}
 
-			if ( $sleep_in_seconds ) {
-				sleep( $sleep_in_seconds );
+			if ( $sleep_between_batches > 0 ) {
+				sleep( $sleep_between_batches );
 			}
+		}
+
+		// Delete backup table after successful copy.
+		// phpcs:ignore -- query fully sanitized.
+		$drop_result = $this->wpdb->query( "DROP TABLE IF EXISTS $backup_table" );
+		if ( false === $drop_result ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( "Failed to drop backup table '%s'.", $backup_table ) );
+		} else {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( "Deleted backup table '%s'.", $backup_table ) );
+		}
+
+		// Sleep after table is complete (for small datasets).
+		if ( $sleep_after_table > 0 ) {
+			sleep( $sleep_after_table );
 		}
 	}
 }
