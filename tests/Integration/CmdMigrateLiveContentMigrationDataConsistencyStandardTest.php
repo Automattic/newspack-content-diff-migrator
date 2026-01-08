@@ -8,6 +8,7 @@
 namespace Newspack\ContentDiffMigrator\Tests\Integration;
 
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
+use Newspack\ContentDiffMigrator\Utils\SLAHelper;
 
 /**
  * Integration test class for command cmd_migrate_live_content, Migration Data Consistency Standard.
@@ -97,6 +98,198 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 
 		$local_user = get_user_by( 'login', 'mdcsuser2' );
 		$this->assertEquals( 'Updated Name', $local_user->display_name, 'Display name should be updated per MDCS.' );
+	}
+
+	/**
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_update_user_avatar_when_changed_on_live(): void {
+		global $wpdb;
+
+		// Create user with an avatar attachment.
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 14001,
+				'user_login' => 'avataruser1',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		// Create original and new avatar attachments.
+		$original_avatar = $this->create_post_fixture(
+			[
+				'ID'          => 14002,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$new_avatar      = $this->create_post_fixture(
+			[
+				'ID'          => 14003,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $original_avatar ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'posts', $new_avatar ); // phpcs:ignore
+
+		// Create post referencing user.
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 14004,
+				'post_author' => 14001,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Set original avatar usermeta on live.
+		$wpdb->insert( $this->live_table_prefix . 'usermeta', // phpcs:ignore
+			[
+				'user_id'    => 14001,
+				'meta_key'   => SLAHelper::AVATAR_META_KEY, // phpcs:ignore
+				'meta_value' => maybe_serialize( [ 'media_id' => 14002, 'full' => 'http://live.example.com/a1.jpg', 'blog_id' => 1 ] ), // phpcs:ignore
+			]
+		);
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		$local_user           = get_user_by( 'login', 'avataruser1' );
+		$local_avatar         = get_user_meta( $local_user->ID, SLAHelper::AVATAR_META_KEY, true );
+		$local_orig_avatar_id = $this->logic->get_current_post_id_by_old_id( 14002, $this->source_hostname );
+		$this->assertIsArray( $local_avatar, 'Avatar should be set after initial import.' );
+		$this->assertEquals( (int) $local_orig_avatar_id, $local_avatar['media_id'], 'Avatar media_id should match imported attachment.' );
+
+		// Change avatar on live to new attachment.
+		$wpdb->update( $this->live_table_prefix . 'usermeta', // phpcs:ignore
+			[ 'meta_value' => maybe_serialize( [ 'media_id' => 14003, 'full' => 'http://live.example.com/a2.jpg', 'blog_id' => 1 ] ) ], // phpcs:ignore
+			[ 'user_id' => 14001, 'meta_key' => SLAHelper::AVATAR_META_KEY ] // phpcs:ignore
+		);
+
+		$this->run_migrate_command();
+
+		$local_avatar        = get_user_meta( $local_user->ID, SLAHelper::AVATAR_META_KEY, true );
+		$local_new_avatar_id = $this->logic->get_current_post_id_by_old_id( 14003, $this->source_hostname );
+		$this->assertIsArray( $local_avatar, 'Avatar should still be set after update.' );
+		$this->assertEquals( (int) $local_new_avatar_id, $local_avatar['media_id'], 'Avatar media_id should be updated per MDCS.' );
+	}
+
+	/**
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_remove_user_avatar_when_deleted_on_live(): void {
+		global $wpdb;
+
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 14101,
+				'user_login' => 'avataruser2',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$avatar = $this->create_post_fixture(
+			[
+				'ID'          => 14102,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $avatar ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 14103,
+				'post_author' => 14101,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Set avatar usermeta on live.
+		$wpdb->insert( $this->live_table_prefix . 'usermeta', // phpcs:ignore
+			[ 
+				'user_id'    => 14101,
+				'meta_key'   => SLAHelper::AVATAR_META_KEY, // phpcs:ignore
+				'meta_value' => maybe_serialize( // phpcs:ignore
+					[
+						'media_id' => 14102,
+						'full'     => 'http://live.example.com/avatar.jpg',
+						'blog_id'  => 1,
+					]
+				), // phpcs:ignore
+			]
+		);
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		$local_user   = get_user_by( 'login', 'avataruser2' );
+		$local_avatar = get_user_meta( $local_user->ID, SLAHelper::AVATAR_META_KEY, true );
+		$this->assertIsArray( $local_avatar, 'Avatar should be set after initial import.' );
+
+		// Remove avatar on live.
+		$wpdb->delete( $this->live_table_prefix . 'usermeta', [ 'user_id' => 14101, 'meta_key' => SLAHelper::AVATAR_META_KEY ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		$local_avatar = get_user_meta( $local_user->ID, SLAHelper::AVATAR_META_KEY, true );
+		$this->assertEmpty( $local_avatar, 'Avatar should be removed per MDCS when deleted on live.' );
+	}
+
+	/**
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_add_user_avatar_when_added_on_live_after_initial_import(): void {
+		global $wpdb;
+
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 14201,
+				'user_login' => 'avataruser3',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$avatar = $this->create_post_fixture(
+			[
+				'ID'          => 14202,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $avatar ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 14203,
+				'post_author' => 14201,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// No avatar set initially.
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		$local_user   = get_user_by( 'login', 'avataruser3' );
+		$local_avatar = get_user_meta( $local_user->ID, SLAHelper::AVATAR_META_KEY, true );
+		$this->assertEmpty( $local_avatar, 'No avatar should be set initially.' );
+
+		// Add avatar on live.
+		$wpdb->insert( $this->live_table_prefix . 'usermeta', // phpcs:ignore
+			[ 
+				'user_id'    => 14201,
+				'meta_key'   => SLAHelper::AVATAR_META_KEY, // phpcs:ignore
+				'meta_value' => maybe_serialize( [ 'media_id' => 14202, 'full' => 'http://live.example.com/avatar.jpg', 'blog_id' => 1 ] ), // phpcs:ignore
+			]
+		);
+
+		$this->run_migrate_command();
+
+		$local_avatar        = get_user_meta( $local_user->ID, SLAHelper::AVATAR_META_KEY, true );
+		$local_avatar_att_id = $this->logic->get_current_post_id_by_old_id( 14202, $this->source_hostname );
+		$this->assertIsArray( $local_avatar, 'Avatar should be set per MDCS when added on live.' );
+		$this->assertEquals( (int) $local_avatar_att_id, $local_avatar['media_id'], 'Avatar media_id should match local attachment ID.' );
 	}
 
 	/**

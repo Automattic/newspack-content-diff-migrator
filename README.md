@@ -156,6 +156,7 @@ Migrated users have the following fields **updated individually** if they change
 
 - Email (`user_email`)
 - Display Name (`display_name`)
+- Simple Local Avatar's user avatar (`simple_local_avatar` usermeta) — if the [Simple Local Avatars](https://wordpress.org/plugins/simple-local-avatars/) plugin is used, avatar assignments are tracked and updated, including handling avatar removal
 
 > Individual field updates preserve the user's local ID, which is important since this ID is used as `post_author` in posts.
 

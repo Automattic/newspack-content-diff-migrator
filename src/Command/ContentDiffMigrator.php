@@ -766,16 +766,27 @@ class ContentDiffMigrator {
 		$imported_posts_data = $this->import_posts( $new_live_ids, $taxonomies_to_migrate, $source_hostname );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
+		// Fetch all imported IDs just once for all post-processing methods (single DB query for performance).
+		$all_imported_ids = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
+		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
+		$imported_ids_map               = [];
+		foreach ( $all_imported_ids as $record ) {
+			$imported_ids_map[ $record['old_id'] ] = $record['new_id'];
+		}
+		unset( $all_imported_ids );
+
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Post parent IDs...' );
-		$this->update_post_parent_ids( $new_live_ids, $imported_posts_data, $source_hostname );
+		$this->update_post_parent_ids( $new_live_ids, $imported_posts_data, $source_hostname, $imported_ids_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating Featured images IDs...' );
-		$this->update_featured_image_ids( $imported_posts_data, $source_hostname );
+		$this->update_featured_image_ids( $imported_posts_data, $source_hostname, $imported_nonattachment_ids_map, $imported_attachment_ids_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
-		$this->update_attachment_ids_in_blocks( $imported_posts_data, $source_hostname );
+		$this->update_attachment_ids_in_blocks( $imported_posts_data, $source_hostname, $imported_nonattachment_ids_map, $imported_attachment_ids_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Recalculate counts for all migrated taxonomies.
@@ -785,12 +796,12 @@ class ContentDiffMigrator {
 
 		// Migration Data Consistency Standard: Update modified properties of migrated objects.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified user properties...' );
-		$user_updates = $this->logic->update_modified_users( $live_table_prefix, $source_hostname );
+		$user_updates = $this->logic->update_modified_users( $live_table_prefix, $source_hostname, $imported_attachment_ids_map );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d users, updated %d.', $user_updates['checked'], $user_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified attachment properties...' );
-		$attachment_updates = $this->logic->update_modified_attachments( $live_table_prefix, $source_hostname );
+		$attachment_updates = $this->logic->update_modified_attachments( $live_table_prefix, $source_hostname, $imported_attachment_ids_map );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d attachments, updated %d.', $attachment_updates['checked'], $attachment_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
@@ -1099,8 +1110,9 @@ class ContentDiffMigrator {
 	 *     }
 	 * }
 	 * @param string $source_hostname     Source hostname.
+	 * @param array  $imported_ids_map    Map of old_id => new_id for all imported posts.
 	 */
-	private function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname ): void {
+	private function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname, array $imported_ids_map ): void {
 		global $wpdb;
 
 		// Get IDs which already had their post_parent updated, and skip them.
@@ -1119,15 +1131,6 @@ class ContentDiffMigrator {
 		}
 		if ( count( $already_updated_ids_map ) > 0 ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d post_parent IDs were already updated, continuing from there...', count( $already_updated_ids_map ), count( $all_live_posts_ids ) ) );
-		}
-
-		// Build map of all imported IDs (old => new) from DB.
-		// Fetching from DB ensures we have ALL imported posts (previous + current runs),
-		// which is critical for resume scenarios where imports are complete but parent updates weren't.
-		$all_imported_data = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
-		$imported_ids_map  = [];
-		foreach ( $all_imported_data as $record ) {
-			$imported_ids_map[ $record['old_id'] ] = $record['new_id'];
 		}
 
 		// Update parent IDs.
@@ -1202,16 +1205,11 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
-	 * @param string $source_hostname Source hostname.
+	 * @param string $source_hostname              Source hostname.
+	 * @param array  $imported_nonattachment_ids_map Map of old_id => new_id for non-attachment posts.
+	 * @param array  $imported_attachment_ids_map    Map of old_id => new_id for attachments.
 	 */
-	private function update_featured_image_ids( array $imported_posts_data, string $source_hostname ): void {
-
-		// Get all imported IDs from DB and filter to attachments vs non-attachments.
-		// Fetching from DB ensures we have ALL imported posts (previous + current runs),
-		// which is critical for resume scenarios where imports are complete but featured image updates weren't.
-		$all_imported_ids               = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
-		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
-		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
+	private function update_featured_image_ids( array $imported_posts_data, string $source_hostname, array $imported_nonattachment_ids_map, array $imported_attachment_ids_map ): void {
 
 		// Get IDs which already had featured images updated, and skip them.
 		$already_updated_ids_map = $this->run_state->get_updated_featured_image_post_ids_map();
@@ -1272,16 +1270,11 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
-	 * @param string $source_hostname Source hostname.
+	 * @param string $source_hostname              Source hostname.
+	 * @param array  $imported_nonattachment_ids_map Map of old_id => new_id for non-attachment posts.
+	 * @param array  $imported_attachment_ids_map    Map of old_id => new_id for attachments.
 	 */
-	private function update_attachment_ids_in_blocks( array $imported_posts_data, string $source_hostname ): void {
-
-		// Get all imported IDs from DB and filter to attachments vs non-attachments.
-		// Fetching from DB ensures we have ALL imported posts (previous + current runs),
-		// which is critical for resume scenarios where imports are complete but block updates weren't.
-		$all_imported_ids               = $this->logic->get_all_imported_post_id_mapping_from_db( $source_hostname );
-		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
-		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
+	private function update_attachment_ids_in_blocks( array $imported_posts_data, string $source_hostname, array $imported_nonattachment_ids_map, array $imported_attachment_ids_map ): void {
 
 		// Get IDs which already had block attachment IDs updated, and skip them.
 		$already_updated_ids_map = $this->run_state->get_updated_block_post_ids_map();

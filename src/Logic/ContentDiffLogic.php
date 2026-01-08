@@ -10,6 +10,7 @@ namespace Newspack\ContentDiffMigrator\Logic;
 
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
+use Newspack\ContentDiffMigrator\Utils\SLAHelper;
 use Psr\Log\LogLevel;
 use RuntimeException;
 use WP_User;
@@ -68,23 +69,33 @@ class ContentDiffLogic {
 	private DB $db;
 
 	/**
+	 * SLAHelper instance.
+	 *
+	 * @var SLAHelper
+	 */
+	private SLAHelper $sla_helper;
+
+	/**
 	 * ContentDiffMigrator constructor.
 	 *
 	 * @param wpdb              $wpdb          Global $wpdb.
 	 * @param BlockUpdater|null $block_updater Optional BlockUpdater instance (null for testing environment).
 	 * @param DataImporter|null $data_importer Optional DataImporter instance (null for testing environment).
 	 * @param DB|null           $db            Optional DB instance (null for testing environment).
+	 * @param SLAHelper|null    $sla_helper    Optional SLAHelper instance (null for testing environment).
 	 */
 	public function __construct(
 		wpdb $wpdb,
 		?BlockUpdater $block_updater = null,
 		?DataImporter $data_importer = null,
-		?DB $db = null
+		?DB $db = null,
+		?SLAHelper $sla_helper = null
 	) {
 		$this->wpdb          = $wpdb;
 		$this->block_updater = $block_updater ?? new BlockUpdater( [ $this, 'attachment_url_to_postid_resolver' ] );
 		$this->data_importer = $data_importer ?? new DataImporter( $wpdb );
 		$this->db            = $db ?? new DB( $wpdb );
+		$this->sla_helper    = $sla_helper ?? new SLAHelper( $wpdb );
 	}
 
 	/**
@@ -436,7 +447,10 @@ class ContentDiffLogic {
 		// Filter out attachments - they have their own method.
 		$post_types_filtered = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
 		if ( empty( $post_types_filtered ) ) {
-			return [ 'count' => 0, 'sample_ids' => [] ];
+			return [
+				'count'      => 0,
+				'sample_ids' => [],
+			];
 		}
 
 		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types_filtered ), '%s' ) );
@@ -459,7 +473,10 @@ class ContentDiffLogic {
 		) );
 		// phpcs:enable
 
-		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
+		return [
+			'count'      => $count,
+			'sample_ids' => $sample_ids,
+		];
 	}
 
 	/**
@@ -484,7 +501,10 @@ class ContentDiffLogic {
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT p.ID {$base_query} LIMIT 10" ) );
 		// phpcs:enable
 
-		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
+		return [
+			'count'      => $count,
+			'sample_ids' => $sample_ids,
+		];
 	}
 
 	/**
@@ -509,7 +529,10 @@ class ContentDiffLogic {
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT u.ID {$base_query} LIMIT 10" ) );
 		// phpcs:enable
 
-		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
+		return [
+			'count'      => $count,
+			'sample_ids' => $sample_ids,
+		];
 	}
 
 	/**
@@ -534,7 +557,10 @@ class ContentDiffLogic {
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT t.term_id {$base_query} LIMIT 10" ) );
 		// phpcs:enable
 
-		return [ 'count' => $count, 'sample_ids' => $sample_ids ];
+		return [
+			'count'      => $count,
+			'sample_ids' => $sample_ids,
+		];
 	}
 
 	/**
@@ -918,17 +944,18 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Updates migrated users' email and display_name if changed on live.
+	 * Updates migrated users' email, display_name, and avatar if changed on live.
 	 *
-	 * @param string $live_table_prefix Live DB table prefix.
-	 * @param string $source_hostname   Source hostname.
+	 * @param string $live_table_prefix  Live DB table prefix.
+	 * @param string $source_hostname    Source hostname.
+	 * @param array  $attachment_id_map  Map of live attachment IDs to local attachment IDs (for avatar updates).
 	 *
 	 * @return array {
 	 *     @type int $checked Number of users checked.
 	 *     @type int $updated Number of users updated.
 	 * }
 	 */
-	public function update_modified_users( string $live_table_prefix, string $source_hostname ): array {
+	public function update_modified_users( string $live_table_prefix, string $source_hostname, array $attachment_id_map = [] ): array {
 		$checked = 0;
 		$updated = 0;
 
@@ -948,6 +975,11 @@ class ContentDiffLogic {
 			$live_users_by_id[ (int) $user['ID'] ] = $user;
 		}
 
+		// Get live SLA avatar usermeta indexed by user_id.
+		$live_avatar_meta = ! empty( $attachment_id_map )
+			? $this->sla_helper->get_avatar_meta_by_user_id( $live_table_prefix )
+			: [];
+
 		foreach ( $user_id_map as $live_id => $local_id ) {
 			$checked++;
 
@@ -962,7 +994,8 @@ class ContentDiffLogic {
 				continue;
 			}
 
-			$updates = [];
+			$updates        = [];
+			$avatar_updated = false;
 
 			// Check user_email.
 			if ( $live_user['user_email'] !== $local_user->user_email ) {
@@ -974,14 +1007,38 @@ class ContentDiffLogic {
 				$updates['display_name'] = $live_user['display_name'];
 			}
 
+			// Check Simple Local Avatar.
+			if ( ! empty( $attachment_id_map ) ) {
+				$local_avatar = get_user_meta( (int) $local_id, SLAHelper::AVATAR_META_KEY, true );
+				$live_avatar  = $live_avatar_meta[ (int) $live_id ] ?? null;
+
+				// Avatar removed on live.
+				if ( empty( $live_avatar ) && ! empty( $local_avatar ) ) {
+					delete_user_meta( (int) $local_id, SLAHelper::AVATAR_META_KEY );
+					$avatar_updated = true;
+					Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Removed avatar for user %d', $local_id ) );
+				} elseif ( ! empty( $live_avatar ) && is_array( $live_avatar ) && isset( $live_avatar['media_id'] ) ) {
+					// Avatar added or changed on live.
+					$live_media_id          = (int) $live_avatar['media_id'];
+					$local_media_id         = $attachment_id_map[ $live_media_id ] ?? null;
+					$current_local_media_id = is_array( $local_avatar ) && isset( $local_avatar['media_id'] ) ? (int) $local_avatar['media_id'] : null;
+
+					if ( null !== $local_media_id && $current_local_media_id !== $local_media_id ) {
+						$result = $this->sla_helper->set_user_avatar( (int) $local_id, (int) $local_media_id );
+						if ( true === $result ) {
+							$avatar_updated = true;
+							Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated avatar for user %d: media_id %d -> %d', $local_id, $current_local_media_id ?? 0, $local_media_id ) );
+						}
+					}
+				}
+			}
+
 			if ( ! empty( $updates ) ) {
 				$this->wpdb->update( $this->wpdb->users, $updates, [ 'ID' => $local_id ] );
 				$updated++;
-				Logger::instance()->log(
-					Logger::OUTPUT_FILE,
-					LogLevel::DEBUG,
-					sprintf( 'Updated user %d: %s', $local_id, wp_json_encode( $updates ) )
-				);
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated user %d: %s', $local_id, wp_json_encode( $updates ) ) );
+			} elseif ( $avatar_updated ) {
+				$updated++;
 			}
 		}
 
@@ -994,20 +1051,24 @@ class ContentDiffLogic {
 	/**
 	 * Updates migrated attachments' caption, description, alt text, and credits if changed on live.
 	 *
-	 * @param string $live_table_prefix Live DB table prefix.
-	 * @param string $source_hostname   Source hostname.
+	 * @param string $live_table_prefix  Live DB table prefix.
+	 * @param string $source_hostname    Source hostname.
+	 * @param array  $attachment_id_map  Optional. Map of old_id => new_id for attachments.
+	 *                                   If empty, will be fetched from DB.
 	 *
 	 * @return array {
 	 *     @type int $checked Number of attachments checked.
 	 *     @type int $updated Number of attachments updated.
 	 * }
 	 */
-	public function update_modified_attachments( string $live_table_prefix, string $source_hostname ): array {
+	public function update_modified_attachments( string $live_table_prefix, string $source_hostname, array $attachment_id_map = [] ): array {
 		$checked = 0;
 		$updated = 0;
 
-		// Get attachment ID mapping (live_id => local_id).
-		$attachment_id_map = $this->get_imported_post_id_mapping_from_db( $source_hostname, [ 'attachment' ] );
+		// Get attachment ID mapping (live_id => local_id) if not provided.
+		if ( empty( $attachment_id_map ) ) {
+			$attachment_id_map = $this->get_imported_post_id_mapping_from_db( $source_hostname, [ 'attachment' ] );
+		}
 		if ( empty( $attachment_id_map ) ) {
 			return [
 				'checked' => 0,
