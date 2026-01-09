@@ -33,12 +33,7 @@ Use latest release from the [Newspack Plugins Repository](https://github.com/new
 ### Quick Start
 
 1. **Import Live Tables**: Import live site database tables with a specific prefix (e.g., `cdiff_`)
-2. **Attribute Existing Content**: if the local site already contains some of the live site's content (for example, if local site was cloned from source), first attribute the existing content to the source hostname. This lets the plugin know that the existing local content came from this specific source hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences:
-```bash
-wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
-    --live-table-prefix=cdiff_ \
-    --source-hostname=www.example-1.com
-```
+2. **Attribute Existing Content** (e.g. if local site was cloned from source): see [`attribute-existing-content-to-hostname`](#attribute-existing-content-to-hostname) command for details, nedds to be run only once to attribute the existing content to the source hostname so that the migrator knows it should be matched/compared against your source site's content
 3. **Run Migration** (two commands, run in sequence):
 ```bash
 # Step 1: Search for new/modified content
@@ -105,7 +100,9 @@ wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 
 #### `attribute-existing-content-to-hostname`
 
-If the local site already contains some of the live site's content (for example, if local site was cloned from source), first attribute the existing content to the source hostname. This lets the plugin know that the existing local content came from this specific source hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences
+If the local site already contains some of the live site's content (for example, if local site was cloned from source), you should first attribute the existing content to a source hostname before running migrations.
+
+This command compares local content with live DB tables and adds source-specific metadata (`newspackcontentdiff_oldid_{hostname}`) to matched objects. This lets the plugin know that the existing local content came from this specific source hostname, so it can be properly matched and compared during subsequent migrations.
 
 ```bash
 wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
@@ -147,9 +144,17 @@ wp newspack-content-diff-migrator correct-collations-for-live-wp-tables \
 
 ## Using the Data Directory (`--data-dir`)
 
-The `--data-dir` parameter stores a full log, and run-state data in a `run-state` subfolder (e.g., `/tmp/cdiff_data/run-state/`). 
+The `--data-dir` parameter stores logs and run-state data in a `run-state` subfolder (e.g., `/tmp/cdiff_data/run-state/`).
 
-The RunState data contains information about migration progress and the IDs of content that has been migrated, enabling resume capability if a migration gets interrupted.
+The run-state data includes:
+- **`manifest.json`** — Migration summary with
+  - timestamp
+  - source hostname
+  - post types
+  - counts of new/modified IDs
+  - Useful for quickly reviewing what was migrated.
+- **`new_ids.json`** / **`modified_ids.json`** — IDs to be imported or reimported
+- **`imported_posts.jsonl`**, **`updated_*.jsonl`** — Progress tracking files for resume capability
 
 ### Resuming an Interrupted Migration
 
@@ -377,13 +382,7 @@ Use `list-previously-migrated-source-hostnames` to see which sources have been p
 
 ### Attributing Cloned Content
 
-If your local site already contains some of the content from the source site (example case when local site was initially cloned from source), you must first attribute that existing content before running migrations. This creates the source-specific metadata needed for proper content matching, and lets the plugin know that the existing local content came from this specific source hostname, so that it could be matched/compared correctly:
-
-```bash
-wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
-    --live-table-prefix=cdiff_ \
-    --source-hostname=www.example-1.com
-```
+If your local site was cloned from a source site, you must first attribute that existing content before running migrations. See [`attribute-existing-content-to-hostname`](#attribute-existing-content-to-hostname) for details.
 
 ---
 
