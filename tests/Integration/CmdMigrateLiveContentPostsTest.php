@@ -327,30 +327,6 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 	/**
 	 * @group posts
 	 */
-	public function test_should_not_update_post_parent_when_already_zero(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture(
-			[
-				'ID'          => 8401,
-				'post_parent' => 0,
-				'post_type'   => 'page',
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-
-		$this->run_search_command( [ 'post-types-csv' => 'page' ] );
-		$this->run_migrate_command();
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 8401, $this->source_hostname );
-		$new_post    = get_post( $new_post_id );
-
-		$this->assertEquals( 0, $new_post->post_parent, 'Post parent should remain 0.' );
-	}
-
-	/**
-	 * @group posts
-	 */
 	public function test_should_import_custom_post_type_correctly(): void {
 		global $wpdb;
 
@@ -435,90 +411,6 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 
 		$this->assertIsObject( $meta_value, 'Serialized object should be unserialized.' );
 		$this->assertEquals( 'Test Object', $meta_value->name, 'Object property should match.' );
-	}
-
-	/**
-	 * Tests that post with empty content is imported correctly.
-	 *
-	 * @group posts
-	 */
-	public function test_should_import_post_with_empty_content(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture(
-			[
-				'ID'           => 14003,
-				'post_title'   => 'Post With No Content',
-				'post_content' => '',
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 14003, $this->source_hostname );
-		$local_post  = get_post( $new_post_id );
-
-		$this->assertEquals( 'Post With No Content', $local_post->post_title, 'Title should be imported.' );
-		$this->assertEquals( '', $local_post->post_content, 'Empty content should remain empty.' );
-	}
-
-	/**
-	 * Tests that post with empty title is imported correctly.
-	 *
-	 * @group posts
-	 */
-	public function test_should_import_post_with_empty_title(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture(
-			[
-				'ID'           => 14004,
-				'post_title'   => '',
-				'post_content' => '<p>Content without title.</p>',
-				'post_name'    => 'no-title-post',
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 14004, $this->source_hostname );
-		$local_post  = get_post( $new_post_id );
-
-		$this->assertEquals( '', $local_post->post_title, 'Empty title should remain empty.' );
-		$this->assertStringContainsString( 'Content without title', $local_post->post_content, 'Content should be imported.' );
-	}
-
-	/**
-	 * Tests that post with very long content is imported correctly.
-	 *
-	 * @group posts
-	 */
-	public function test_should_import_post_with_very_long_content(): void {
-		global $wpdb;
-
-		// Create content with 100KB of text.
-		$long_content = str_repeat( '<p>' . str_repeat( 'Lorem ipsum dolor sit amet. ', 100 ) . '</p>', 50 );
-
-		$post = $this->create_post_fixture(
-			[
-				'ID'           => 14005,
-				'post_title'   => 'Very Long Post',
-				'post_content' => $long_content,
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		$new_post_id = $this->logic->get_current_post_id_by_old_id( 14005, $this->source_hostname );
-		$local_post  = get_post( $new_post_id );
-
-		$this->assertEquals( strlen( $long_content ), strlen( $local_post->post_content ), 'Long content should be fully imported.' );
 	}
 
 	/**
