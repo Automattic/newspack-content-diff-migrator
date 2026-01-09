@@ -249,7 +249,7 @@ class CmdMigrateLiveContentUsersTest extends IntegrationTestCase {
 
 		// Create new run-state for second run.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		// Insert a new post to trigger second migration.

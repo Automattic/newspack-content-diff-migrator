@@ -126,7 +126,7 @@ class CmdMigrateLiveContentFeaturedImageTest extends IntegrationTestCase {
 
 		// Now create new run-state and import a post using that attachment.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$post = $this->create_post_fixture( [ 'ID' => 9302 ] );

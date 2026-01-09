@@ -116,7 +116,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 
 		// Second migration - should only import second post.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
@@ -401,7 +401,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 
 		// Create a new temp directory that doesn't exist.
 		$new_temp_dir  = sys_get_temp_dir() . '/cdiff-test-new-' . uniqid();
-		$new_run_state = new RunState( $new_temp_dir . '/new-hostname/run-state' );
+		$new_run_state = new RunState( $new_temp_dir . '/run-state' );
 		$this->command->set_run_state( $new_run_state );
 
 		$post = $this->create_post_fixture( [ 'ID' => 9005 ] );
@@ -410,7 +410,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$this->run_search_command();
 
 		// Directory should now exist.
-		$this->assertDirectoryExists( $new_temp_dir . '/new-hostname/run-state', 'Run-state directory should be created.' );
+		$this->assertDirectoryExists( $new_temp_dir . '/run-state', 'Run-state directory should be created.' );
 
 		// Cleanup.
 		$this->cleanup_temp_dir( $new_temp_dir );
@@ -433,7 +433,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$this->run_search_command();
 
 		// Check manifest file exists and has content.
-		$manifest_path = $this->temp_data_dir . '/' . $this->source_hostname . '/run-state/' . RunState::FILE_MANIFEST;
+		$manifest_path = $this->temp_data_dir . '/run-state/' . RunState::FILE_MANIFEST;
 		$this->assertFileExists( $manifest_path, 'Manifest file should exist.' );
 
 		$manifest = json_decode( file_get_contents( $manifest_path ), true ); // phpcs:ignore
@@ -458,7 +458,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 
 		$this->run_search_command();
 
-		$manifest_path = $this->temp_data_dir . '/' . $this->source_hostname . '/run-state/' . RunState::FILE_MANIFEST;
+		$manifest_path = $this->temp_data_dir . '/run-state/' . RunState::FILE_MANIFEST;
 		$manifest      = json_decode( file_get_contents( $manifest_path ), true ); // phpcs:ignore
 
 		$this->assertEquals( 2, $manifest['counts']['new_ids'], 'Manifest should correctly count new_ids.' );

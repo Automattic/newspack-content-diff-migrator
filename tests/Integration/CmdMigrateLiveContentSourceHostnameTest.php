@@ -50,7 +50,7 @@ class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 
 		// Set up for second source hostname.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname_2 . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		// Import from second source.
@@ -114,7 +114,7 @@ class CmdMigrateLiveContentSourceHostnameTest extends IntegrationTestCase {
 
 		// Import from second source.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname_2 . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$post2 = $this->create_post_fixture( [ 'ID' => 12202 ] );

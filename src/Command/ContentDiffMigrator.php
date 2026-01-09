@@ -477,7 +477,30 @@ class ContentDiffMigrator {
 		// Set instance properties.
 		global $wpdb;
 		if ( null === $this->run_state ) {
-			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/run-state' );
+		}
+
+		// Check if previous run-state exists. Warn and exit to protect previous logs and run-state data (useful for debugging and backtracking migrations).
+		// Skip in test environment to allow testing of multiple search cycles.
+		$existing_manifest = $this->run_state->get_manifest();
+		if ( ! $this->test_env && $existing_manifest ) {
+			$existing_source = $existing_manifest['source_hostname'] ?? 'unknown';
+			$existing_date   = $existing_manifest['created_at'] ?? 'unknown';
+
+			if ( $existing_source !== $source_hostname ) {
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'This --data-dir contains run-state from a DIFFERENT source hostname (%s, created %s). Please use a new --data-dir.', $existing_source, $existing_date ) 
+				);
+			} else {
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'This --data-dir contains run-state from a previous migration run (created %s). Please use a new --data-dir to preserve previous logs for debugging.', $existing_date ) 
+				);
+			}
+			return; // Exit early (a return is friendly to both CLI and test environments).
 		}
 
 		try {
@@ -662,7 +685,7 @@ class ContentDiffMigrator {
 		// Set instance properties.
 		$this->live_table_prefix = $live_table_prefix;
 		if ( null === $this->run_state ) {
-			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/' . $source_hostname . '/run-state' );
+			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/run-state' );
 		}
 
 		// In case custom taxonomies were explicitly provided, but category/post_tag/author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.

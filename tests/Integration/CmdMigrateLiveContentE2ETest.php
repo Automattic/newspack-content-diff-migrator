@@ -149,7 +149,7 @@ class CmdMigrateLiveContentE2ETest extends IntegrationTestCase {
 
 		// Create new run-state directory for second migration.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		// Run search again - should detect as modified.

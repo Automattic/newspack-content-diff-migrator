@@ -1242,7 +1242,7 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 
 		// Fresh run-state for new migration cycle.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
@@ -1304,7 +1304,7 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 
 		// Fresh run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
@@ -1361,7 +1361,7 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 
 		// Fresh run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();

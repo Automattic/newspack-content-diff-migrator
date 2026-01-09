@@ -103,7 +103,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 		$this->command = new ContentDiffMigrator( true );
 
 		// Create and inject RunState.
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 	}
 

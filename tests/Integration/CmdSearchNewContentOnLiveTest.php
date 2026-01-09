@@ -74,7 +74,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Create new run-state for second search.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		// Run search again.
@@ -109,7 +109,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
@@ -148,7 +148,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
@@ -209,7 +209,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
@@ -262,7 +262,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
@@ -319,7 +319,7 @@ class CmdSearchNewContentOnLiveTest extends IntegrationTestCase {
 
 		// Create new run-state.
 		$this->cleanup_temp_dir( $this->temp_data_dir );
-		$this->run_state = new RunState( $this->temp_data_dir . '/' . $this->source_hostname . '/run-state' );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
 		$this->command->set_run_state( $this->run_state );
 
 		$this->run_search_command();
