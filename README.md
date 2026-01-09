@@ -6,105 +6,179 @@ This plugin is a content migration tool that migrates the content differential f
 
 ## Overview
 
-The Newspack Content Diff Migrator is designed to synchronize content between a remote site (also addressed as "live site" after Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
+The Newspack Content Diff Migrator is designed to synchronize content between a remote site (also addressed as "live site", after Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
 
-It migrates the database content, however files synchronization should be done additionally.
+It migrates all the database content, and files synchronization should be done additionally.
 
 ## Features
 
-- **Selective Import**: Only imports new or modified content from the live site
-- **Incremental Migration**: Can be run multiple times to migrate the entire content differential, and the migration resumes from the last successful step
+- **Incremental "diff" Migration**: Can be run multiple times to migrate the entire new and modified content differential, and the subsequent migrations will resume from the last successful step
 - **Preserves Local Content**: Keeps existing local content intact during migration
-- **Comprehensive Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category,post_tag,author) as well as custom taxonomies and custom post types
-- **Side-by-side Tables**: Works with remote site's database tables alongside local tables with a different table prefix
-- **Error Handling**: Comprehensive error logging and recovery mechanisms
-- **Detailed Logging**: Provides extensive logging for troubleshooting
-- **Graceful Degradation**: Continues processing even when individual items fail
+- **Multi-Source Migration**: Supports importing content from multiple source hostnames, each with its own database tables and content, all the while preserving the integrity of the local content
+- **Selective Import**: Only imports new or modified content from the live site
+- **Content Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category,post_tag,author) as well as custom taxonomies and custom post types, all the while preserving the integrity of the local content
+- **Error Handling, Logging and Graceful Degradation**: Comprehensive error logging and recovery mechanisms, provides detailed logging for troubleshooting, and continues processing even when individual items fail
+- **Side-by-side Tables**: Works with remote site's database tables temporarily imported alongside local tables with a different table prefix
 
 ## Installation
+
+Use latest release from the [Newspack Plugins Repository](https://github.com/newspack-archive/newspack-plugins/releases), or install from repository:
 
 1. Clone or download the plugin to your WordPress plugins directory
 2. Navigate to the plugin directory
 3. Run `composer install` to install dependencies
 
-```bash
-cd wp-content/plugins/newspack-content-diff-migrator
-composer install
-```
-
 ## Usage
 
-This plugin operates exclusively through WP-CLI commands. It's designed to be run on staging sites to import content differentials from live sites.
+### Quick Start
 
-1. **Prepare Live Site Data**: Ensure you have access to the live site's database
-2. **Import Live Tables**: Import live site database tables with a specific prefix
-3. **Attribute Existing Content** (e.g. if local site was cloned from source): Create source-specific metadata for this content so that it can be matched (properly compared) during subsequent migration runs
+1. **Import Live Tables**: Import live site database tables with a specific prefix (e.g., `cdiff_`)
+2. **Attribute Existing Content**: if the local site already contains some of the live site's content (for example, if local site was cloned from source), first attribute the existing content to the source hostname. This lets the plugin know that the existing local content came from this specific source hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences:
 ```bash
 wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
-    --live-table-prefix=eg1_ \
+    --live-table-prefix=cdiff_ \
     --source-hostname=www.example-1.com
 ```
-4. **Search for New Content**: Identify new or modified content on the live site
+3. **Run Migration** (two commands, run in sequence):
+```bash
+# Step 1: Search for new/modified content
+wp newspack-content-diff-migrator search-new-content-on-live \
+    --live-table-prefix=cdiff_ \
+    --source-hostname=www.example-1.com \
+    --data-dir=/tmp/cdiff_data
+
+# Step 2: Migrate the identified content
+wp newspack-content-diff-migrator migrate-live-content \
+    --live-table-prefix=cdiff_ \
+    --source-hostname=www.example-1.com \
+    --data-dir=/tmp/cdiff_data
+```
+
+---
+
+## Full Commands Reference
+
+### Migration Commands
+
+The two migration commands **must be executed in sequence**: first `search-new-content-on-live`, then `migrate-live-content`.
+
+#### `search-new-content-on-live`
+
+Searches for new and modified posts in the live site tables and notes the IDs which should be migrated. This command must be run before `migrate-live-content`.
+
 ```bash
 wp newspack-content-diff-migrator search-new-content-on-live \
-    --live-table-prefix=eg1_ \
-    --source-hostname=www.example-1.com \
-    --data-dir=/tmp/cdiff_data \
-    [--post-types-csv=post,page,attachment,custom_cpt1,custom_cpt2,guest-author]
+    --live-table-prefix=<prefix> \          // Prefix of the imported live site tables (e.g., `cdiff_`)
+    --source-hostname=<hostname> \          // e.g. www.example-1.com
+    --data-dir=<path> \                     // Directory to store migration run-state data and logs
+    [--post-types-csv=post,page,attachment] // Defaults: `post,page,attachment`. Optionally include `guest-author` for CAP's Guest Authors.
 ```
-5. **Migrate Content**: Import the identified content differential to the local site
+
+#### `migrate-live-content`
+
+Imports the content differential identified by `search-new-content-on-live`. Must be run after the search command.
+
 ```bash
 wp newspack-content-diff-migrator migrate-live-content \
-    --live-table-prefix=eg1_ \
-    --source-hostname=www.example-1.com \
-    --data-dir=/tmp/cdiff_data \
-    [--custom-taxonomies-csv=category,post_tag,author,custom_taxonomy]
+    --live-table-prefix=<prefix> \    // Prefix of the imported live site tables (e.g., `cdiff_`)
+    --source-hostname=<hostname> \    // e.g. www.example-1.com
+    --data-dir=<path> \               // Same directory used in the search command
+    [--custom-taxonomies-csv=]        // Defaults: `category,post_tag,author`.
+```
+> **⚠️ Important:**
+
+- Always run `search-new-content-on-live` before `migrate-live-content` for each migration cycle, it's a prerequisite -- unless when resuming a previously interrupted migration, then re-run the migrate command which has been interrupted using that same `--data-dir`
+- Always use the **same** `--data-dir` for search and migrate commands in the same migration cycle, it's used to store the migration run-state data and logs. See recommendation below
+- Always use a **new** `--data-dir` for a new migration cycle, to keep separate records and preserve previous logs for debugging or resuming a previous migration which was interrupted
+
+---
+
+### Helper Commands
+
+#### `list-previously-migrated-source-hostnames`
+
+Lists all previously migrated source hostnames. Useful for checking what sources have already been migrated.
+
+```bash
+wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 ```
 
-## Understanding the Data Directory (`--data-dir`)
+#### `attribute-existing-content-to-hostname`
 
-The `--data-dir` parameter stores temporary run-state data in the `run-state` subfolder. It contains information about the migration progress and the IDs of the content that has been migrated, so that if a migration is interrupted, it can be resumed from the last known state.
+If the local site already contains some of the live site's content (for example, if local site was cloned from source), first attribute the existing content to the source hostname. This lets the plugin know that the existing local content came from this specific source hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences
+
+```bash
+wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
+    --live-table-prefix=<prefix> \
+    --source-hostname=<hostname> \
+    [--post-types-csv=post,page,attachment,...]
+```
+
+---
+
+### Database Utility Commands
+
+These commands help diagnose and equalize database differences between live and local tables.
+
+#### `display-collations-comparison`
+
+Displays a comparison table of collations between live and local WordPress tables. Useful for diagnosing character encoding issues.
+
+```bash
+wp newspack-content-diff-migrator display-collations-comparison \
+    --live-table-prefix=<prefix> \
+    [--skip-tables=<csv>] \
+    [--different-collations-only]
+```
+
+#### `correct-collations-for-live-wp-tables`
+
+Automatically fixes collation mismatches between live and local tables. Speed is auto-determined based on total table size.
+
+```bash
+wp newspack-content-diff-migrator correct-collations-for-live-wp-tables \
+    --live-table-prefix=<prefix> \
+    [--skip-tables=<csv>]
+```
+
+> **Note:** The migration commands (search and migrate) automatically run collation fixes when needed, so you typically don't need to run this manually.
+
+---
+
+## Using the Data Directory (`--data-dir`)
+
+The `--data-dir` parameter stores a full log, and run-state data in a `run-state` subfolder (e.g., `/tmp/cdiff_data/run-state/`). 
+
+The RunState data contains information about migration progress and the IDs of content that has been migrated, enabling resume capability if a migration gets interrupted.
 
 ### Resuming an Interrupted Migration
 
-If a migration command is interrupted (e.g., timeout, crash), you can resume it by running the same command with the **same `--data-dir`**. The migration will pick up from where it left off.
+If a migration command is interrupted (e.g., timeout, crash), simply run the same command again with the **same `--data-dir`**. The migration will pick up from where it left off.
 
-```bash
-# If this gets interrupted...
-wp newspack-content-diff-migrator migrate-live-content \
-    --data-dir=/tmp/cdiff_data ...
+### Starting a New Migration Cycle
 
-# ...just run the same command again to resume
-wp newspack-content-diff-migrator migrate-live-content \
-    --data-dir=/tmp/cdiff_data ...
-```
+Once a migration completes successfully, you can start a fresh migration cycle at any time. **Use a new `--data-dir`** to keep separate records and preserve previous logs for debugging.
 
-### Starting a New Migration
-
-Once a migration completes successfully, you can start a fresh migration at any time. The search command always queries the **database directly** to determine what content has already been migrated, and it does not rely on previous run-state files.
-
-It is recommended to start a new migration with a new `--data-dir`, to keep separate migration records for each migration run.
-
-However, it is also possible to safely reuse the same `--data-dir` for a grand new migration run -- in that case, the search command will overwrite the previous run-state files with fresh migration data, based on the current state of the database.
-
-> **⚠️ Important:** Do not run the `migrate-live-content` command without first running `search-new-content-on-live` for a new migration cycle. The migrate command relies on the run-state files created by the search command.
+If you attempt to run `search-new-content-on-live` with a `--data-dir` that contains existing run-state files, the command will exit with a message to use a new `--data-dir` to protect your previous migration data and logs (useful for debugging or resuming a previous migration which was interrupted).
 
 ## Migration Data Consistency Standard
 
-The Newspack's own Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details) defines how new and modified content is handled, and which fields get updated on subsequent migration runs. It ensures that changes made on the live site are reflected on the local site with a curated set of rules which match Newspack's optimal migration workflow.
+The Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details defines how new and modified content is handled, which fields get updated on subsequent migration runs and which fields are ignored.
+
+It contains specific filtering rules, which are optimal for Newspack's own migration workflow, and ensures that changes made on the live site are reflected on the local site with a curated set of rules.
 
 ### How It Works
 
-The plugin uses two complementary update strategies, depending on the object type:
+The plugin uses two complementary update strategies internally, depending on the object type:
 
 | Object Type | Detection | Update Method |
 |-------------|-----------|---------------|
 | **Posts** | Checked on each run | Full reimport (delete + reimport) |
+| **Custom Post Types** | Same fields as posts | Full reimport (delete + reimport) |
 | **Pages** | Not checked | Import once only (first run) |
 | **Attachments** | Checked on each run | Individual field updates |
 | **Users** | Checked on each run | Individual field updates |
 | **Terms** (categories, tags) | Checked on each run | Individual field updates |
-| **Custom Post Types** | Same fields as posts | Full reimport (delete + reimport) |
 
 ### Field-by-Field Specification
 
@@ -230,11 +304,7 @@ The `name` and `parent` (for categories) fields are **identifier fields** — on
 ## Best Practices
 
 1. **Backup First**: Always backup your local staging site before running migrations
-2. **Test with Dry Run**: Use the `--dry-run` parameter to test migrations safely
-3. **Monitor Logs**: Check log files for any issues or warnings
-4. **Batch Processing**: Use appropriate batch sizes for large migrations
-5. **Memory Limits**: Ensure sufficient PHP memory limits for large content sets, coupled with smaller batches
-6. **Always Run Search Before Migrate**: For each new migration cycle, always run `search-new-content-on-live` before `migrate-live-content` to ensure fresh run-state data
+2. **Monitor Logs**: Check log files for any issues or warnings
 
 ## Development
 
@@ -261,115 +331,42 @@ git push origin $(git symbolic-ref --short HEAD)
 
 - Memory Exhaustion: Increase PHP memory limits or reduce batch size
 - CLI Timeout Issues: Consider running migrations in smaller batches, or simply rerun to resume the migration from the last successful step
-- Check the log files in the `cdiff_logs/` directory
-- Use the `--dry-run` parameter to test without making changes
+- Check the log files in the `--data-dir` directory
 - Review the error log for specific error messages
 
 ## Multiple Source Hostnames
 
-This plugin supports importing content from multiple source hostnames. Each source is identified by a unique `--source-hostname` parameter (the full hostname) that must be provided to all commands. This allows you to:
+Importing content from multiple source hostnames is fully supported. Content of each site is treated independently from the other, and the plugin will not overwrite or merge any content from other sites.
 
-- Import content from Site A with `--source-hostname=www.example-1.com`
-- Import content from Site B with `--source-hostname=www.example-2.com`
-- Run multiple refresh cycles for each source without conflicts
-
-The source hostname is used to namespace the "old ID" metadata, ensuring that old IDs from different sources don't clash.
-
-### List Imported Source Hostnames
-
-To see which source hostnames have already been imported:
-
-```bash
-wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
-```
+Each source is identified by a unique `--source-hostname` parameter that must be provided to all commands.
 
 ### Workflow for Multiple Sources
 
 ```bash
-# Import from Hostname A (www.example-1.com)
+# Import from Site A
 wp newspack-content-diff-migrator search-new-content-on-live \
-    --live-table-prefix=eg1_ \
-    --source-hostname=www.example-1.com \
-    --data-dir=/tmp/cdiff_eg1
-
+    --live-table-prefix=cdiff_ --source-hostname=www.example-1.com --data-dir=/tmp/cdiff_eg1
 wp newspack-content-diff-migrator migrate-live-content \
-    --live-table-prefix=eg1_ \
-    --source-hostname=www.example-1.com \
-    --data-dir=/tmp/cdiff_eg1
+    --live-table-prefix=cdiff_ --source-hostname=www.example-1.com --data-dir=/tmp/cdiff_eg1
 
-# Import from Hostname B (www.example-2.com)
+# Import from Site B
 wp newspack-content-diff-migrator search-new-content-on-live \
-    --live-table-prefix=eg2_ \
-    --source-hostname=www.example-2.com \
-    --data-dir=/tmp/cdiff_eg2
-
+    --live-table-prefix=eg2_ --source-hostname=www.example-2.com --data-dir=/tmp/cdiff_eg2
 wp newspack-content-diff-migrator migrate-live-content \
-    --live-table-prefix=eg2_ \
-    --source-hostname=www.example-2.com \
-    --data-dir=/tmp/cdiff_eg2
+    --live-table-prefix=eg2_ --source-hostname=www.example-2.com --data-dir=/tmp/cdiff_eg2
 ```
 
-### Attributing Initial Content
+Use `list-previously-migrated-source-hostnames` to see which sources have been previously migrated.
 
-If your local site was initially cloned from a source hostname, since the content will not have the specific source-hostname metadata telling Content Diff Migrator which source site it belongs to, you should first attribute that existing content to a source hostname before running the content-diff commands.
+### Attributing Cloned Content
 
-This creates the necessary source-specific metadata for proper tracking, so that the content can be matched (properly compared) during subsequent migration runs:
+If your local site already contains some of the content from the source site (example case when local site was initially cloned from source), you must first attribute that existing content before running migrations. This creates the source-specific metadata needed for proper content matching, and lets the plugin know that the existing local content came from this specific source hostname, so that it could be matched/compared correctly:
 
 ```bash
 wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
-    --live-table-prefix=eg1_ \
+    --live-table-prefix=cdiff_ \
     --source-hostname=www.example-1.com
 ```
-
----
-
-## Legacy Migration (Pre-Multiple-Source-Hostname Installs)
-
-If you have previously used this plugin **before** the multiple source hostname feature was introduced, you need to clean up legacy metadata before using the new functionality.
-
-### What Changed in v2.0.0
-
-Previous versions stored old IDs using a single meta key:
-- `newspackcontentdiff_live_id` (for posts, attachments, and users)
-
-The new version uses source-namespaced meta keys:
-- `newspackcontentdiff_oldid_{source-hostname}` (e.g., `newspackcontentdiff_oldid_www.example-1.com`)
-
-The old meta keys are no longer recognized and must be removed before running attribution.
-
-### Step 1: Delete Legacy Metadata
-
-*Note: This step is only necessary if you have used the plugin version < 2.0.0 on your site, and are upgrading to v2.0.0 or later.*
-
-Run these SQL commands to remove all legacy Content Diff metadata. **Always backup your database first.**
-
-```sql
--- Delete legacy post/attachment metadata
-DELETE FROM wp_postmeta WHERE meta_key = 'newspackcontentdiff_live_id';
-
--- Delete legacy user metadata
-DELETE FROM wp_usermeta WHERE meta_key = 'newspackcontentdiff_live_id';
-```
-
-**Note:** If necessary update a custom installation custom table prefix other than `wp_`.
-
-### Step 2: Attribute Existing Content
-
-After cleaning legacy metadata, attribute the existing content on site the source hostname you are migrating:
-
-```bash
-wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
-    --live-table-prefix=eg1_ \
-    --source-hostname=www.example-1.com
-```
-
-This command will:
-1. Compare existing local content with the source hostname's database tables
-2. Match existing posts and create new source-specific metadata
-
-### Step 3: Resume Normal Operations
-
-You can now use the content-diff commands with the `--source-hostname` parameter as documented above.
 
 ---
 
@@ -379,4 +376,4 @@ This plugin is part of the Newspack ecosystem and follows the same licensing ter
 
 ## Disclaimer
 
-This plugin is provided as-is without any warranty or support. Use at your own risk. The authors and contributors are not responsible for any data loss or damage caused by the use of this plugin.
+This plugin is provided as-is without any warranty or support. Use at your own risk. The authors and contributors are not responsible for any data loss or any kind of damage caused by the use of this plugin.
