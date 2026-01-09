@@ -16,21 +16,20 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  */
 class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 	/**
-	 * Tests that modified posts are reimported with their local ID preserved.
-	 * Note: Uses simple post without parent to avoid update_post_parent edge case.
+	 * Tests that reimported modified posts preserve their local wp_posts.ID.
 	 *
 	 * @group posts-modified
 	 */
-	public function test_should_reimport_modified_post_with_preserved_local_id(): void {
+	public function test_reimport_should_preserve_local_post_id(): void {
 		global $wpdb;
 
-		// Create a simple post without parent relationships.
 		$post = $this->create_post_fixture(
 			[
-				'ID'            => 4006,
+				'ID'            => 4100,
 				'post_title'    => 'Original Title',
+				'post_content'  => 'Original content.',
 				'post_modified' => '2024-01-01 10:00:00',
-				'post_parent'   => 0, // No parent to avoid update_post_parent issues.
+				'post_parent'   => 0,
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
@@ -38,32 +37,37 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 		$this->run_search_command();
 		$this->run_migrate_command();
 
-		$original_local_id = $this->logic->get_current_post_id_by_old_id( 4006, $this->source_hostname );
-		$this->assertNotNull( $original_local_id, 'Original post should be imported.' );
+		$original_local_id = $this->logic->get_current_post_id_by_old_id( 4100, $this->source_hostname );
+		$this->assertNotNull( $original_local_id, 'Post should be imported.' );
 
-		// Modify in live.
+		$original_post = get_post( $original_local_id );
+		$this->assertEquals( 'Original Title', $original_post->post_title );
+		$this->assertEquals( 'Original content.', $original_post->post_content );
+
+		// Modify post in live.
 		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 			$this->live_table_prefix . 'posts',
 			[
-				'post_title'        => 'Updated Title',
+				'post_title'        => 'Modified Title',
+				'post_content'      => 'Modified content with updates.',
 				'post_modified'     => '2024-06-01 10:00:00',
 				'post_modified_gmt' => '2024-06-01 10:00:00',
 			],
-			[ 'ID' => 4006 ]
+			[ 'ID' => 4100 ]
 		); // phpcs:ignore
 
 		$this->run_search_command();
 		$this->run_migrate_command();
 
-		// Post should be reimported with the same ID.
-		$new_local_id = $this->logic->get_current_post_id_by_old_id( 4006, $this->source_hostname );
-		$this->assertNotNull( $new_local_id, 'Reimported post should exist.' );
+		// The reimported post should have the SAME local ID.
+		$new_local_id = $this->logic->get_current_post_id_by_old_id( 4100, $this->source_hostname );
+		$this->assertNotNull( $new_local_id, 'Post should be reimported.' );
 		$this->assertEquals( $original_local_id, $new_local_id, 'Reimported post should preserve its local ID.' );
 
-		// Verify the post content was updated.
+		// Verify content was updated.
 		$reimported_post = get_post( $new_local_id );
-		$this->assertNotNull( $reimported_post, 'Reimported post should exist at the same ID.' );
-		$this->assertEquals( 'Updated Title', $reimported_post->post_title, 'Reimported post should have updated title.' );
+		$this->assertEquals( 'Modified Title', $reimported_post->post_title, 'Reimported post should have updated title.' );
+		$this->assertEquals( 'Modified content with updates.', $reimported_post->post_content, 'Reimported post should have updated content.' );
 	}
 
 	/**
@@ -130,70 +134,6 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 		$this->assertNotNull( $new_local_id, 'Modified post should be reimported.' );
 		$this->assertEquals( $original_local_id, $new_local_id, 'Modified post should preserve its local ID.' );
 		$this->assertEquals( 'Modified Title', get_the_title( $new_local_id ), 'Modified post should have updated title.' );
-	}
-
-	/**
-	 * Tests that deleted modified ID entries are stored in the run-state for resume capability,
-	 * and subsequent runs correctly skip already-deleted IDs while still reimporting.
-	 *
-	 * @group posts-modified
-	 */
-	public function test_should_skip_already_deleted_modified_ids_on_resume(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture(
-			[
-				'ID'            => 4010,
-				'post_title'    => 'Original Title',
-				'post_modified' => '2024-01-01 10:00:00',
-				'post_parent'   => 0,
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		$original_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
-		$this->assertNotNull( $original_local_id, 'Post should be imported.' );
-
-		// Modify in live.
-		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-			$this->live_table_prefix . 'posts',
-			[
-				'post_title'        => 'Modified Title',
-				'post_modified'     => '2024-06-01 10:00:00',
-				'post_modified_gmt' => '2024-06-01 10:00:00',
-			],
-			[ 'ID' => 4010 ]
-		); // phpcs:ignore
-
-		$this->run_search_command();
-
-		// Verify modified ID was detected.
-		$modified_ids = $this->run_state->get_modified_ids_map();
-		$this->assertArrayHasKey( 4010, $modified_ids, 'Modified ID should be detected.' );
-
-		// First migrate run will delete and reimport.
-		$this->run_migrate_command();
-
-		// Verify the deleted ID was saved to run-state.
-		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
-		$this->assertArrayHasKey( 4010, $deleted_map, 'Deleted modified ID should be in run-state.' );
-
-		// Verify the post was reimported with updated content.
-		$new_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
-		$this->assertNotNull( $new_local_id, 'Post should be reimported.' );
-		$this->assertEquals( $original_local_id, $new_local_id, 'Post should preserve its local ID after reimport.' );
-		$this->assertEquals( 'Modified Title', get_the_title( $new_local_id ), 'Reimported post should have updated title.' );
-
-		// Second migrate run should skip deletion (already deleted) but not skip reimport if needed.
-		// Since we're using the same run-state, it should skip reimporting the same post again.
-		$this->run_migrate_command();
-
-		// Post should still exist with same ID (not deleted again or duplicated).
-		$final_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
-		$this->assertEquals( $new_local_id, $final_local_id, 'Post ID should remain the same after second migrate run.' );
 	}
 
 	/**

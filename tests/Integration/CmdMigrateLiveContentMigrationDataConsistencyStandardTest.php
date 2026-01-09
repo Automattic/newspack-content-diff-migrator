@@ -1450,61 +1450,6 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	}
 
 	/**
-	 * Tests that reimported modified posts preserve their local wp_posts.ID.
-	 *
-	 * @group migration-data-consistency-standard
-	 */
-	public function test_reimport_should_preserve_local_post_id(): void {
-		global $wpdb;
-
-		$post = $this->create_post_fixture(
-			[
-				'ID'            => 4100,
-				'post_title'    => 'Original Title',
-				'post_content'  => 'Original content.',
-				'post_modified' => '2024-01-01 10:00:00',
-				'post_parent'   => 0,
-			]
-		);
-		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		$original_local_id = $this->logic->get_current_post_id_by_old_id( 4100, $this->source_hostname );
-		$this->assertNotNull( $original_local_id, 'Post should be imported.' );
-
-		$original_post = get_post( $original_local_id );
-		$this->assertEquals( 'Original Title', $original_post->post_title );
-		$this->assertEquals( 'Original content.', $original_post->post_content );
-
-		// Modify post in live.
-		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
-			$this->live_table_prefix . 'posts',
-			[
-				'post_title'        => 'Modified Title',
-				'post_content'      => 'Modified content with updates.',
-				'post_modified'     => '2024-06-01 10:00:00',
-				'post_modified_gmt' => '2024-06-01 10:00:00',
-			],
-			[ 'ID' => 4100 ]
-		); // phpcs:ignore
-
-		$this->run_search_command();
-		$this->run_migrate_command();
-
-		// The reimported post should have the SAME local ID.
-		$new_local_id = $this->logic->get_current_post_id_by_old_id( 4100, $this->source_hostname );
-		$this->assertNotNull( $new_local_id, 'Post should be reimported.' );
-		$this->assertEquals( $original_local_id, $new_local_id, 'Reimported post should preserve its local ID.' );
-
-		// Verify content was updated.
-		$reimported_post = get_post( $new_local_id );
-		$this->assertEquals( 'Modified Title', $reimported_post->post_title, 'Reimported post should have updated title.' );
-		$this->assertEquals( 'Modified content with updates.', $reimported_post->post_content, 'Reimported post should have updated content.' );
-	}
-
-	/**
 	 * Tests that reimported posts preserve the old_id meta pointing to the live ID.
 	 *
 	 * @group migration-data-consistency-standard

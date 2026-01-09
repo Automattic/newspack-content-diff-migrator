@@ -466,16 +466,18 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * Tests that deleted modified IDs are saved to run-state.
+	 * Tests that deleted modified ID entries are stored in the run-state for resume capability,
+	 * and subsequent runs correctly skip already-deleted IDs while still reimporting.
 	 *
 	 * @group run-state
 	 */
-	public function test_should_update_runstate_with_deleted_modified_ids(): void {
+	public function test_should_skip_already_deleted_modified_ids_on_resume(): void {
 		global $wpdb;
 
 		$post = $this->create_post_fixture(
 			[
-				'ID'            => 4007,
+				'ID'            => 4010,
+				'post_title'    => 'Original Title',
 				'post_modified' => '2024-01-01 10:00:00',
 				'post_parent'   => 0,
 			]
@@ -485,21 +487,45 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$this->run_search_command();
 		$this->run_migrate_command();
 
+		$original_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
+		$this->assertNotNull( $original_local_id, 'Post should be imported.' );
+
 		// Modify in live.
 		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 			$this->live_table_prefix . 'posts',
 			[
+				'post_title'        => 'Modified Title',
 				'post_modified'     => '2024-06-01 10:00:00',
 				'post_modified_gmt' => '2024-06-01 10:00:00',
 			],
-			[ 'ID' => 4007 ]
+			[ 'ID' => 4010 ]
 		); // phpcs:ignore
 
 		$this->run_search_command();
+
+		// Verify modified ID was detected.
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayHasKey( 4010, $modified_ids, 'Modified ID should be detected.' );
+
+		// First migrate run will delete and reimport.
 		$this->run_migrate_command();
 
-		// Check run-state for deleted modified IDs.
+		// Verify the deleted ID was saved to run-state.
 		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
-		$this->assertArrayHasKey( 4007, $deleted_map, 'Deleted modified ID should be saved to run-state.' );
+		$this->assertArrayHasKey( 4010, $deleted_map, 'Deleted modified ID should be in run-state.' );
+
+		// Verify the post was reimported with updated content.
+		$new_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
+		$this->assertNotNull( $new_local_id, 'Post should be reimported.' );
+		$this->assertEquals( $original_local_id, $new_local_id, 'Post should preserve its local ID after reimport.' );
+		$this->assertEquals( 'Modified Title', get_the_title( $new_local_id ), 'Reimported post should have updated title.' );
+
+		// Second migrate run should skip deletion (already deleted) but not skip reimport if needed.
+		// Since we're using the same run-state, it should skip reimporting the same post again.
+		$this->run_migrate_command();
+
+		// Post should still exist with same ID (not deleted again or duplicated).
+		$final_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
+		$this->assertEquals( $new_local_id, $final_local_id, 'Post ID should remain the same after second migrate run.' );
 	}
 }
