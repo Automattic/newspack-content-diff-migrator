@@ -529,7 +529,7 @@ class DataImporter {
 	 * @param string $source_hostname Source hostname for old_id meta.
 	 */
 	private function import_termmeta( array $data, int $live_term_id, int $local_term_id, int $id_old, int $post_id, string $source_hostname ): void {
-		// Skip if termmeta has already been imported for this term.
+		// Skip if termmeta has already been imported for this term in this run.
 		if ( isset( $this->termmeta_imported[ $live_term_id ] ) ) {
 			return;
 		}
@@ -557,6 +557,27 @@ class DataImporter {
 
 		// Save old_id termmeta for Migration Data Consistency Standard.
 		$meta_key = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Check if already attributed to this source (idempotent - avoids duplicate warnings).
+		$existing_meta = get_term_meta( $local_term_id, $meta_key, true );
+		if ( ! empty( $existing_meta ) ) {
+			// Already attributed from this source, skip.
+			$this->termmeta_imported[ $live_term_id ] = true;
+			return;
+		}
+
+		// Check if term has old_id meta from ANY other source (indicates merge from multiple sources).
+		// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$any_old_id_meta = $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT meta_id FROM {$this->wpdb->termmeta} WHERE term_id = %d AND meta_key LIKE %s LIMIT 1",
+				$local_term_id,
+				ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX . '%'
+			)
+		);
+		// phpcs:enable
+
+		// Insert the source-specific old_id meta.
 		$inserted = $this->wpdb->insert(
 			$this->wpdb->termmeta,
 			[
@@ -573,6 +594,24 @@ class DataImporter {
 					'local_term_id' => $local_term_id,
 					'live_term_id'  => $live_term_id,
 					'meta_key'      => $meta_key,
+				]
+			);
+		}
+
+		// Log warning if this term is being merged from another source (once per source per term).
+		if ( ! empty( $any_old_id_meta ) ) {
+			$term      = get_term( $local_term_id );
+			$term_name = $term instanceof \WP_Term ? $term->name : '(unknown)';
+			$taxonomy  = $term instanceof \WP_Term ? $term->taxonomy : '(unknown)';
+			Logger::instance()->log_brief_and_verbose(
+				LogLevel::WARNING,
+				sprintf( 'Term with name "%s" (taxonomy: %s) already exists from another source (local ID %d). Now merging source term ID %d from %s.', $term_name, $taxonomy, $local_term_id, $live_term_id, $source_hostname ),
+				[
+					'local_term_id'   => $local_term_id,
+					'live_term_id'    => $live_term_id,
+					'source_hostname' => $source_hostname,
+					'term_name'       => $term_name,
+					'taxonomy'        => $taxonomy,
 				]
 			);
 		}
@@ -618,10 +657,32 @@ class DataImporter {
 			return null;
 		}
 
-		// Check if user already exists.
+		// Check if user already exists by login.
 		$existing_user = get_user_by( 'login', $user_row['user_login'] );
 		if ( $existing_user instanceof WP_User ) {
-			return (int) $existing_user->ID;
+			$local_user_id = (int) $existing_user->ID;
+			$meta_key      = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+			// Check if already attributed to this source (idempotent - avoids duplicate warnings).
+			$existing_meta = get_user_meta( $local_user_id, $meta_key, true );
+			if ( empty( $existing_meta ) ) {
+				// Add source-specific old_id meta for this merged user.
+				update_user_meta( $local_user_id, $meta_key, $user_row['ID'] );
+
+				// Log warning about merge (once per source per user).
+				Logger::instance()->log_brief_and_verbose(
+					LogLevel::WARNING,
+					sprintf( 'User login "%s" already exists (local ID %d). Merging source user ID %d from %s to existing user.', $user_row['user_login'], $local_user_id, $user_row['ID'], $source_hostname ),
+					[
+						'existing_user_id' => $local_user_id,
+						'source_user_id'   => $user_row['ID'],
+						'source_hostname'  => $source_hostname,
+						'user_login'       => $user_row['user_login'],
+					]
+				);
+			}
+
+			return $local_user_id;
 		}
 
 		// Insert new user with usermeta.

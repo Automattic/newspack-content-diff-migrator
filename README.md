@@ -187,11 +187,7 @@ The plugin uses two complementary update strategies internally, depending on the
 
 ### Field-by-Field Specification
 
-The **identifier fields** only get imported once, and changes to these fields are ignored on subsequent runs.
-
-This lists which fields get updated on subsequent migration runs.
-
-Note that the full reimport of the modified post **preserves its local `wp_posts.ID`**. The post gets reimported with that same ID, ensuring any external references to the reimported local post ID remain valid.
+When an object has already been migrated during a previous run, any subsequent migration run will check if it has been changed on live and needs to be updated on local. If so, the object is either marked as **modified** and will be fully reimported (note that such a full reimport of te modified post **preserves its local `wp_posts.ID`** to ensure any external references to the reimported local post ID remain valid), or the following specific fields will be updated individually. The marked **identifier fields** are ignored on subsequent runs.
 
 #### Posts
 
@@ -215,7 +211,7 @@ Same rules as posts.
 
 - Pages are migrated only once during the first migration run
 - Changes to page fields on live do not get updated on local
-- New pages are **not** imported during consecutive migration runs
+- New pages are **not** imported during consecutive migration runs (this specifically serves Newspack's own migration workflow best)
 
 #### Categories
 
@@ -255,73 +251,52 @@ All users get migrated fully during every migration run (to migrate subscribers 
 - **Credit** — gets updated directly (`_media_credit`)
 - **Credit URL** — gets updated directly (`_media_credit_url`)
 
-### Posts and Custom Post Types
+**Why Full Reimport?**
 
-When a post or CPT has already been migrated, the search command checks if any of the following fields have changed on live. If so, the post is marked as **modified** and will be fully reimported:
-
-- `post_modified` date
-- `post_status`
-- `post_author`
-- Featured image (`_thumbnail_id`)
-- Taxonomy term relationships (categories, tags, and custom taxonomies) — includes **CoAuthors Plus co-author** assignments
-
-> **Why Full Reimport?**
->
-> Modified posts use a "full reimport" strategy: the local post is deleted and then reimported fresh from the live site.
+Modified posts use a "full reimport" strategy: the local post is deleted and then reimported fresh from the live site.
 
 However this reimport of the modified post **preserves its local `wp_posts.ID`**. The post gets reimported with the same ID, ensuring any external references to the reimported local post ID remain valid. The original live ID is also preserved in the `newspackcontentdiff_oldid_{hostname}` postmeta for mapping.
 
 This approach elegantly handles the complexity of post updates:
->
-> - **Block content**: Attachment IDs embedded in Gutenberg blocks are automatically updated to local IDs
-> - **Featured images**: Thumbnail references are properly mapped to local attachment IDs
-> - **Taxonomies**: All term relationships are reimported fresh
-> - **Postmeta**: All post metadata is synchronized
-> - **Comments**: All comments and comment metadata are reimported
-> - **Parent references**: Post parent IDs are updated to local IDs
->
-> This single operation ensures all related data is consistent, rather than attempting to diff and update individual fields which could miss embedded ID references in content.
 
-### Pages
+- **Block content**: Attachment IDs embedded in Gutenberg blocks are automatically updated to local IDs
+- **Featured images**: Thumbnail references are properly mapped to local attachment IDs
+- **Taxonomies**: All term relationships are reimported fresh
+- **Postmeta**: All post metadata is synchronized
+- **Comments**: All comments and comment metadata are reimported
+- **Parent references**: Post parent IDs are updated to local IDs
 
-Pages are **imported only once** during the first migration run. Existing pages are not updated on subsequent migration runs, even if their content changes on live. **New pages are also not imported on consecutive runs** — only the initial migration imports pages.
+This single operation ensures all related data is consistent, rather than attempting to diff and update individual fields which could miss embedded ID references in content. Additionally it cause no performance overhead compared to the alternative of updating individual fields which could miss embedded ID references in content.
 
-### Attachments
+### Multi-Source Merged Entities
 
-Attachments are imported once, but the following fields are **updated individually** if they change on live (without reimporting the entire attachment):
+When importing from multiple sources, certain entities with the same unique identifiers get **merged** into a single local entity rather than creating duplicates. This is by design and handled gracefully without crashes.
 
-- Caption (`post_excerpt`)
-- Description (`post_content`)
-- Alt Text (`_wp_attachment_image_alt`)
-- Media Credit (`_media_credit`)
-- Media Credit URL (`_media_credit_url`)
+**Fields that cause merging:**
 
-> Individual field updates preserve the attachment's local ID, which is important since this ID may be referenced in post content blocks and featured image settings.
+| Entity | Unique Field(s) | Merge Behavior |
+|--------|----------------|----------------|
+| **Users** | `user_login` | Same username from different sources → merged to one user |
+| **Categories** | `name` + `parent` | Same category name under same parent → merged to one |
+| **Tags** | `name` | Same tag name → merged to one |
 
-### Users
+**What happens when entities are merged:**
 
-All the users from the live site get migrated fully during every migration run (in order to migrate subscribers and subscription data), as well as authors of records given here.
+1. The first import creates the entity (user, term) with the source's old_id meta
+2. Subsequent imports from other sources find the existing entity and:
+   - Add their own source-specific old_id meta (e.g., `newspackcontentdiff_oldid_www.source-b.com`), and so these records will have multiple old_id metas — one per contributing source
+   - Log a WARNING (once per source per entity) noting the merge, so you can review the merged entities and their old_id metas
+3. The result is a single entity with multiple old_id metas — one per contributing source
 
-Migrated users have the following fields **updated individually** if they change on live:
+**Example:** If `www.source-a.com` and `www.source-b.com` both have a user "admin", after importing both:
+- One local "admin" user exists
+- That user has TWO old_id metas:
+  - `newspackcontentdiff_oldid_www.source-a.com` = 123
+  - `newspackcontentdiff_oldid_www.source-b.com` = 456
 
-- Email (`user_email`)
-- Display Name (`display_name`)
-- Simple Local Avatar's user avatar (`simple_local_avatar` usermeta) — if the [Simple Local Avatars](https://wordpress.org/plugins/simple-local-avatars/) plugin is used, avatar assignments are tracked and updated, including handling avatar removal
-
-The `user_login` field is an **identifier field** — once a user is imported, changes to their login on live are ignored. If a new post references a user with a changed login, a new user will be created.
-
-> Individual field updates preserve the user's local ID, which is important since this ID is used as `post_author` in posts.
-
-### Categories and Tags
-
-Migrated categories and post tags have the following fields **updated individually** if they change on live:
-
-- Slug (`wp_terms.slug`)
-- Description (`wp_term_taxonomy.description`)
-
-The `name` and `parent` (for categories) fields are **identifier fields** — once a term is imported (has old_id termmeta), changes to these fields are ignored.
-
-> Individual field updates preserve the term's local ID, which is important since this ID is used in term relationships with posts. This also applies to CoAuthors Plus author terms (taxonomy = 'author'), ensuring co-author metadata stays synchronized.
+**Entities that are NOT merged (always create new):**
+- **Posts** — different sources = different posts (even with same title/slug)
+- **Attachments** — different sources = different attachments (even with same filename)
 
 ## Best Practices
 
