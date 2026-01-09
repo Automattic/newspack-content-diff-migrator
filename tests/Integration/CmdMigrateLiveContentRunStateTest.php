@@ -468,7 +468,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	/**
 	 * Tests that deleted modified IDs are saved to run-state.
 	 *
-	 * @group posts-modified
+	 * @group run-state
 	 */
 	public function test_should_update_runstate_with_deleted_modified_ids(): void {
 		global $wpdb;

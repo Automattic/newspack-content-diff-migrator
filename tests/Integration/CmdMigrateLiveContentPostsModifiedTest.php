@@ -361,7 +361,7 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 	 * Tests that when a post has multiple comments and one is deleted on live,
 	 * only the remaining comments exist after reimport.
 	 *
-	 * @group comments
+	 * @group posts-modified
 	 */
 	public function test_should_remove_one_comment_when_post_has_multiple_comments_and_one_deleted(): void {
 		global $wpdb;
@@ -449,7 +449,7 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 	 * Tests that when a post has multiple postmeta entries and one is deleted on live,
 	 * only the remaining metas exist after reimport.
 	 *
-	 * @group posts
+	 * @group posts-modified
 	 */
 	public function test_should_remove_one_postmeta_when_post_has_multiple_metas_and_one_deleted(): void {
 		global $wpdb;
