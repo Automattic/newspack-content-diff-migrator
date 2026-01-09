@@ -1,14 +1,12 @@
 # Newspack Content Diff Migrator
 
-**Version 2.0.0** — See [Legacy Migration](#legacy-migration-pre-multiple-source-installs) for upgrade instructions from v1.x.
-
-This plugin is a content migration tool that migrates the content differential from one or more remote sites on top of your local site while keeping the existing local content intact.
+This plugin is a content migration tool that migrates the content differential from one or more remote WordPress sites on top of the destination site while keeping the existing local content intact.
 
 ## Overview
 
-The Newspack Content Diff Migrator is designed to synchronize content between a remote site (also addressed as "live site", after Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
+The Newspack Content Diff Migrator is designed to synchronize content between remote sites (also addressed as "live site", after Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
 
-It migrates all the database content, and files synchronization should be done additionally.
+The plugin migrates all the database content, while files synchronization should be done additionally.
 
 ## Features
 
@@ -187,21 +185,29 @@ The plugin uses two complementary update strategies internally, depending on the
 
 ### Field-by-Field Specification
 
-When an object has already been migrated during a previous run, any subsequent migration run will check if it has been changed on live and needs to be updated on local. If so, the object is either marked as **modified** and will be fully reimported (note that such a full reimport of te modified post **preserves its local `wp_posts.ID`** to ensure any external references to the reimported local post ID remain valid), or the following specific fields will be updated individually. The marked **identifier fields** are ignored on subsequent runs.
-
 #### Posts
 
-- **Title** — does not get updated (identifier field)
-- **Slug** — does not get updated (identifier field)
-- **Date published** — does not get updated (identifier field)
-- **Date modified** — triggers full reimport (detected by comparing `post_modified`)
-- **Status** — triggers full reimport (detected by comparing `post_status`)
-- **Content** — triggers full reimport (detected via `post_modified` change)
-- **Excerpt** — triggers full reimport (detected via `post_modified` change)
-- **Category/tags** — triggers full reimport (detected by comparing `term_relationships`)
-- **Author** — triggers full reimport (detected by comparing `post_author`)
-- **Featured image** — triggers full reimport (detected by comparing `_thumbnail_id`)
-- **Postmeta** — does NOT get updated unless `post_modified` triggers full reimport
+The following fields are **directly scanned** for changes and update on these fields triggers a full post reimport ("modified" post is deleted and reimported):
+
+- **Date modified** — compared directly (`post_modified`)
+- **Status** — compared directly (`post_status`)
+- **Author** — compared directly (`post_author`)
+- **Featured image** — compared directly (`_thumbnail_id` postmeta)
+- **Category/tags/taxonomies** — compared directly (`term_relationships`)
+
+The following fields are **not scanned directly**, but changes to `post_modified` will update the entire post:
+
+- **Content** — detected indirectly via `post_modified` change
+- **Excerpt** — detected indirectly via `post_modified` change
+- **Postmeta** — detected indirectly via `post_modified` change (if WordPress updates it)
+
+The following are **identifier fields** — changes to these fields are ignored unless another field triggers reimport:
+
+- **Title** — not scanned; only updated if post is reimported
+- **Slug** — not scanned; only updated if post is reimported
+- **Date published** — not scanned; only updated if post is reimported
+
+When any directly-scanned field has changed, or when `post_modified` is newer on live, the post is marked as **modified** and will be deleted and fully reimported. Such a full reimport **preserves its local `wp_posts.ID`** to ensure any references to the reimported local post ID remain valid.
 
 #### Custom Post Types
 
@@ -357,7 +363,7 @@ Use `list-previously-migrated-source-hostnames` to see which sources have been p
 
 ### Attributing Cloned Content
 
-If your local site was cloned from a source site, you must first attribute that existing content before running migrations. See [`attribute-existing-content-to-hostname`](#attribute-existing-content-to-hostname) for details.
+If your local site was cloned from the live site, you must first attribute that existing local content to the source hostname before running the content diff migration. See [`attribute-existing-content-to-hostname`](#attribute-existing-content-to-hostname) for details.
 
 ---
 
