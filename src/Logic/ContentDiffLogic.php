@@ -240,6 +240,33 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Gets count of imported posts of a specific type from a source hostname.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param string $post_type       Post type to count.
+	 * @return int Count of imported posts.
+	 */
+	public function get_imported_post_count_by_type( string $source_hostname, string $post_type ): int {
+		$meta_key = $this->get_old_id_meta_key( $source_hostname );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
+		$count = $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT COUNT(*)
+					FROM {$this->wpdb->postmeta} wpm
+					JOIN {$this->wpdb->posts} wp ON wp.ID = wpm.post_id
+					WHERE wpm.meta_key = %s
+					AND wp.post_type = %s;",
+				$meta_key,
+				$post_type
+			)
+		);
+		// phpcs:enable
+
+		return (int) $count;
+	}
+
+	/**
 	 * Gets ALL imported post IDs (all post types) for a source hostname.
 	 *
 	 * Returns array of records with old_id, new_id, post_type keys.

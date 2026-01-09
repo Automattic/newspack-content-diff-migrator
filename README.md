@@ -91,7 +91,7 @@ However, it is also possible to safely reuse the same `--data-dir` for a grand n
 
 ## Migration Data Consistency Standard
 
-The Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details) defines how previously migrated content is handled and which fields get updated on subsequent migration runs. It ensures that changes made on the live site are reflected on the local site with a curated set of rules which match Newspack's optimal migration workflow.
+The Newspack's own Migration Data Consistency Standard (see [internal P2](https://newspackp2.wordpress.com/2025/09/24/migration-data-consistency-standard/) for more details) defines how new and modified content is handled, and which fields get updated on subsequent migration runs. It ensures that changes made on the live site are reflected on the local site with a curated set of rules which match Newspack's optimal migration workflow.
 
 ### How It Works
 
@@ -99,24 +99,77 @@ The plugin uses two complementary update strategies, depending on the object typ
 
 | Object Type | Detection | Update Method |
 |-------------|-----------|---------------|
-| **Posts** | 5 fields checked on each run | Full reimport (delete + reimport) |
-| **Pages** | Not checked | Import once only |
+| **Posts** | Checked on each run | Full reimport (delete + reimport) |
+| **Pages** | Not checked | Import once only (first run) |
 | **Attachments** | Checked on each run | Individual field updates |
 | **Users** | Checked on each run | Individual field updates |
 | **Terms** (categories, tags) | Checked on each run | Individual field updates |
-| **Custom Post Types** | Not checked | Import once only |
+| **Custom Post Types** | Same fields as posts | Full reimport (delete + reimport) |
 
-### Posts (post_type = 'post')
+### Field-by-Field Specification
 
-When a post has already been migrated, the search command checks if any of the following fields have changed on live. If so, the post is marked as **modified** and will be fully reimported:
+**Legend:**
+- `=` marks **identifier fields** — once imported (old_id meta exists), changes to these fields are ignored
+- `-` marks **updateable fields** — changes trigger either reimport or direct update
+
+```
+- posts
+    = changed title => does not get updated (identifier field; once imported via old_id meta, changes are ignored)
+    = changed slug => does not get updated (identifier field; once imported via old_id meta, changes are ignored)
+    = changed date published => does not get updated (identifier field; once imported via old_id meta, changes are ignored)
+    - changed date modified => existing post gets fully reimported (detected by comparing post_modified timestamps)
+    - changed status => existing post gets fully reimported (detected by comparing post_status values)
+    - changed post_content => existing post gets fully reimported (detected via post_modified change)
+    - changed post_excerpt => existing post gets fully reimported (detected via post_modified change)
+    - changed category => existing post gets fully reimported (detected by comparing term_relationships)
+    - changed author => existing post gets fully reimported (detected by comparing post_author)
+    - changed featured image => existing post gets fully reimported (detected by comparing _thumbnail_id)
+    - postmeta changes => does NOT get updated on existing post, UNLESS post_modified triggers full reimport
+- custom post_types
+    - ... same rules as posts
+- pages
+    - pages are migrated only once during the first migration run
+    - if any page fields get updated on live, they do not get updated on local
+    - new pages do NOT get migrated during consecutive migration runs
+- categories
+    = changed name => does not get updated (identifier field; once imported via old_id termmeta, changes are ignored)
+    = changed parent => does not get updated (identifier field; once imported via old_id termmeta, changes are ignored)
+    - changed slug => existing category gets updated (direct update via update_modified_terms)
+    - changed description => existing category gets updated (direct update via update_modified_terms)
+- custom taxonomies, hierarchical
+    - ... same rules as categories
+- post_tags
+    = changed name => does not get updated (identifier field; once imported via old_id termmeta, changes are ignored)
+    - changed slug => existing tag gets updated (direct update via update_modified_terms)
+    - changed description => existing tag gets updated (direct update via update_modified_terms)
+- custom taxonomies, non-hierarchical
+    - ... same rules as post_tag
+- users
+    - all users get migrated fully during every migration run (in order to migrate subscribers and subscription data), as well as authors of records given here
+    = changed username/login => existing user not updated; new user gets inserted via migrate_all_users()
+      (identifier field; the post author remains pointing to original user)
+    - changed email => existing user gets updated (direct update via update_modified_users)
+    - changed display name => existing user gets updated (direct update via update_modified_users)
+    - changed avatar => existing user gets updated (direct update via update_modified_users)
+- attachments
+    - changed caption => existing attachment gets updated (direct update via update_modified_attachments on post_excerpt)
+    - changed alt text => existing attachment gets updated (direct update via update_modified_attachments on _wp_attachment_image_alt)
+    - changed description => existing attachment gets updated (direct update via update_modified_attachments on post_content)
+    - changed credit => existing attachment gets updated (direct update via update_modified_attachments on _media_credit)
+    - changed credit URL => existing attachment gets updated (direct update via update_modified_attachments on _media_credit_url)
+```
+
+### Posts and Custom Post Types
+
+When a post or CPT has already been migrated, the search command checks if any of the following fields have changed on live. If so, the post is marked as **modified** and will be fully reimported:
 
 - `post_modified` date
 - `post_status`
 - `post_author`
 - Featured image (`_thumbnail_id`)
-- Taxonomy term relationships (categories, tags, and custom taxonomies) -- includes **CoAuthors Plus co-author** assignments, if the `author` taxonomy terms assigned to a post change on live, the post will be reimported with the updated co-authors
+- Taxonomy term relationships (categories, tags, and custom taxonomies) — includes **CoAuthors Plus co-author** assignments
 
-> **Why Full Reimport for Posts?**
+> **Why Full Reimport?**
 >
 > Modified posts use a "full reimport" strategy: the local post is deleted and then reimported fresh from the live site.
 
@@ -132,11 +185,10 @@ This approach elegantly handles the complexity of post updates:
 > - **Parent references**: Post parent IDs are updated to local IDs
 >
 > This single operation ensures all related data is consistent, rather than attempting to diff and update individual fields which could miss embedded ID references in content.
->
 
-### Pages (post_type = 'page')
+### Pages
 
-Pages are **imported only once**. Existing pages are not updated on subsequent migration runs, even if their content changes on live. New pages will still be imported.
+Pages are **imported only once** during the first migration run. Existing pages are not updated on subsequent migration runs, even if their content changes on live. **New pages are also not imported on consecutive runs** — only the initial migration imports pages.
 
 ### Attachments
 
@@ -152,11 +204,15 @@ Attachments are imported once, but the following fields are **updated individual
 
 ### Users
 
+All the users from the live site get migrated fully during every migration run (in order to migrate subscribers and subscription data), as well as authors of records given here.
+
 Migrated users have the following fields **updated individually** if they change on live:
 
 - Email (`user_email`)
 - Display Name (`display_name`)
 - Simple Local Avatar's user avatar (`simple_local_avatar` usermeta) — if the [Simple Local Avatars](https://wordpress.org/plugins/simple-local-avatars/) plugin is used, avatar assignments are tracked and updated, including handling avatar removal
+
+The `user_login` field is an **identifier field** — once a user is imported, changes to their login on live are ignored. If a new post references a user with a changed login, a new user will be created.
 
 > Individual field updates preserve the user's local ID, which is important since this ID is used as `post_author` in posts.
 
@@ -167,11 +223,9 @@ Migrated categories and post tags have the following fields **updated individual
 - Slug (`wp_terms.slug`)
 - Description (`wp_term_taxonomy.description`)
 
+The `name` and `parent` (for categories) fields are **identifier fields** — once a term is imported (has old_id termmeta), changes to these fields are ignored.
+
 > Individual field updates preserve the term's local ID, which is important since this ID is used in term relationships with posts. This also applies to CoAuthors Plus author terms (taxonomy = 'author'), ensuring co-author metadata stays synchronized.
-
-### Custom Post Types
-
-Custom post types (CPTs) are **imported only once**, similar to pages. They are not checked for modifications on subsequent runs.
 
 ## Best Practices
 

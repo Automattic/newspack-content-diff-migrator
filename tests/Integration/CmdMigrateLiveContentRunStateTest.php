@@ -464,4 +464,42 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$this->assertEquals( 2, $manifest['counts']['new_ids'], 'Manifest should correctly count new_ids.' );
 		$this->assertEquals( 0, $manifest['counts']['modified_ids'], 'Manifest should correctly count modified_ids.' );
 	}
+
+	/**
+	 * Tests that deleted modified IDs are saved to run-state.
+	 *
+	 * @group posts-modified
+	 */
+	public function test_should_update_runstate_with_deleted_modified_ids(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4007,
+				'post_modified' => '2024-01-01 10:00:00',
+				'post_parent'   => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Modify in live.
+		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4007 ]
+		); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Check run-state for deleted modified IDs.
+		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
+		$this->assertArrayHasKey( 4007, $deleted_map, 'Deleted modified ID should be saved to run-state.' );
+	}
 }

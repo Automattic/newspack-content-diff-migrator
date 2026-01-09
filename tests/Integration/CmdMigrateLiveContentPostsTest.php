@@ -218,6 +218,10 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Tests that parent ID is correctly resolved via old_id postmeta lookup.
+	 *
+	 * Uses 'post' type since pages cannot be imported on consecutive runs per MDCS.
+	 *
 	 * @group posts
 	 */
 	public function test_should_find_parent_id_by_old_id_postmeta(): void {
@@ -228,7 +232,7 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 			[
 				'post_title'  => 'Pre-existing Parent',
 				'post_status' => 'publish',
-				'post_type'   => 'page',
+				'post_type'   => 'post',
 			]
 		);
 		// Mark with old_id meta.
@@ -240,12 +244,12 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 			[
 				'ID'          => 8102,
 				'post_parent' => 8101, // References the pre-existing parent by old ID.
-				'post_type'   => 'page',
+				'post_type'   => 'post',
 			]
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $child ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
-		$this->run_search_command( [ 'post-types-csv' => 'page' ] );
+		$this->run_search_command( [ 'post-types-csv' => 'post' ] );
 		$this->run_migrate_command();
 
 		$new_child_id = $this->logic->get_current_post_id_by_old_id( 8102, $this->source_hostname );
@@ -515,5 +519,91 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 		$local_post  = get_post( $new_post_id );
 
 		$this->assertEquals( strlen( $long_content ), strlen( $local_post->post_content ), 'Long content should be fully imported.' );
+	}
+
+	/**
+	 * Tests that reimporting a post with block content correctly updates attachment IDs in blocks.
+	 *
+	 * @group posts-modified
+	 */
+	public function test_reimport_should_update_attachment_ids_in_blocks(): void {
+		global $wpdb;
+
+		// Create attachment in live.
+		$attachment = [
+			'ID'                    => 4060,
+			'post_author'           => 1,
+			'post_date'             => '2024-01-01 10:00:00',
+			'post_date_gmt'         => '2024-01-01 10:00:00',
+			'post_content'          => '',
+			'post_title'            => 'Block Image',
+			'post_excerpt'          => '',
+			'post_status'           => 'inherit',
+			'comment_status'        => 'open',
+			'ping_status'           => 'closed',
+			'post_password'         => '',
+			'post_name'             => 'block-image',
+			'to_ping'               => '',
+			'pinged'                => '',
+			'post_modified'         => '2024-01-01 10:00:00',
+			'post_modified_gmt'     => '2024-01-01 10:00:00',
+			'post_content_filtered' => '',
+			'post_parent'           => 0,
+			'guid'                  => 'http://test.local/wp-content/uploads/block-image.jpg',
+			'menu_order'            => 0,
+			'post_type'             => 'attachment',
+			'post_mime_type'        => 'image/jpeg',
+			'comment_count'         => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		// Create post with image block referencing the attachment.
+		$block_content = '<!-- wp:image {"id":4060} --><figure class="wp-block-image"><img src="http://test.local/block-image.jpg" class="wp-image-4060"/></figure><!-- /wp:image -->';
+		$post          = $this->create_post_fixture(
+			[
+				'ID'            => 4061,
+				'post_title'    => 'Post With Image Block',
+				'post_content'  => $block_content,
+				'post_modified' => '2024-01-01 10:00:00',
+				'post_parent'   => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$original_post_local_id       = $this->logic->get_current_post_id_by_old_id( 4061, $this->source_hostname );
+		$original_attachment_local_id = $this->logic->get_current_post_id_by_old_id( 4060, $this->source_hostname );
+		$this->assertNotNull( $original_post_local_id, 'Post should be imported.' );
+		$this->assertNotNull( $original_attachment_local_id, 'Attachment should be imported.' );
+
+		// Verify block content was updated with local attachment ID.
+		$original_post_content = get_post( $original_post_local_id )->post_content;
+		$this->assertStringContainsString( '"id":' . $original_attachment_local_id, $original_post_content, 'Block should reference local attachment ID.' );
+
+		// Modify post in live.
+		$wpdb->update( // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Post With Image Block Modified',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4061 ]
+		); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was reimported.
+		$new_post_local_id = $this->logic->get_current_post_id_by_old_id( 4061, $this->source_hostname );
+		$this->assertNotNull( $new_post_local_id, 'Post should be reimported.' );
+		$this->assertEquals( $original_post_local_id, $new_post_local_id, 'Post should preserve its local ID.' );
+
+		// Verify block content still has correct local attachment ID (not the old live ID).
+		$new_post_content = get_post( $new_post_local_id )->post_content;
+		$this->assertStringContainsString( '"id":' . $original_attachment_local_id, $new_post_content, 'Reimported post block should reference local attachment ID.' );
+		$this->assertStringNotContainsString( '"id":4060', $new_post_content, 'Reimported post block should NOT reference old live attachment ID.' );
 	}
 }

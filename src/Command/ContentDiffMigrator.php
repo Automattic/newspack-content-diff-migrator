@@ -557,11 +557,33 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new IDs found.', count( $new_live_ids ) ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
+			// Per MDCS: Exclude new pages on consecutive runs (pages are only imported on first run).
+			// Check if any pages have been imported from this source hostname.
+			$imported_page_count = $this->logic->get_imported_post_count_by_type( $source_hostname, 'page' );
+			if ( $imported_page_count > 0 && ! empty( $new_live_ids ) ) {
+				// Build a map of live post IDs to their post types for quick lookup.
+				$live_post_types_map = [];
+				foreach ( $results_live_posts as $live_post ) {
+					$live_post_types_map[ $live_post['ID'] ] = $live_post['post_type'];
+				}
+				// Filter out pages from new IDs.
+				$new_live_ids_before_filter = count( $new_live_ids );
+				$new_live_ids               = array_filter(
+					$new_live_ids,
+					fn( $id ) => ! isset( $live_post_types_map[ $id ] ) || 'page' !== $live_post_types_map[ $id ]
+				);
+				$new_live_ids               = array_values( $new_live_ids ); // Re-index.
+				$pages_filtered             = $new_live_ids_before_filter - count( $new_live_ids );
+				if ( $pages_filtered > 0 ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new pages excluded per MDCS (pages only imported on first run).', $pages_filtered ) );
+				}
+			}
+
 			// Check modified objects -- according to the Migration Data Consistency Standard -- these will get reimported fully.
-			// Note: Only 'post' type is checked for modifications per the standard. Pages, attachments (handled separately), and CPTs are excluded.
+			// Note: Pages and attachments are excluded (attachments are checked for individual field updates separately in update_modified_attachments). All other post types (including custom CPTs) are checked for modifications.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for content which was modified on live...' );
-			$results_live_posts_for_modified_check  = array_filter( $results_live_posts, fn( $p ) => 'post' === $p['post_type'] );
-			$results_local_posts_for_modified_check = array_filter( $results_local_posts, fn( $p ) => 'post' === $p['post_type'] );
+			$results_live_posts_for_modified_check  = array_filter( $results_live_posts, fn( $p ) => 'page' !== $p['post_type'] && 'attachment' !== $p['post_type'] );
+			$results_local_posts_for_modified_check = array_filter( $results_local_posts, fn( $p ) => 'page' !== $p['post_type'] && 'attachment' !== $p['post_type'] );
 			$modified_live_ids                      = $this->logic->filter_modified_live_ids(
 				$results_live_posts_for_modified_check,
 				$results_local_posts_for_modified_check,
