@@ -998,32 +998,38 @@ class ContentDiffMigrator {
 	 * @return int Total count of unattributed objects.
 	 */
 	private function check_and_warn_if_there_is_unattributed_content( array $post_types ): int {
-		$posts_info = $this->logic->get_unattributed_posts_info( $post_types );
+		$post_types_without_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
+		$post_ids                       = $this->logic->get_unattributed_post_ids( $post_types_without_attachments );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$attachments_info = in_array( 'attachment', $post_types, true )
-			? $this->logic->get_unattributed_attachments_info()
-			: [
-				'count'      => 0,
-				'sample_ids' => [],
-			];
-		$users_info       = $this->logic->get_unattributed_users_info();
+		$attachment_ids = in_array( 'attachment', $post_types, true )
+			? $this->logic->get_unattributed_attachment_ids()
+			: [];
+		$user_ids       = $this->logic->get_unattributed_user_ids();
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$terms_info = $this->logic->get_unattributed_terms_info();
+		$term_ids = $this->logic->get_unattributed_term_ids();
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		$total = $posts_info['count'] + $attachments_info['count'] + $users_info['count'] + $terms_info['count'];
+		$total = count( $post_ids ) + count( $attachment_ids ) + count( $user_ids ) + count( $term_ids );
 		if ( $total > 0 ) {
+			// Save all unattributed IDs to a JSONL file.
+			$file_path = $this->run_state->write_unattributed_content(
+				$post_ids,
+				$attachment_ids,
+				$user_ids,
+				$term_ids
+			);
 			Logger::instance()->log(
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					'There is some existing local content without `%s*` meta, total %d objects -- posts/CPTs: %s, attachments: %s, users: %s, terms: %s.',
+					"There is some existing local content without any `%s*` metas, a total of %d objects -- see %s for full IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$total,
-					$this->format_count_with_ids_log_message_info( $posts_info ),
-					$this->format_count_with_ids_log_message_info( $attachments_info ),
-					$this->format_count_with_ids_log_message_info( $users_info ),
-					$this->format_count_with_ids_log_message_info( $terms_info )
+					$file_path,
+					$this->format_log_message_count_with_sample_ids( $post_ids ),
+					$this->format_log_message_count_with_sample_ids( $attachment_ids ),
+					$this->format_log_message_count_with_sample_ids( $user_ids ),
+					$this->format_log_message_count_with_sample_ids( $term_ids )
 				)
 			);
 		}
@@ -1032,21 +1038,23 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Formats a count with sample IDs for display.
+	 * Formats a count with sample IDs for display (shows up to 10 IDs).
 	 *
-	 * @param array $info Array with 'count' and 'sample_ids' keys.
+	 * @param array $ids Array of IDs.
 	 *
-	 * @return string Formatted like "5 [IDs: 1,2,3,4,5]" or "15 [IDs: 1,2,...,10,...]" or "0".
+	 * @return string Formatted message like, "5 total (sample IDs: 1,2,3,4,5)", or "15 total (sample IDs: 1,2,...,10,...)" or "0".
 	 */
-	private function format_count_with_ids_log_message_info( array $info ): string {
-		if ( 0 === $info['count'] ) {
+	private function format_log_message_count_with_sample_ids( array $ids ): string {
+		$count = count( $ids );
+		if ( 0 === $count ) {
 			return '0';
 		}
-		$ids_str = implode( ',', $info['sample_ids'] );
-		if ( $info['count'] > count( $info['sample_ids'] ) ) {
+		$sample_ids = array_slice( $ids, 0, 10 );
+		$ids_str    = implode( ',', $sample_ids );
+		if ( $count > count( $sample_ids ) ) {
 			$ids_str .= ',...';
 		}
-		return sprintf( '%d total (IDs:%s)', $info['count'], $ids_str );
+		return sprintf( '%d total (sample IDs: %s)', $count, $ids_str );
 	}
 
 	/**
@@ -1094,7 +1102,7 @@ class ContentDiffMigrator {
 		}
 
 		// Import posts.
-		$progress = new Progress( count( $live_ids_to_import ) );
+		$progress = new Progress( count( $live_ids_to_import ), 20 );
 		foreach ( $live_ids_to_import as $key_live_id => $id_live ) {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_live_id + 1 );
@@ -1174,7 +1182,7 @@ class ContentDiffMigrator {
 		}
 
 		// Update parent IDs.
-		$progress = new Progress( count( $live_ids_for_parents_update ) );
+		$progress = new Progress( count( $live_ids_for_parents_update ), 20 );
 		foreach ( $live_ids_for_parents_update as $key_id_old => $id_old ) {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_id_old + 1 );
@@ -1270,7 +1278,7 @@ class ContentDiffMigrator {
 		}
 
 		// Update featured images.
-		$progress = new Progress( count( $ids_map_for_featured_update ) );
+		$progress = new Progress( count( $ids_map_for_featured_update ), 20 );
 		$step     = 0;
 		foreach ( $ids_map_for_featured_update as $id_old => $id_new ) {
 			// Output progress by 10%.
@@ -1335,7 +1343,7 @@ class ContentDiffMigrator {
 		}
 
 		// Update block attachment IDs.
-		$progress = new Progress( count( $ids_map_for_blocks_update ) );
+		$progress = new Progress( count( $ids_map_for_blocks_update ), 20 );
 		$step     = 0;
 		foreach ( $ids_map_for_blocks_update as $id_old => $id_new ) {
 			// Output progress by 10%.

@@ -37,7 +37,7 @@ class Progress {
 	 * Constructor.
 	 *
 	 * @param int $total     Total number of steps.
-	 * @param int $increment Percentage increment for milestones (default 10 for 10%, 20%, etc.).
+	 * @param int $increment Percentage increment for milestones (default 10 for 10%, 20%, 30%,etc.).
 	 */
 	public function __construct( int $total, int $increment = 10 ) {
 		$this->total     = $total;
