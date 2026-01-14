@@ -462,15 +462,13 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Gets informative logger info about posts that don't have old_id attribution.
+	 * Gets informative logger info about posts that don't have old_id attribution from any source.
 	 *
-	 * @param ?string $source_hostname If provided, checks for posts without attribution to this hostname.
-	 *                                 If null, checks for posts without ANY old_id attribution.
-	 * @param array   $post_types      Post types to check (excludes 'attachment').
+	 * @param array $post_types Post types to check (excludes 'attachment').
 	 *
 	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function get_unattributed_posts_info( ?string $source_hostname, array $post_types ): array {
+	public function get_unattributed_posts_info( array $post_types ): array {
 		// Filter out attachments - they have their own method.
 		$post_types_filtered = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
 		if ( empty( $post_types_filtered ) ) {
@@ -481,22 +479,19 @@ class ContentDiffLogic {
 		}
 
 		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types_filtered ), '%s' ) );
-		$meta_condition          = null !== $source_hostname
-			? $this->wpdb->prepare( 'pm.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
-			: $this->wpdb->prepare( 'pm.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
-
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
 		$base_query = "FROM {$this->wpdb->posts} p
-			LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND {$meta_condition}
+			LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key LIKE %s
 			WHERE p.post_type IN ( {$post_types_placeholders} )
 			AND p.post_status IN ('publish', 'future', 'draft', 'pending', 'private')
 			AND pm.meta_id IS NULL";
 
-		$count = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( "SELECT COUNT(*) {$base_query}", $post_types_filtered )
+		$params = array_merge( [ self::SAVED_META_LIVE_ID_PREFIX . '%' ], array_values( $post_types_filtered ) );
+		$count  = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare( "SELECT COUNT(*) {$base_query}", $params )
 		);
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col(
-			$this->wpdb->prepare( "SELECT p.ID {$base_query} LIMIT 10", $post_types_filtered )
+			$this->wpdb->prepare( "SELECT p.ID {$base_query} LIMIT 10", $params )
 		) );
 		// phpcs:enable
 
@@ -507,22 +502,18 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Gets informative logger info about attachments that don't have old_id attribution.
-	 *
-	 * @param ?string $source_hostname If provided, checks for attachments without attribution to this hostname.
-	 *                                 If null, checks for attachments without ANY old_id attribution.
+	 * Gets informative logger info about attachments that don't have old_id attribution from any source.
 	 *
 	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function get_unattributed_attachments_info( ?string $source_hostname ): array {
-		$meta_condition = null !== $source_hostname
-			? $this->wpdb->prepare( 'pm.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
-			: $this->wpdb->prepare( 'pm.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
-
+	public function get_unattributed_attachments_info(): array {
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$base_query = "FROM {$this->wpdb->posts} p
-			LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND {$meta_condition}
-			WHERE p.post_type = 'attachment' AND p.post_status = 'inherit' AND pm.meta_id IS NULL";
+		$base_query = $this->wpdb->prepare(
+			"FROM {$this->wpdb->posts} p
+			LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key LIKE %s
+			WHERE p.post_type = 'attachment' AND p.post_status = 'inherit' AND pm.meta_id IS NULL",
+			self::SAVED_META_LIVE_ID_PREFIX . '%'
+		);
 
 		$count      = (int) $this->wpdb->get_var( "SELECT COUNT(*) {$base_query}" );
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT p.ID {$base_query} LIMIT 10" ) );
@@ -535,22 +526,18 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Gets informative logger info about users that don't have old_id attribution.
-	 *
-	 * @param ?string $source_hostname If provided, checks for users without attribution to this hostname.
-	 *                                 If null, checks for users without ANY old_id attribution.
+	 * Gets informative logger info about users that don't have old_id attribution from any source.
 	 *
 	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function get_unattributed_users_info( ?string $source_hostname ): array {
-		$meta_condition = null !== $source_hostname
-			? $this->wpdb->prepare( 'um.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
-			: $this->wpdb->prepare( 'um.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
-
+	public function get_unattributed_users_info(): array {
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$base_query = "FROM {$this->wpdb->users} u
-			LEFT JOIN {$this->wpdb->usermeta} um ON u.ID = um.user_id AND {$meta_condition}
-			WHERE um.umeta_id IS NULL";
+		$base_query = $this->wpdb->prepare(
+			"FROM {$this->wpdb->users} u
+			LEFT JOIN {$this->wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key LIKE %s
+			WHERE um.umeta_id IS NULL",
+			self::SAVED_META_LIVE_ID_PREFIX . '%'
+		);
 
 		$count      = (int) $this->wpdb->get_var( "SELECT COUNT(*) {$base_query}" );
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT u.ID {$base_query} LIMIT 10" ) );
@@ -563,22 +550,18 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Gets informative logger info about terms that don't have old_id attribution.
-	 *
-	 * @param ?string $source_hostname If provided, checks for terms without attribution to this hostname.
-	 *                                 If null, checks for terms without ANY old_id attribution.
+	 * Gets informative logger info about terms that don't have old_id attribution from any source.
 	 *
 	 * @return array { 'count' => int, 'sample_ids' => int[] (up to 10) }
 	 */
-	public function get_unattributed_terms_info( ?string $source_hostname ): array {
-		$meta_condition = null !== $source_hostname
-			? $this->wpdb->prepare( 'tm.meta_key = %s', $this->get_old_id_meta_key( $source_hostname ) )
-			: $this->wpdb->prepare( 'tm.meta_key LIKE %s', self::SAVED_META_LIVE_ID_PREFIX . '%' );
-
+	public function get_unattributed_terms_info(): array {
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
-		$base_query = "FROM {$this->wpdb->terms} t
-			LEFT JOIN {$this->wpdb->termmeta} tm ON t.term_id = tm.term_id AND {$meta_condition}
-			WHERE tm.meta_id IS NULL";
+		$base_query = $this->wpdb->prepare(
+			"FROM {$this->wpdb->terms} t
+			LEFT JOIN {$this->wpdb->termmeta} tm ON t.term_id = tm.term_id AND tm.meta_key LIKE %s
+			WHERE tm.meta_id IS NULL",
+			self::SAVED_META_LIVE_ID_PREFIX . '%'
+		);
 
 		$count      = (int) $this->wpdb->get_var( "SELECT COUNT(*) {$base_query}" );
 		$sample_ids = array_map( 'intval', $this->wpdb->get_col( "SELECT t.term_id {$base_query} LIMIT 10" ) );
@@ -610,7 +593,7 @@ class ContentDiffLogic {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_live_post + 1 );
 			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
 			// O(1) lookup: if live ID is not in the old_id mapping, it's a new post.
@@ -688,7 +671,7 @@ class ContentDiffLogic {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_live_post + 1 );
 			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
 			$live_id = (int) $live_post['ID'];

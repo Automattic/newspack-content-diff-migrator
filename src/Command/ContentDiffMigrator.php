@@ -264,14 +264,11 @@ class ContentDiffMigrator {
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
 		if ( empty( $source_sites ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previously migrated source hostnames found.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previously migrated source hostnames (sites) found.' );
 			return;
 		}
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Previously migrated source hostnames:' );
-		foreach ( $source_sites as $site ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '  - %s', $site ) );
-		}
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Previously migrated source hostnames: ' . implode( ', ', $source_sites ) );
 	}
 
 	/**
@@ -317,9 +314,9 @@ class ContentDiffMigrator {
 		}
 
 		// Show count of unattributed content that will be processed.
-		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types, null );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( 0 === $unattributed_count ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, 'No unattributed content found. Nothing to do.' );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, 'No unattributed content found. Nothing to do.' );
 			return;
 		}
 
@@ -522,22 +519,29 @@ class ContentDiffMigrator {
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" ); // phpcs:ignore -- table prefix string value was escaped.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Following Post types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Post Types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
 
-		// Validate selected CPTs.
-		array_walk(
-			$post_types,
-			function ( &$v, $k ) use ( $cpts_live ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-				if ( ! in_array( $v, $cpts_live ) ) {
-					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Selected post type %s is not found in live DB. It will not be migrated.', $v ) );
+		// Validate selected CPTs and remove invalid ones.
+		$post_types = array_values(
+			array_filter(
+				$post_types,
+				function ( $v ) use ( $cpts_live ) {
+					if ( ! in_array( $v, $cpts_live, true ) ) {
+						Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'The selected Post Type `%s` is not found in live DB and will not be migrated.', $v ) );
+						return false;
+					}
+					return true;
 				}
-			}
+			)
 		);
 
+		// Notify which CPTs are being migrated.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Post Types: %s', "\n- " . implode( "\n- ", $post_types ) ) );
+
 		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
-		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types, $source_hostname );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( 'This content will not be considered/compared during migration. Continue anyway, or stop now in order to first run `attribute-existing-content-to-hostname`?' );
+			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
 		}
 
 		// Get post types other than attachments.
@@ -731,22 +735,23 @@ class ContentDiffMigrator {
 		if ( is_null( $manifest ) ) {
 			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', esc_html( RunState::FILE_MANIFEST ) ) );
 		}
-		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'], $source_hostname );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'] );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( 'This content will not be considered/compared during migration. Continue anyway, or stop now in order to first run `attribute-existing-content-to-hostname`?' );
+			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
 		}
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$live_table_prefix_escaped}term_taxonomy ;" ); // phpcs:ignore -- table prefix string value was escaped.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Here are all the taxonomies which exist in the live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Taxonomies found in live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
 
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Validating all the taxonomies which will be migrated: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
 		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
-		if ( empty( $taxonomies_to_migrate ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'No taxonomies to migrate found. Proceeding with migration to allow for edge cases, but please do check whether this was an actual issue when providing categories.' );
+		if ( ! empty( $taxonomies_to_migrate ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Taxonomies: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
+		} else {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'No taxonomies to migrate found. Proceeding with migration to allow for edge cases, however please double-check whether this was intended.' );
 		}
 
 		// Migrate all WP_Users (for WooComm data).
@@ -770,7 +775,7 @@ class ContentDiffMigrator {
 		// Get map (old => new) modified IDs.
 		$modified_ids_map = $this->run_state->get_modified_ids_map();
 		if ( null !== $modified_ids_map && ! empty( $modified_ids_map ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts before they are reimported...', count( $modified_ids_map ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Deleting %s modified posts which will be reimported...', count( $modified_ids_map ) ) );
 			
 			// Get modified IDs which were already deleted, and skip them.
 			$already_deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
@@ -784,7 +789,7 @@ class ContentDiffMigrator {
 						'local_id' => $id,
 						'live_id'  => array_search( $id, $modified_ids_map ),
 					];
-					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to delete modified post local ID %d during reimport, this post will not be reimported/refreshed', $id ), $context );
+					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to delete modified post local ID %d, this post will not be updated/reimported.', $id ), $context );
 					// Don't continue and save to run-state if deletion failed.
 					continue;
 				}
@@ -840,18 +845,18 @@ class ContentDiffMigrator {
 		$this->recalculate_term_counts( $taxonomies_to_migrate );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Migration Data Consistency Standard: Update modified properties of migrated objects.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified user properties...' );
+		// Migration Data Consistency Standard: Update modified fields of migrated objects.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified user fields...' );
 		$user_updates = $this->logic->update_modified_users( $live_table_prefix, $source_hostname, $imported_attachment_ids_map );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d users, updated %d.', $user_updates['checked'], $user_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified attachment properties...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified attachment fields...' );
 		$attachment_updates = $this->logic->update_modified_attachments( $live_table_prefix, $source_hostname, $imported_attachment_ids_map );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d attachments, updated %d.', $attachment_updates['checked'], $attachment_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified term properties (category/post_tag)...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified term fields (category/post_tag)...' );
 		$term_updates = $this->logic->update_modified_terms( $live_table_prefix, $source_hostname, [ 'category', 'post_tag' ] );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d terms, updated %d.', $term_updates['checked'], $term_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
@@ -954,7 +959,7 @@ class ContentDiffMigrator {
 		// Check if any of the taxonomies does not exist in the live DB.
 		foreach ( $taxonomies_to_migrate as $key_taxonomy_to_migrate => $taxonomy_to_migrate ) {
 			if ( ! in_array( $taxonomy_to_migrate, $live_taxonomies ) ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Taxonomy %s not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'The selected Taxonomy `%s` is not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
 				unset( $taxonomies_to_migrate[ $key_taxonomy_to_migrate ] );
 			}
 		}
@@ -989,36 +994,32 @@ class ContentDiffMigrator {
 	 * If any unattributed content is found, it logs a warning. The caller is responsible for
 	 * handling the confirmation/flow based on the returned count.
 	 *
-	 * @param array   $post_types      Post types to check for unattributed content.
-	 * @param ?string $source_hostname If provided, checks for content without attribution to this specific hostname.
-	 *                                 If null, checks for content without ANY old_id attribution.
-	 *
+	 * @param array $post_types      Post types to check for unattributed content.
 	 * @return int Total count of unattributed objects.
 	 */
-	private function check_and_warn_if_there_is_unattributed_content( array $post_types, ?string $source_hostname = null ): int {
-		$posts_info = $this->logic->get_unattributed_posts_info( $source_hostname, $post_types );
+	private function check_and_warn_if_there_is_unattributed_content( array $post_types ): int {
+		$posts_info = $this->logic->get_unattributed_posts_info( $post_types );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		$attachments_info = in_array( 'attachment', $post_types, true )
-			? $this->logic->get_unattributed_attachments_info( $source_hostname )
+			? $this->logic->get_unattributed_attachments_info()
 			: [
 				'count'      => 0,
 				'sample_ids' => [],
 			];
-		$users_info       = $this->logic->get_unattributed_users_info( $source_hostname );
+		$users_info       = $this->logic->get_unattributed_users_info();
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$terms_info = $this->logic->get_unattributed_terms_info( $source_hostname );
+		$terms_info = $this->logic->get_unattributed_terms_info();
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		$total = $posts_info['count'] + $attachments_info['count'] + $users_info['count'] + $terms_info['count'];
 		if ( $total > 0 ) {
-			$source_description = null !== $source_hostname ? "source '{$source_hostname}'" : 'any source';
 			Logger::instance()->log(
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					'Found %d objects without old_id meta for %s (posts/CPTs: %s, attachments: %s, users: %s, terms: %s).',
+					'There is some existing local content without `%s*` meta, total %d objects -- posts/CPTs: %s, attachments: %s, users: %s, terms: %s.',
+					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$total,
-					$source_description,
 					$this->format_count_with_ids_log_message_info( $posts_info ),
 					$this->format_count_with_ids_log_message_info( $attachments_info ),
 					$this->format_count_with_ids_log_message_info( $users_info ),
@@ -1045,7 +1046,7 @@ class ContentDiffMigrator {
 		if ( $info['count'] > count( $info['sample_ids'] ) ) {
 			$ids_str .= ',...';
 		}
-		return sprintf( '%d [IDs: %s]', $info['count'], $ids_str );
+		return sprintf( '%d total (IDs:%s)', $info['count'], $ids_str );
 	}
 
 	/**
@@ -1098,7 +1099,7 @@ class ContentDiffMigrator {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_live_id + 1 );
 			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
 			// Check if this is a modified post being reimported - if so, preserve its local ID.
@@ -1178,7 +1179,7 @@ class ContentDiffMigrator {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_id_old + 1 );
 			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
 			// Get new local Post ID.
@@ -1276,7 +1277,7 @@ class ContentDiffMigrator {
 			++$step;
 			$progress_milestone = $progress->tick( $step );
 			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
 			$this->logic->update_featured_image( $id_new, $imported_attachment_ids_map );
@@ -1341,7 +1342,7 @@ class ContentDiffMigrator {
 			++$step;
 			$progress_milestone = $progress->tick( $step );
 			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( $progress_milestone ) );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
 			$this->logic->update_blocks_ids( $id_new, $imported_attachment_ids_map );

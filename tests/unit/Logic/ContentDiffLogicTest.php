@@ -2008,15 +2008,14 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	 * =========================================================================
 	 */
 	public function test_get_unattributed_posts_info_should_return_count_and_sample_ids(): void {
-		$source_hostname = 'unattributed-posts-test.example.com';
-		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'any-source.example.com' );
 
-		// Create posts - one attributed, one not.
+		// Create posts - one attributed to any source, one not.
 		$post1 = self::factory()->post->create();
 		$post2 = self::factory()->post->create();
 		update_post_meta( $post1, $meta_key, 100 );
 
-		$result = $this->logic->get_unattributed_posts_info( $source_hostname, [ 'post' ] );
+		$result = $this->logic->get_unattributed_posts_info( [ 'post' ] );
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'count', $result );
@@ -2025,10 +2024,11 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$this->assertIsArray( $result['sample_ids'] );
 		$this->assertGreaterThanOrEqual( 1, $result['count'] );
 		$this->assertContains( $post2, $result['sample_ids'] );
+		$this->assertNotContains( $post1, $result['sample_ids'] );
 	}
 
 	public function test_get_unattributed_posts_info_should_return_zero_for_empty_post_types(): void {
-		$result = $this->logic->get_unattributed_posts_info( 'empty-types.example.com', [] );
+		$result = $this->logic->get_unattributed_posts_info( [] );
 		$this->assertEquals(
 			[
 				'count'      => 0,
@@ -2039,7 +2039,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	}
 
 	public function test_get_unattributed_posts_info_should_exclude_attachments(): void {
-		$result = $this->logic->get_unattributed_posts_info( 'attachments-excluded.example.com', [ 'attachment' ] );
+		$result = $this->logic->get_unattributed_posts_info( [ 'attachment' ] );
 		$this->assertEquals(
 			[
 				'count'      => 0,
@@ -2050,60 +2050,60 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	}
 
 	public function test_get_unattributed_attachments_info_should_return_count_and_sample_ids(): void {
-		$source_hostname = 'unattributed-attachments-test.example.com';
-		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'any-source.example.com' );
 
-		// Create attachments - one attributed, one not.
+		// Create attachments - one attributed to any source, one not.
 		$attachment1 = self::factory()->attachment->create();
 		$attachment2 = self::factory()->attachment->create();
 		update_post_meta( $attachment1, $meta_key, 200 );
 
-		$result = $this->logic->get_unattributed_attachments_info( $source_hostname );
+		$result = $this->logic->get_unattributed_attachments_info();
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'count', $result );
 		$this->assertArrayHasKey( 'sample_ids', $result );
 		$this->assertGreaterThanOrEqual( 1, $result['count'] );
 		$this->assertContains( $attachment2, $result['sample_ids'] );
+		$this->assertNotContains( $attachment1, $result['sample_ids'] );
 	}
 
 	public function test_get_unattributed_users_info_should_return_count_and_sample_ids(): void {
-		$source_hostname = 'unattributed-users-test.example.com';
-		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'any-source.example.com' );
 
-		// Create users - one attributed, one not.
+		// Create users - one attributed to any source, one not.
 		$user1 = self::factory()->user->create();
 		$user2 = self::factory()->user->create();
 		update_user_meta( $user1, $meta_key, 300 );
 
-		$result = $this->logic->get_unattributed_users_info( $source_hostname );
+		$result = $this->logic->get_unattributed_users_info();
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'count', $result );
 		$this->assertArrayHasKey( 'sample_ids', $result );
 		$this->assertGreaterThanOrEqual( 1, $result['count'] );
 		$this->assertContains( $user2, $result['sample_ids'] );
+		$this->assertNotContains( $user1, $result['sample_ids'] );
 	}
 
 	public function test_get_unattributed_terms_info_should_return_count_and_sample_ids(): void {
-		$source_hostname = 'unattributed-terms-test.example.com';
-		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'any-source.example.com' );
 
-		// Create terms - one attributed, one not.
+		// Create terms - one attributed to any source, one not.
 		$term1 = wp_insert_term( 'Unattributed Test Term 1 ' . uniqid(), 'category' );
 		$term2 = wp_insert_term( 'Unattributed Test Term 2 ' . uniqid(), 'category' );
 		update_term_meta( $term1['term_id'], $meta_key, 400 );
 
-		$result = $this->logic->get_unattributed_terms_info( $source_hostname );
+		$result = $this->logic->get_unattributed_terms_info();
 
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'count', $result );
 		$this->assertArrayHasKey( 'sample_ids', $result );
 		$this->assertGreaterThanOrEqual( 1, $result['count'] );
 		$this->assertContains( $term2['term_id'], $result['sample_ids'] );
+		$this->assertNotContains( $term1['term_id'], $result['sample_ids'] );
 	}
 
-	public function test_get_unattributed_posts_info_with_null_hostname_checks_any_attribution(): void {
+	public function test_get_unattributed_posts_info_excludes_posts_attributed_to_any_source(): void {
 		// Create a post attributed to some hostname.
 		$post_attributed = self::factory()->post->create();
 		update_post_meta( $post_attributed, ContentDiffLogic::get_old_id_meta_key( 'some-host.com' ), 999 );
@@ -2111,7 +2111,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		// Create a post with no attribution at all.
 		$post_unattributed = self::factory()->post->create();
 
-		$result = $this->logic->get_unattributed_posts_info( null, [ 'post' ] );
+		$result = $this->logic->get_unattributed_posts_info( [ 'post' ] );
 
 		$this->assertIsArray( $result );
 		$this->assertContains( $post_unattributed, $result['sample_ids'] );
