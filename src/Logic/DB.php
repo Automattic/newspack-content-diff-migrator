@@ -17,6 +17,26 @@ use Psr\Log\LogLevel;
 class DB {
 
 	/**
+	 * Core WP tables.
+	 *
+	 * @var array
+	 */
+	const CORE_WP_TABLES = [
+		'commentmeta',
+		'comments',
+		'links',
+		'options',
+		'postmeta',
+		'posts',
+		'terms',
+		'termmeta',
+		'term_relationships',
+		'term_taxonomy',
+		'usermeta',
+		'users',
+	];
+
+	/**
 	 * Global $wpdb.
 	 *
 	 * @var wpdb Global $wpdb.
@@ -30,15 +50,6 @@ class DB {
 	 */
 	public function __construct( wpdb $wpdb ) {
 		$this->wpdb = $wpdb;
-	}
-
-	/**
-	 * Gets the list of core WordPress table names (without prefix).
-	 *
-	 * @return array List of core WP table names without prefix.
-	 */
-	public function get_core_wp_tables(): array {
-		return $this->wpdb->tables( 'all', false );
 	}
 
 	/**
@@ -67,7 +78,7 @@ class DB {
 	public function validate_db_tables( string $live_table_prefix, array $skip_tables = [] ): void {
 		// Check whether all core WP DB tables are present in used DB.
 		$all_tables = $this->get_all_db_tables();
-		foreach ( $this->get_core_wp_tables() as $table ) {
+		foreach ( self::CORE_WP_TABLES as $table ) {
 			if ( in_array( $table, $skip_tables ) ) {
 				continue;
 			}
@@ -97,7 +108,7 @@ class DB {
 	public function get_collation_comparison_of_live_and_core_wp_tables( string $table_prefix, array $skip_tables = [] ): array {
 		$validated_tables = [];
 
-		$core_tables = array_diff( $this->get_core_wp_tables(), $skip_tables );
+		$core_tables = array_diff( self::CORE_WP_TABLES, $skip_tables );
 		foreach ( $core_tables as $table ) {
 			$core_table = esc_sql( $this->wpdb->prefix . $table );
 			$live_table = esc_sql( $table_prefix . $table );
