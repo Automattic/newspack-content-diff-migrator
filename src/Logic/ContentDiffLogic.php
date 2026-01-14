@@ -585,7 +585,7 @@ class ContentDiffLogic {
 			}
 		}
 		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 
 		return $ids;
@@ -753,7 +753,7 @@ class ContentDiffLogic {
 			}
 		}
 		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 
 		return $ids_modified;

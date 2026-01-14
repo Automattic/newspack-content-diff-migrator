@@ -292,11 +292,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
 		// Introductory message (CLI only).
-		Logger::instance()->log(
-			Logger::OUTPUT_CLI,
-			LogLevel::INFO,
-			sprintf( 'This command will match existing local content to live DB records (assign migration metas) and thereby attribute this content to source hostname "%s". That will let Content Diff know that this content came from this specificsource hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences.', $source_hostname )
-		);
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'This command will match existing local content to live DB records (assign migration metas) and thereby attribute this content to source hostname "%s". That will let Content Diff know that this content came from this specificsource hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences.', $source_hostname ) );
 
 		// Validate DBs.
 		try {
@@ -450,7 +446,7 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
 		}
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Done 👍' );
 	}
 
 	/**
@@ -663,7 +659,7 @@ class ContentDiffMigrator {
 			],
 		];
 		$this->run_state->write_manifest( $manifest );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Done 👍' );
 	}
 
 	/**
@@ -757,7 +753,7 @@ class ContentDiffMigrator {
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
 		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
-		Logger::instance()->log_brief_and_verbose( LogLevel::INFO, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ), $inserted_wp_users_updates );
+		Logger::instance()->log_brief_and_verbose( LogLevel::DEBUG, sprintf( 'Inserted %d WP_Users.', count( $inserted_wp_users_updates ) ), $inserted_wp_users_updates );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Get new IDs which will be migrated.
@@ -841,7 +837,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Recalculate counts for all migrated taxonomies.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Recalculating term counts for migrated taxonomies...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Recalculating term counts...' );
 		$this->recalculate_term_counts( $taxonomies_to_migrate );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
@@ -861,15 +857,13 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d terms, updated %d.', $term_updates['checked'], $term_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All done migrating content! 🙌 ' );
-
 		// Display info about available logs.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Check the logs for more details:' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the log files for details (%s):', rtrim( (string) $data_dir, '/' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', Logger::instance()->get_log_file_name() ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- manifest: %s', RunState::FILE_MANIFEST ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
 
 		wp_cache_flush();
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Done 👍' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done migrating content! 🙌 ' );
 	}
 
 	/**
@@ -898,7 +892,7 @@ class ContentDiffMigrator {
 			$output = ob_get_clean();
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, $output );
 		} else {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Live and Core WP DB table collations match.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Live and Core WP DB table collations match.' );
 		}
 	}
 
@@ -919,7 +913,7 @@ class ContentDiffMigrator {
 		$tables_with_differing_collations = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
 
 		if ( empty( $tables_with_differing_collations ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'All table collations already match. Nothing to fix.' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All table collations already match. Nothing to fix.' );
 			return;
 		}
 
@@ -942,7 +936,7 @@ class ContentDiffMigrator {
 			$this->db->copy_table_data_using_proper_collation( $live_table_prefix, $result['table'], $total_size_bytes );
 		}
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Collation fixing complete. All backup tables have been deleted.' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Collation fixing complete. All backup tables have been deleted.' );
 	}
 
 	/**
@@ -1135,7 +1129,7 @@ class ContentDiffMigrator {
 			}
 		}
 		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 
 		// Flush the cache for DB updates to take effect.
@@ -1237,7 +1231,7 @@ class ContentDiffMigrator {
 			$this->run_state->append_updated_parent( $log_entry );
 		}
 		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 	}
 
@@ -1299,7 +1293,7 @@ class ContentDiffMigrator {
 			);
 		}
 		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 	}
 
@@ -1364,7 +1358,7 @@ class ContentDiffMigrator {
 			);
 		}
 		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, Progress::format( 100 ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 	}
 

@@ -605,7 +605,7 @@ class DataImporter {
 			$taxonomy  = $term instanceof \WP_Term ? $term->taxonomy : '(unknown)';
 			Logger::instance()->log_brief_and_verbose(
 				LogLevel::WARNING,
-				sprintf( 'Term with name "%s" (taxonomy: %s) already exists from another source (local ID %d). Now merging source term ID %d from %s.', $term_name, $taxonomy, $local_term_id, $live_term_id, $source_hostname ),
+				sprintf( 'Term with name `%s` and taxonomy `%s` (live term_id %d) already exists on local (local term_id %d). Merging terms, using the local term.', $term_name, $taxonomy, $live_term_id, $local_term_id ),
 				[
 					'local_term_id'   => $local_term_id,
 					'live_term_id'    => $live_term_id,
@@ -672,7 +672,7 @@ class DataImporter {
 				// Log warning about merge (once per source per user).
 				Logger::instance()->log_brief_and_verbose(
 					LogLevel::WARNING,
-					sprintf( 'User login "%s" already exists (local ID %d). Merging source user ID %d from %s to existing user.', $user_row['user_login'], $local_user_id, $user_row['ID'], $source_hostname ),
+					sprintf( 'User with login `%s` (live user ID %d) already exists on local (local user ID %d). Merging users, using the local user.', $user_row['user_login'], $user_row['ID'], $local_user_id ),
 					[
 						'existing_user_id' => $local_user_id,
 						'source_user_id'   => $user_row['ID'],
