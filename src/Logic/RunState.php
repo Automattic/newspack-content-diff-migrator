@@ -57,7 +57,7 @@ class RunState {
 	 * @return bool Success.
 	 */
 	public function write_manifest( array $manifest ): bool {
-		return $this->write_json( self::FILE_MANIFEST, $manifest );
+		return $this->write_json( self::FILE_MANIFEST, $manifest, true );
 	}
 
 	/**
@@ -300,12 +300,14 @@ class RunState {
 	 *
 	 * @param string $filename Filename.
 	 * @param array  $data     Data to encode.
+	 * @param bool   $pretty   Whether to pretty-print the JSON (default: false for compact output).
 	 *
 	 * @return bool Success.
 	 */
-	private function write_json( string $filename, array $data ): bool {
+	private function write_json( string $filename, array $data, bool $pretty = false ): bool {
 		$path   = $this->get_file_path( $filename );
-		$json   = wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+		$flags  = $pretty ? JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES : JSON_UNESCAPED_SLASHES;
+		$json   = wp_json_encode( $data, $flags );
 		$result = file_put_contents( $path, $json ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
 		
 		if ( false === $result ) {
