@@ -863,12 +863,11 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Display info about available logs.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the log files for details (%s):', rtrim( (string) $data_dir, '/' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', Logger::instance()->get_log_file_path() ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the logs in data dir %s:', rtrim( (string) $data_dir, '/' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename(Logger::instance()->get_log_file_path() ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
-
-		wp_cache_flush();
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done migrating content! 🙌 ' );
+		wp_cache_flush();
 	}
 
 	/**
