@@ -22,8 +22,9 @@ use Psr\Log\NullLogger;
  *   // Bootstrap once (in plugin init or test setup):
  *   Logger::configure( true );  // or false for testing
  *
- *   // In commands, initialize for the specific logger name, i.e. specific log file name:
- *   Logger::instance()->init( 'my-log-file-name-slug' );
+ *   // In commands, initialize with a log file path, either absolute or relative to current dir:
+ *   Logger::instance()->init( '/path/to/debug.log' );  // Absolute path.
+ *   Logger::instance()->init( 'debug.log' );           // Relative to current dir.
  *
  *   // Log from anywhere:
  *   Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'message' );
@@ -63,11 +64,11 @@ class Logger {
 	private LoggerInterface $logger_file;
 
 	/**
-	 * Logger slug/name.
+	 * Full path to the log file (resolved at init time).
 	 *
 	 * @var string|null
 	 */
-	private ?string $slug = null;
+	private ?string $log_file_path = null;
 
 	/**
 	 * Private singleton constructor.
@@ -85,7 +86,7 @@ class Logger {
 	 *
 	 * Call this once at plugin bootstrap or test setup.
 	 *
-	 * @param bool $enabled Whether logging is enabled (should be false for testing environment).
+	 * @param bool $enabled Whether logging is enabled (false in testing environment).
 	 */
 	public static function configure( bool $enabled = true ): void {
 		self::$instance = new self( $enabled );
@@ -108,37 +109,63 @@ class Logger {
 	/**
 	 * Initialize loggers for a specific command/context.
 	 *
-	 * @param string $slug Logger name used for file name and logger identification.
+	 * Only the first call takes effect; subsequent calls are ignored. This ensures that when a
+	 * command calls other commands internally, all logging goes to the same file.
+	 *
+	 * @param string $log_file Log file path. Can be relative ("debug.log") or absolute ("/tmp/debug.log").
 	 */
-	public function init( string $slug ): void {
-		if ( ! $this->enabled ) {
+	public function init( string $log_file ): void {
+		if ( ! $this->enabled || null !== $this->log_file_path ) {
 			return;
 		}
 
-		$this->slug = $slug;
+		// Resolve to absolute path if relative.
+		$this->log_file_path = $this->is_absolute_path( $log_file ) ? $log_file : getcwd() . '/' . $log_file;
 
-		// Enable NMT logging filters for this request.
+		$log_dir       = dirname( $this->log_file_path );
+		$log_file_name = basename( $this->log_file_path );
+		$logger_name   = pathinfo( $log_file_name, PATHINFO_FILENAME );
+
+		// Ensure log directory exists.
+		if ( ! is_dir( $log_dir ) ) {
+			wp_mkdir_p( $log_dir );
+		}
+
+		// Enable NMT logging filters.
 		add_filter( 'newspack_migration_tools_enable_cli_log', '__return_true' );
 		add_filter( 'newspack_migration_tools_enable_file_log', '__return_true' );
 
-		// CLI logger: no timestamp, just message.
-		$cli_formatter    = new ColoredLineFormatter( null, '%message% %context%' . PHP_EOL, null, true, true );
-		$this->logger_cli = CliLog::get_logger( $slug, $cli_formatter );
+		// Temporarily override log directory for FileLog.
+		$log_dir_filter = static fn() => $log_dir;
+		add_filter( 'newspack_migration_tools_log_dir', $log_dir_filter, 9999 );
 
-		// File logger: with timestamp and level.
-		$file_formatter    = new LineFormatter( '[%datetime%] %level_name%: %message% %context%' . PHP_EOL, 'Y-m-d H:i:s.u', true, true );
-		$this->logger_file = FileLog::get_logger( $slug, $slug . '.log', $file_formatter );
+		try {
+			// CLI does not need crowding with the timestamp (it will go to file), just the message and context.
+			$cli_formatter    = new ColoredLineFormatter( null, '%message% %context%' . PHP_EOL, null, true, true );
+			$this->logger_cli = CliLog::get_logger( $logger_name, $cli_formatter );
+			// File logger is full and complete.
+			$file_formatter    = new LineFormatter( '[%datetime%] %level_name%: %message% %context%' . PHP_EOL, 'Y-m-d H:i:s.u', true, true );
+			$this->logger_file = FileLog::get_logger( $logger_name, $log_file_name, $file_formatter );
+		} finally {
+			remove_filter( 'newspack_migration_tools_log_dir', $log_dir_filter, 9999 );
+		}
 	}
 
 	/**
-	 * Get the log file name.
-	 *
-	 * @return string|null Log file name, or null if not initialized.
+	 * Check if a path is absolute.
 	 */
-	public function get_log_file_name(): ?string {
-		$file_name = $this->slug ? $this->slug . '.log' : null;
-		
-		return $file_name;
+	private function is_absolute_path( string $path ): bool {
+		// Unix absolute or Windows absolute (e.g., C:\).
+		return str_starts_with( $path, '/' ) || preg_match( '/^[A-Za-z]:[\\\\\/]/', $path );
+	}
+
+	/**
+	 * Get the full log file path.
+	 *
+	 * @return string|null Full path to the log file, or null if not initialized.
+	 */
+	public function get_log_file_path(): ?string {
+		return $this->log_file_path;
 	}
 
 	/**

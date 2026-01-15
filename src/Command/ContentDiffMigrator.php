@@ -259,7 +259,7 @@ class ContentDiffMigrator {
 	 * @param array $assoc_args CLI assoc args.
 	 */
 	public function cmd_list_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ . '.log' );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
@@ -288,7 +288,7 @@ class ContentDiffMigrator {
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
 		
 		// Init logger.
-		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ . '.log' );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
 		// Introductory message (CLI only).
@@ -446,7 +446,7 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
 		}
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Done 👍' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s 🙌 ', $source_hostname ) );
 	}
 
 	/**
@@ -463,15 +463,15 @@ class ContentDiffMigrator {
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
 		
-		// Init logger.
-		Logger::instance()->init( __FUNCTION__ );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
-
 		// Set instance properties.
 		global $wpdb;
 		if ( null === $this->run_state ) {
 			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/run-state' );
 		}
+
+		// Init logger.
+		Logger::instance()->init( rtrim( $data_dir, '/' ) . '/' . __FUNCTION__ . '.log' );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
 
 		// Check if previous run-state exists. Warn and exit to protect previous logs and run-state data (useful for debugging and backtracking migrations).
 		// Skip in test environment to allow testing of multiple search cycles.
@@ -537,7 +537,7 @@ class ContentDiffMigrator {
 		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
+			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Would you like to continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
 		}
 
 		// Get post types other than attachments.
@@ -659,7 +659,12 @@ class ContentDiffMigrator {
 			],
 		];
 		$this->run_state->write_manifest( $manifest );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Done 👍' );
+
+		// Display info about available logs.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the logs in data dir %s:', rtrim( (string) $data_dir, '/' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done searching for new content on live 🙌 Proceed with running the `migrate-live-content` command 🚀' );
 	}
 
 	/**
@@ -679,7 +684,7 @@ class ContentDiffMigrator {
 		$taxonomies_to_migrate = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 		
 		// Init logger.
-		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->init( rtrim( $data_dir, '/' ) . '/' . __FUNCTION__ . '.log' );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
 
 		// Set instance properties.
@@ -733,7 +738,7 @@ class ContentDiffMigrator {
 		}
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'] );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
+			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Would you like to continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
 		}
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
@@ -859,7 +864,7 @@ class ContentDiffMigrator {
 
 		// Display info about available logs.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the log files for details (%s):', rtrim( (string) $data_dir, '/' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', Logger::instance()->get_log_file_name() ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', Logger::instance()->get_log_file_path() ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
 
 		wp_cache_flush();
@@ -877,7 +882,7 @@ class ContentDiffMigrator {
 		$skip_tables           = ! empty( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
 
-		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ . '.log' );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
 
 		$tables = [];
@@ -908,7 +913,7 @@ class ContentDiffMigrator {
 		$live_table_prefix = $assoc_args['live-table-prefix'];
 		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 		
-		Logger::instance()->init( __FUNCTION__ );
+		Logger::instance()->init( __FUNCTION__ . '.log' );
 
 		$tables_with_differing_collations = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
 
