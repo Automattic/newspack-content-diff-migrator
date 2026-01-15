@@ -209,7 +209,19 @@ The following are **identifier fields** — changes to these fields are ignored 
 
 When any directly-scanned field has changed, or when `post_modified` is newer on live, the post is marked as **modified** and will be deleted and fully reimported. Such a full reimport **preserves its local `wp_posts.ID`** to ensure any references to the reimported local post ID remain valid.
 
-Fields such as `post_content`, `post_excerpt`, `postmeta`, etc. are thereby detected indirectly via `post_modified` change.
+Fields such as `post_content`, `post_excerpt`, `postmeta`, etc. are detected indirectly via `post_modified` change. Fields listed above as **directly scanned** fields are updated individually on the local post -- when you change a post's **categories/tags**, WordPress does NOT update `post_modified`.
+
+What updates `post_modified` from **Gutenberg**:
+
+- Post content, title, excerpt
+- Post status, date
+- Featured image, parent page
+
+What does NOT update `post_modified` from **Gutenberg**:
+
+- Categories, tags, custom taxonomies
+- Post meta (custom fields)
+- Comments
 
 #### Custom Post Types
 
