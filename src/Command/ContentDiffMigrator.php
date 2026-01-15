@@ -515,7 +515,6 @@ class ContentDiffMigrator {
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" ); // phpcs:ignore -- table prefix string value was escaped.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Post Types found in live DB: %s', "\n- " . implode( "\n- ", $cpts_live ) ) );
 
 		// Validate selected CPTs and remove invalid ones.
 		$post_types = array_values(
@@ -533,6 +532,12 @@ class ContentDiffMigrator {
 
 		// Notify which CPTs are being migrated.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Post Types: %s', "\n- " . implode( "\n- ", $post_types ) ) );
+
+		// Show remaining post types found in live DB that won't be migrated.
+		$unmigrated_post_types = array_diff( $cpts_live, $post_types );
+		if ( ! empty( $unmigrated_post_types ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Post Types found in live DB which will not be migrated: %s', "\n- " . implode( "\n- ", $unmigrated_post_types ) ) );
+		}
 
 		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
@@ -738,11 +743,9 @@ class ContentDiffMigrator {
 		}
 		$this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'] );
 
-		// List all the custom taxonomies which exist in Live DB for user's overview.
-		// phpcs:ignore -- table prefix string value was escaped.
+		// Get all taxonomies which exist in Live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
 		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$live_table_prefix_escaped}term_taxonomy ;" ); // phpcs:ignore -- table prefix string value was escaped.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Taxonomies found in live DB: %s', "\n- " . implode( "\n- ", $live_taxonomies ) ) );
 
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
@@ -750,6 +753,12 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Taxonomies: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
 		} else {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'No taxonomies to migrate found. Proceeding with migration to allow for edge cases, however please double-check whether this was intended.' );
+		}
+
+		// Show remaining taxonomies found in live DB that won't be migrated.
+		$unmigrated_taxonomies = array_diff( $live_taxonomies, $taxonomies_to_migrate );
+		if ( ! empty( $unmigrated_taxonomies ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Taxonomies found in live DB which will not be migrated: %s', "\n- " . implode( "\n- ", $unmigrated_taxonomies ) ) );
 		}
 
 		// Migrate all WP_Users (for WooComm data).
