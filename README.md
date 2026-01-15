@@ -199,7 +199,11 @@ The following fields are **not scanned directly**, but changes to `post_modified
 
 - **Content** — detected indirectly via `post_modified` change
 - **Excerpt** — detected indirectly via `post_modified` change
-- **Postmeta** — detected indirectly via `post_modified` change (if WordPress updates it)
+
+The following fields are **not detected directly** (changes on live will not trigger reimport, unless another field such as `post_modified` triggers reimport):
+
+- **Postmeta**
+- **Comments**
 
 The following are **identifier fields** — changes to these fields are ignored unless another field triggers reimport:
 
@@ -282,8 +286,8 @@ This approach elegantly handles the complexity of post updates:
 - **Block content**: Attachment IDs embedded in Gutenberg blocks are automatically updated to local IDs
 - **Featured images**: Thumbnail references are properly mapped to local attachment IDs
 - **Taxonomies**: All term relationships are reimported fresh
-- **Postmeta**: All post metadata is synchronized
-- **Comments**: All comments and comment metadata are reimported
+- **Postmeta**: All post metadata is synchronized (note: postmeta changes do not trigger reimport)
+- **Comments**: All comments and comment metadata are reimported (note: comment-only changes do not trigger reimport)
 - **Parent references**: Post parent IDs are updated to local IDs
 
 This single operation ensures all related data is consistent, rather than attempting to diff and update individual fields which could miss embedded ID references in content. Additionally it cause no performance overhead compared to the alternative of updating individual fields which could miss embedded ID references in content.
