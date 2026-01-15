@@ -209,6 +209,8 @@ The following are **identifier fields** — changes to these fields are ignored 
 
 When any directly-scanned field has changed, or when `post_modified` is newer on live, the post is marked as **modified** and will be deleted and fully reimported. Such a full reimport **preserves its local `wp_posts.ID`** to ensure any references to the reimported local post ID remain valid.
 
+Fields such as `post_content`, `post_excerpt`, `postmeta`, etc. are thereby detected indirectly via `post_modified` change.
+
 #### Custom Post Types
 
 Same rules as posts.
