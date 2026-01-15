@@ -1296,6 +1296,52 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	}
 
 	/**
+	 * Tests that posts are detected as modified when thumbnail_id is added on live
+	 * (post had no thumbnail initially, then gets one).
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_filter_modified_posts_when_thumbnail_id_did_not_exist_initially_and_was_later_added_on_live(): void {
+		global $wpdb;
+
+		// Create attachment.
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'          => 4210,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		// Create post WITHOUT a thumbnail.
+		$post = $this->create_post_fixture( [ 'ID' => 4211 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+		// Note: No _thumbnail_id postmeta inserted.
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		// Verify post was imported without a thumbnail.
+		$local_post_id = $this->logic->get_current_post_id_by_old_id( 4211, $this->source_hostname );
+		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
+		$this->assertEmpty( get_post_meta( $local_post_id, '_thumbnail_id', true ), 'Post should have no thumbnail initially.' );
+
+		// Now ADD a thumbnail on live (simulating editor adding featured image after initial migration).
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 4210, 'post_id' => 4211, 'meta_key' => '_thumbnail_id', 'meta_value' => '4210' ] ); // phpcs:ignore
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayHasKey( 4211, $modified_ids, 'Post should be detected as modified when thumbnail is added on live.' );
+	}
+
+	/**
 	 * Tests that posts are detected as modified when taxonomies change.
 	 *
 	 * @group migration-data-consistency-standard

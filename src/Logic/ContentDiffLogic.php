@@ -697,18 +697,21 @@ class ContentDiffLogic {
 			// Check 4: _thumbnail_id changed (translate local thumbnail ID to live ID for comparison).
 			if ( ! $is_modified && ! empty( $local_to_live_attachment_map ) && ! empty( $live_table_prefix ) ) {
 				$local_thumbnail_id = (int) get_post_meta( $local_id, '_thumbnail_id', true );
-				if ( $local_thumbnail_id > 0 ) {
-					$live_thumbnail_id_expected = $local_to_live_attachment_map[ $local_thumbnail_id ] ?? null;
-					// Get live thumbnail ID.
-					$live_postmeta  = $this->select_postmeta_rows( $live_table_prefix, $live_id );
-					$live_thumbnail = null;
-					foreach ( $live_postmeta as $meta ) {
-						if ( '_thumbnail_id' === $meta['meta_key'] ) {
-							$live_thumbnail = (int) $meta['meta_value'];
-							break;
-						}
+
+				// Get live thumbnail ID.
+				$live_postmeta  = $this->select_postmeta_rows( $live_table_prefix, $live_id );
+				$live_thumbnail = 0;
+				foreach ( $live_postmeta as $meta ) {
+					if ( '_thumbnail_id' === $meta['meta_key'] ) {
+						$live_thumbnail = (int) $meta['meta_value'];
+						break;
 					}
-					if ( null !== $live_thumbnail_id_expected && $live_thumbnail !== $live_thumbnail_id_expected ) {
+				}
+
+				// Check if either has a thumbnail and they differ (after mapping local-live).
+				if ( $local_thumbnail_id > 0 || $live_thumbnail > 0 ) {
+					$live_thumbnail_id_expected = $local_to_live_attachment_map[ $local_thumbnail_id ] ?? 0;
+					if ( $live_thumbnail !== $live_thumbnail_id_expected ) {
 						$is_modified = true;
 					}
 				}
