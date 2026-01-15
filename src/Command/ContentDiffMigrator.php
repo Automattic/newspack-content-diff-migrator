@@ -661,7 +661,7 @@ class ContentDiffMigrator {
 		$this->run_state->write_manifest( $manifest );
 
 		// Display info about available logs.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the logs in data dir %s:', rtrim( (string) $data_dir, '/' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done searching for new content on live 🙌 Proceed with running the `migrate-live-content` command 🚀' );
@@ -736,10 +736,7 @@ class ContentDiffMigrator {
 		if ( is_null( $manifest ) ) {
 			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', esc_html( RunState::FILE_MANIFEST ) ) );
 		}
-		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'] );
-		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Would you like to continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
-		}
+		$this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'] );
 
 		// List all the custom taxonomies which exist in Live DB for user's overview.
 		// phpcs:ignore -- table prefix string value was escaped.
@@ -863,8 +860,8 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Display info about available logs.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Check the logs in data dir %s:', rtrim( (string) $data_dir, '/' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename(Logger::instance()->get_log_file_path() ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done migrating content! 🙌 ' );
 		wp_cache_flush();
