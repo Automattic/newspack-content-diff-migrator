@@ -598,22 +598,30 @@ class DataImporter {
 			);
 		}
 
-		// Log warning if this term is being merged from another source (once per source per term).
+		// Log if this term is being merged from another source.
 		if ( ! empty( $any_old_id_meta ) ) {
 			$term      = get_term( $local_term_id );
 			$term_name = $term instanceof \WP_Term ? $term->name : '(unknown)';
 			$taxonomy  = $term instanceof \WP_Term ? $term->taxonomy : '(unknown)';
-			Logger::instance()->log_brief_and_verbose(
-				LogLevel::WARNING,
-				sprintf( 'Term with name `%s` and taxonomy `%s` (live term_id %d) already exists on local (local term_id %d). Merging terms, using the local term.', $term_name, $taxonomy, $live_term_id, $local_term_id ),
+			// Log all the cases to file with full context.
+			Logger::instance()->log(
+				Logger::OUTPUT_FILE,
+				LogLevel::DEBUG,
+				'merge_term: Term with same name and taxonomy already exists on local, merging/reusing the local term.',
 				[
+					'term_name'       => $term_name,
+					'taxonomy'        => $taxonomy ,
 					'local_term_id'   => $local_term_id,
 					'live_term_id'    => $live_term_id,
 					'source_hostname' => $source_hostname,
-					'term_name'       => $term_name,
-					'taxonomy'        => $taxonomy,
-				]
+				] 
 			);
+			// Log DEBUG info to CLI only once with the first example.
+			static $cli_warned_term_merge = false;
+			if ( false === $cli_warned_term_merge ) {
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'merge_term: Some terms already exist on local and are being merged/reused (an additional meta is set for those terms). See %s for full list (first example: term_name `%s`, taxonomy `%s`, live_term_id=%d, local_term_id=%d).', Logger::instance()->get_log_file_path(), $term_name, $taxonomy, $live_term_id, $local_term_id ) );
+				$cli_warned_term_merge = true;
+			}
 		}
 
 		// Mark this term's termmeta as imported.
@@ -663,23 +671,30 @@ class DataImporter {
 			$local_user_id = (int) $existing_user->ID;
 			$meta_key      = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
 
-			// Check if already attributed to this source (idempotent - avoids duplicate warnings).
+			// Check if already attributed to this source (idempotent).
 			$existing_meta = get_user_meta( $local_user_id, $meta_key, true );
 			if ( empty( $existing_meta ) ) {
 				// Add source-specific old_id meta for this merged user.
 				update_user_meta( $local_user_id, $meta_key, $user_row['ID'] );
 
-				// Log warning about merge (once per source per user).
-				Logger::instance()->log_brief_and_verbose(
-					LogLevel::WARNING,
-					sprintf( 'User with login `%s` (live user ID %d) already exists on local (local user ID %d). Merging users, using the local user.', $user_row['user_login'], $user_row['ID'], $local_user_id ),
+				// Log all cases to file with full context.
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					'merge_user: User with same login already exists on local, merging/reusing the local user.',
 					[
-						'existing_user_id' => $local_user_id,
-						'source_user_id'   => $user_row['ID'],
-						'source_hostname'  => $source_hostname,
-						'user_login'       => $user_row['user_login'],
-					]
+						'user_login'      => $user_row['user_login'],
+						'live_user_id'    => $user_row['ID'],
+						'local_user_id'   => $local_user_id,
+						'source_hostname' => $source_hostname,
+					] 
 				);
+				// Log DEBUG info to CLI only once with the first example.
+				static $cli_warned_user_merge = false;
+				if ( false === $cli_warned_user_merge ) {
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'merge_user: Some users already exist on local (same login) and are being merged/reused (an additional meta is set for those users). See %s for full list (first example: user_login=`%s`, live_user_id=%d, local_user_id=%d).', Logger::instance()->get_log_file_path(), $user_row['user_login'], $user_row['ID'], $local_user_id ) );
+					$cli_warned_user_merge = true;
+				}
 			}
 
 			return $local_user_id;
