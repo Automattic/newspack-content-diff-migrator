@@ -1133,8 +1133,7 @@ class ContentDiffMigrator {
 				// Log imported post to run-state for resume capability.
 				$this->run_state->append_imported_post( $result );
 			} catch ( \Exception $e ) {
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::ERROR, sprintf( 'import_posts error id_old=%d : %s', $id_live, $e->getMessage() ) );
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'Error importing Live ID %d (details in log file)', $id_live ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'import_posts error importing Live ID %d : %s', $id_live, $e->getMessage() ) );
 				// Continue importing other posts.
 			}
 		}
@@ -1186,7 +1185,9 @@ class ContentDiffMigrator {
 		}
 
 		// Update parent IDs.
-		$progress = new Progress( count( $live_ids_for_parents_update ), 20 );
+		$dispayed_cli_error_get_local_id     = false;
+		$dispayed_cli_warning_update_parents = false;
+		$progress                            = new Progress( count( $live_ids_for_parents_update ), 20 );
 		foreach ( $live_ids_for_parents_update as $key_id_old => $id_old ) {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_id_old + 1 );
@@ -1197,7 +1198,11 @@ class ContentDiffMigrator {
 			// Get new local Post ID.
 			$id_new = $imported_ids_map[ $id_old ] ?? null;
 			if ( null === $id_new ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids: Could not find local ID for live ID %d, skipping.', $id_old ) );
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::ERROR, sprintf( 'update_post_parent_ids: live ID %d has no local mapping, skipping.', $id_old ) );
+				if ( false === $dispayed_cli_error_get_local_id ) {
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::ERROR, sprintf( 'update_post_parent_ids: some live IDs have no local mapping. See %s for full list (first example: $id_old=%s).', Logger::instance()->get_log_file_path(), $id_old ) );
+					$dispayed_cli_error_get_local_id = true;
+				}
 				continue;
 			}
 
@@ -1220,11 +1225,25 @@ class ContentDiffMigrator {
 			if ( is_null( $parent_id_new ) ) {
 				$parent_id_new = $this->logic->get_current_post_id_by_comparing_with_live_db( $parent_id_old, $this->live_table_prefix );
 			}
-			// 3/3 - If it can't be found, set parent to 0 and log error. This might be legit, e.g. the parent object being a
+			// 3/3 - If it can't be found, set parent to 0 and log warning. This might be legit, e.g. the parent object being a
 			// post_type different than the supported post type, or an invalid relationship in live DB if post_parent object is actually missing.
 			if ( is_null( $parent_id_new ) ) {
 				$parent_id_new = 0;
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'update_post_parent_ids error, $id_old=%s, $id_new=%s, $parent_id_old=%s, $parent_id_new is 0.', $id_old, $id_new, $parent_id_old ) );
+				// These warnings are relatively common and never an actual error. Log all the cases to file, and display just the first one to CLI.
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::WARNING,
+					'update_post_parent_ids: parent ID is missing in live or not being migrated (different post type), $parent_id_new is set to 0.',
+					[
+						'id_old'        => $id_old,
+						'id_new'        => $id_new,
+						'parent_id_old' => $parent_id_old,
+					] 
+				);
+				if ( false === $dispayed_cli_warning_update_parents ) {
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some parent IDs not found on live or not migrated. See %s for full list (first example: $id_old=%s, $id_new=%s, $parent_id_old=%s; $parent_id_new set to 0).', Logger::instance()->get_log_file_path(), $id_old, $id_new, $parent_id_old ) );
+					$dispayed_cli_warning_update_parents = true;
+				}
 			}
 
 			// Update.

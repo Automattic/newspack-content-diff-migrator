@@ -179,7 +179,7 @@ class Logger {
 	 */
 	public function log_brief_and_verbose( string $level, string $message, array $context ): void {
 		$this->log( self::OUTPUT_FILE, $level, $message, $context );
-		$this->log( self::OUTPUT_CLI, $level, $message . ' (@see debug log for context).' );
+		$this->log( self::OUTPUT_CLI, $level, $message . ' (@see ' . ( $this->log_file_path ?? 'debug log' ) . ' for full context).' );
 	}
 
 	/**
