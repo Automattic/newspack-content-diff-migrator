@@ -1026,9 +1026,9 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					"There is some existing local content without any `%s*` metas, a total of %d objects -- see %s for full IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
-					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
+					"There is a total of %d existing objects on local without any `%s*` metas -- see %s for full IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
 					$total,
+					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$file_path,
 					$this->format_log_message_count_with_sample_ids( $post_ids ),
 					$this->format_log_message_count_with_sample_ids( $attachment_ids ),
