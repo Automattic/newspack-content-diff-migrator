@@ -171,7 +171,7 @@ class Logger {
 	/**
 	 * Logs to both CLI and FILE, sends a brief output to CLI (just message, no context)
 	 * and a full output to FILE (message, with context data).
-	 * The CLI message gets " (@see debug log for context)." appended.
+	 * The CLI message gets " (see debug log for context)." appended.
 	 *
 	 * @param string $level   PSR-3 log level (debug, info, warning, error, etc).
 	 * @param string $message Log message.
@@ -179,7 +179,7 @@ class Logger {
 	 */
 	public function log_brief_and_verbose( string $level, string $message, array $context ): void {
 		$this->log( self::OUTPUT_FILE, $level, $message, $context );
-		$this->log( self::OUTPUT_CLI, $level, $message . ' (@see ' . ( $this->log_file_path ?? 'debug log' ) . ' for full context).' );
+		$this->log( self::OUTPUT_CLI, $level, $message . ' (see ' . ( $this->log_file_path ?? 'debug log' ) . ' for full context).' );
 	}
 
 	/**
