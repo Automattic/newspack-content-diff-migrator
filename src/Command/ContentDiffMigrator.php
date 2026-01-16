@@ -310,6 +310,7 @@ class ContentDiffMigrator {
 		}
 
 		// Show count of unattributed content that will be processed.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( 0 === $unattributed_count ) {
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, 'No unattributed content found. Nothing to do.' );
@@ -540,6 +541,7 @@ class ContentDiffMigrator {
 		}
 
 		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
 			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Would you like to continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
@@ -735,13 +737,11 @@ class ContentDiffMigrator {
 		// List previously migrated source hostnames.
 		$this->cmd_list_migrated_source_hostnames( [], [] );
 
-		// Warn if there is content on local which has not been migrated from any source hostname (has no "old_id meta"), and which will not be considered/compared during migration.
 		// Read post_types from manifest (saved by search command).
 		$manifest = $this->run_state->get_manifest();
 		if ( is_null( $manifest ) ) {
 			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', esc_html( RunState::FILE_MANIFEST ) ) );
 		}
-		$this->check_and_warn_if_there_is_unattributed_content( $manifest['post_types'] );
 
 		// Get all taxonomies which exist in Live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
@@ -1026,7 +1026,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					"There is a total of %d existing objects on local without any `%s*` metas -- see %s for full IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
+					"There are a total of %d existing objects on local without any `%s*` metas. This content will not be diff-ed against the live tables, and duplicates may be created if this content does belong to this source hostname. See %s for full IDs, following are counts and just a few sample IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
 					$total,
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$file_path,
