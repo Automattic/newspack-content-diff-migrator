@@ -86,43 +86,6 @@ class ContentDiffMigrator {
 	 */
 	public static function register_commands(): void {
 		WP_CLI::add_command(
-			'newspack-content-diff-migrator list-previously-migrated-source-hostnames',
-			[ __CLASS__, 'cmd_list_migrated_source_hostnames' ],
-			[
-				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator attribute-existing-content-to-hostname',
-			[ __CLASS__, 'cmd_attribute_existing_content_to_hostname' ],
-			[
-				'shortdesc' => 'Attributes existing local content to a source hostname by comparing with those live DB tables and adding source-specific metadata.',
-				'synopsis'  => [
-					[
-						'type'        => 'assoc',
-						'name'        => 'live-table-prefix',
-						'description' => 'Live site table prefix.',
-						'optional'    => false,
-						'repeating'   => false,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'source-hostname',
-						'description' => 'Source hostname (e.g., www.example.com).',
-						'optional'    => false,
-						'repeating'   => false,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
-						'optional'    => true,
-						'repeating'   => false,
-					],
-				],
-			]
-		);
-		WP_CLI::add_command(
 			'newspack-content-diff-migrator search-new-content-on-live',
 			[ __CLASS__, 'cmd_search_new_content_on_live' ],
 			[
@@ -197,6 +160,43 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
+			'newspack-content-diff-migrator list-previously-migrated-source-hostnames',
+			[ __CLASS__, 'cmd_list_migrated_source_hostnames' ],
+			[
+				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
+			]
+		);
+		WP_CLI::add_command(
+			'newspack-content-diff-migrator attribute-existing-content-to-hostname',
+			[ __CLASS__, 'cmd_attribute_existing_content_to_hostname' ],
+			[
+				'shortdesc' => 'Attributes existing local content to a source hostname by comparing with those live DB tables and adding source-specific metadata.',
+				'synopsis'  => [
+					[
+						'type'        => 'assoc',
+						'name'        => 'live-table-prefix',
+						'description' => 'Live site table prefix.',
+						'optional'    => false,
+						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'source-hostname',
+						'description' => 'Source hostname (e.g., www.example.com).',
+						'optional'    => false,
+						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'post-types-csv',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
+						'optional'    => true,
+						'repeating'   => false,
+					],
+				],
+			]
+		);
+		WP_CLI::add_command(
 			'newspack-content-diff-migrator display-collations-comparison',
 			[ __CLASS__, 'cmd_compare_collations_of_live_and_core_wp_tables' ],
 			[
@@ -248,206 +248,6 @@ class ContentDiffMigrator {
 				],
 			]
 		);
-	}
-
-	/**
-	 * Callable for `newspack-content-diff-migrator list-previously-migrated-source-hostnames`.
-	 *
-	 * Lists all source hostnames from which content has been imported.
-	 *
-	 * @param array $args       CLI args.
-	 * @param array $assoc_args CLI assoc args.
-	 */
-	public function cmd_list_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		Logger::instance()->init( __FUNCTION__ . '.log' );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
-
-		$source_sites = $this->logic->get_migrated_source_hostnames();
-		if ( empty( $source_sites ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previously migrated source hostnames (sites) found.' );
-			return;
-		}
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Previously migrated source hostnames: ' . implode( ', ', $source_sites ) );
-	}
-
-	/**
-	 * Callable for `newspack-content-diff-migrator attribute-existing-content-to-hostname`.
-	 *
-	 * Attributes existing local content to a source hostname by comparing with live DB and adding
-	 * source-specific metadata.
-	 *
-	 * @param array $args       CLI args.
-	 * @param array $assoc_args CLI assoc args.
-	 */
-	public function cmd_attribute_existing_content_to_hostname( array $args, array $assoc_args ): void {
-		global $wpdb;
-
-		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
-		$source_hostname   = $assoc_args['source-hostname'] ?? false;
-		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
-		
-		// Init logger.
-		Logger::instance()->init( __FUNCTION__ . '.log' );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
-
-		// Introductory message (CLI only).
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'This command will match existing local content to live DB records (assign migration metas) and thereby attribute this content to source hostname "%s". That will let Content Diff know that this content came from this specificsource hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences.', $source_hostname ) );
-
-		// Validate DBs.
-		try {
-			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
-		} catch ( \RuntimeException $e ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'About to run command correct-collations-for-live-wp-tables ...' );
-			$this->cmd_correct_collations_for_live_wp_tables(
-				[],
-				[
-					'live-table-prefix' => $live_table_prefix,
-					'skip-tables'       => 'options',
-				]
-			);
-		}
-
-		// Show count of unattributed content that will be processed.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
-		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
-		if ( 0 === $unattributed_count ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, 'No unattributed content found. Nothing to do.' );
-			return;
-		}
-
-		// Confirmation prompt.
-		if ( ! $this->test_env ) {
-			WP_CLI::confirm( sprintf( 'This will attribute ALL matched content to source hostname "%s". Continue?', $source_hostname ) );
-		}
-
-		// Variables.
-		$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
-		// Post statuses by type.
-		$statuses_regular    = [ 'publish', 'future', 'draft', 'pending', 'private' ];
-		$statuses_attachment = [ 'inherit' ];
-
-		// Show existing source hostnames.
-		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
-		if ( ! empty( $existing_source_sites ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
-		} else {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
-		}
-
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching local content (CPTs %s and users) to live DB, and attributing matches to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
-		
-		// Process non-attachment post types.
-		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
-		if ( ! empty( $post_types_non_attachments ) ) {
-			// Match non-attachment post types.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
-			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
-			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
-			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-
-			// Save metas for matched posts, skip if already attributed.
-			foreach ( $matched_posts as $match ) {
-				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
-				if ( ! empty( $existing_meta ) ) {
-					continue;
-				}
-				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-				$context = [
-					'local_id' => $match['local_id'],
-					'live_id'  => $match['live_id'],
-				];
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
-			}
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local non-attachment objects attributed out of %d total.', count( $matched_posts ), count( $results_local_posts ) ) );
-		}
-
-		// Process attachments separately (like in cmd_search).
-		$process_attachments = in_array( 'attachment', $post_types, true );
-		if ( $process_attachments ) {
-			// Match attachments.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
-			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
-			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-
-			// Attribute matched attachments to source hostname, skip if already attributed.
-			foreach ( $matched_attachments as $match ) {
-				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
-				if ( ! empty( $existing_meta ) ) {
-					continue;
-				}
-				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-				// Detailed log to file only.
-				$context = [
-					'local_id' => $match['local_id'],
-					'live_id'  => $match['live_id'],
-				];
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Attachment attributed to source_hostname %s', $source_hostname ), $context );
-			}
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local attachments attributed out of %d total.', count( $matched_attachments ), count( $results_local_attachments ) ) );
-		}
-
-		// Match users.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
-		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
-		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
-		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-
-		// Attribute matched users to source hostname, skip if already attributed.
-		foreach ( $matched_users as $match ) {
-			$existing_meta = get_user_meta( $match['local_id'], $meta_key, true );
-			if ( ! empty( $existing_meta ) ) {
-				continue;
-			}
-			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			// Detailed log to file only.
-			$context = [
-				'local_user_id' => $match['local_id'],
-				'live_user_id'  => $match['live_id'],
-			];
-			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'User attributed to source_hostname %s', $source_hostname ), $context );
-		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local users attributed out of %d total.', count( $matched_users ), count( $results_local_users ) ) );
-
-		// Match terms.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying terms...' );
-		$results_local_terms = $this->logic->get_terms_rows_for_attribution( $wpdb->prefix );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$results_live_terms = $this->logic->get_terms_rows_for_attribution( $live_table_prefix );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local terms to live terms...', count( $results_local_terms ), count( $results_live_terms ) ) );
-		$matched_terms = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-
-		// Attribute matched terms to source hostname, skip if already attributed.
-		foreach ( $matched_terms as $match ) {
-			$existing_meta = get_term_meta( $match['local_id'], $meta_key, true );
-			if ( ! empty( $existing_meta ) ) {
-				continue;
-			}
-			update_term_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			// Detailed log to file only.
-			$context = [
-				'local_term_id' => $match['local_id'],
-				'live_term_id'  => $match['live_id'],
-			];
-			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
-		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s 🙌 ', $source_hostname ) );
 	}
 
 	/**
@@ -544,7 +344,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( 'This local content will not be properly diff-ed against the live tables. Would you like to continue (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?' );
+			WP_CLI::confirm( sprintf( 'This unattributed local content will not be diff-ed against the live content during migration. Duplicates may be created if this existing unattributed content does belong to the source hostname %s. Would you like to continue with migration (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?', $source_hostname ) );
 		}
 
 		// Get post types other than attachments.
@@ -877,6 +677,206 @@ class ContentDiffMigrator {
 	}
 
 	/**
+	 * Callable for `newspack-content-diff-migrator list-previously-migrated-source-hostnames`.
+	 *
+	 * Lists all source hostnames from which content has been imported.
+	 *
+	 * @param array $args       CLI args.
+	 * @param array $assoc_args CLI assoc args.
+	 */
+	public function cmd_list_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		Logger::instance()->init( __FUNCTION__ . '.log' );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
+
+		$source_sites = $this->logic->get_migrated_source_hostnames();
+		if ( empty( $source_sites ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previously migrated source hostnames (sites) found.' );
+			return;
+		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Previously migrated source hostnames: ' . implode( ', ', $source_sites ) );
+	}
+
+	/**
+	 * Callable for `newspack-content-diff-migrator attribute-existing-content-to-hostname`.
+	 *
+	 * Attributes existing local content to a source hostname by comparing with live DB and adding
+	 * source-specific metadata.
+	 *
+	 * @param array $args       CLI args.
+	 * @param array $assoc_args CLI assoc args.
+	 */
+	public function cmd_attribute_existing_content_to_hostname( array $args, array $assoc_args ): void {
+		global $wpdb;
+
+		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
+		$source_hostname   = $assoc_args['source-hostname'] ?? false;
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
+		
+		// Init logger.
+		Logger::instance()->init( __FUNCTION__ . '.log' );
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
+
+		// Introductory message (CLI only).
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'This command will match existing local content to live DB records (assign migration metas) and thereby attribute this content to source hostname "%s". That will let Content Diff know that this content came from this specificsource hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences.', $source_hostname ) );
+
+		// Validate DBs.
+		try {
+			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
+		} catch ( \RuntimeException $e ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'About to run command correct-collations-for-live-wp-tables ...' );
+			$this->cmd_correct_collations_for_live_wp_tables(
+				[],
+				[
+					'live-table-prefix' => $live_table_prefix,
+					'skip-tables'       => 'options',
+				]
+			);
+		}
+
+		// Show count of unattributed content that will be processed.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
+		if ( 0 === $unattributed_count ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, 'No unattributed content found. Nothing to do.' );
+			return;
+		}
+
+		// Confirmation prompt.
+		if ( ! $this->test_env ) {
+			WP_CLI::confirm( sprintf( 'This will attribute ALL matched content to source hostname "%s". Continue?', $source_hostname ) );
+		}
+
+		// Variables.
+		$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
+		// Post statuses by type.
+		$statuses_regular    = [ 'publish', 'future', 'draft', 'pending', 'private' ];
+		$statuses_attachment = [ 'inherit' ];
+
+		// Show existing source hostnames.
+		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
+		if ( ! empty( $existing_source_sites ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
+		} else {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
+		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching local content (CPTs %s and users) to live DB, and attributing matches to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
+		
+		// Process non-attachment post types.
+		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
+		if ( ! empty( $post_types_non_attachments ) ) {
+			// Match non-attachment post types.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
+			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
+			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
+			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+			// Save metas for matched posts, skip if already attributed.
+			foreach ( $matched_posts as $match ) {
+				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
+				if ( ! empty( $existing_meta ) ) {
+					continue;
+				}
+				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+				$context = [
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
+				];
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
+			}
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local non-attachment objects attributed out of %d total.', count( $matched_posts ), count( $results_local_posts ) ) );
+		}
+
+		// Process attachments separately (like in cmd_search).
+		$process_attachments = in_array( 'attachment', $post_types, true );
+		if ( $process_attachments ) {
+			// Match attachments.
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
+			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
+			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+			// Attribute matched attachments to source hostname, skip if already attributed.
+			foreach ( $matched_attachments as $match ) {
+				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
+				if ( ! empty( $existing_meta ) ) {
+					continue;
+				}
+				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+				// Detailed log to file only.
+				$context = [
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
+				];
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Attachment attributed to source_hostname %s', $source_hostname ), $context );
+			}
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local attachments attributed out of %d total.', count( $matched_attachments ), count( $results_local_attachments ) ) );
+		}
+
+		// Match users.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
+		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
+		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
+		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Attribute matched users to source hostname, skip if already attributed.
+		foreach ( $matched_users as $match ) {
+			$existing_meta = get_user_meta( $match['local_id'], $meta_key, true );
+			if ( ! empty( $existing_meta ) ) {
+				continue;
+			}
+			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			// Detailed log to file only.
+			$context = [
+				'local_user_id' => $match['local_id'],
+				'live_user_id'  => $match['live_id'],
+			];
+			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'User attributed to source_hostname %s', $source_hostname ), $context );
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local users attributed out of %d total.', count( $matched_users ), count( $results_local_users ) ) );
+
+		// Match terms.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying terms...' );
+		$results_local_terms = $this->logic->get_terms_rows_for_attribution( $wpdb->prefix );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		$results_live_terms = $this->logic->get_terms_rows_for_attribution( $live_table_prefix );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local terms to live terms...', count( $results_local_terms ), count( $results_live_terms ) ) );
+		$matched_terms = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Attribute matched terms to source hostname, skip if already attributed.
+		foreach ( $matched_terms as $match ) {
+			$existing_meta = get_term_meta( $match['local_id'], $meta_key, true );
+			if ( ! empty( $existing_meta ) ) {
+				continue;
+			}
+			update_term_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			// Detailed log to file only.
+			$context = [
+				'local_term_id' => $match['local_id'],
+				'live_term_id'  => $match['live_id'],
+			];
+			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s 🙌 ', $source_hostname ) );
+	}
+
+	/**
 	 * This function will display a table comparing the collations of Live and Core WP tables.
 	 *
 	 * @param array $args Positional arguments.
@@ -1026,7 +1026,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					"There are a total of %d existing objects on local without any `%s*` metas. This content will not be diff-ed against the live tables, and duplicates may be created if this content does belong to this source hostname. See %s for full IDs, following are counts and just a few sample IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
+					"There are a total of %d existing objects on local without any `%s*` metas. See %s for full IDs, following is a summary with some sample IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
 					$total,
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$file_path,
