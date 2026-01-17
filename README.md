@@ -140,6 +140,39 @@ wp newspack-content-diff-migrator correct-collations-for-live-wp-tables \
 
 ---
 
+## Reports
+
+At the end of each migration run, CSV reports are created in the `reports/` subfolder within your `--data-dir`. These CSVs are human-friendly summaries of all the key migration activity, and they are derived from (duplicated from) the run-state JSONL files for your easy review.
+
+### Generated Reports
+
+| File | Description | Columns |
+|------|-------------|---------|
+| `reports/posts.csv` | All migrated or reimported posts, pages, attachments, and custom post types | `status`, `post_type`, `id_old`, `id_new` |
+| `reports/users.csv` | All imported, merged, or modified users | `status`, `id_old`, `id_new` |
+| `reports/terms.csv` | All imported or merged terms (categories, tags, custom taxonomies) | `status`, `term_id_old`, `term_id_new`, `taxonomy` |
+
+`status` column possible values:
+
+- **imported**: Record was newly created during this migration
+- **modified**: Record was deleted and reimported, or had fields updated
+- **merged**: Record with the same unique identifier already existed locally and was merged/reused
+
+Tracked in the reports:
+
+- Posts (all types) that were imported or reimported
+- Users that were imported, merged, or had MDCS field updates
+- Terms that were imported or merged
+
+Not tracked in the reports:
+
+- Individual field updates on posts (only full reimports are tracked)
+- Attachment field updates (caption, alt text, etc.)
+- Post parent changes (these don't mark a post as "modified")
+- Comments and comment metadata
+
+---
+
 ## Using the Data Directory (`--data-dir`)
 
 The `--data-dir` parameter stores logs and run-state data in a `run-state` subfolder (e.g., `/tmp/cdiff_data/run-state/`).

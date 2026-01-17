@@ -9,10 +9,12 @@
 namespace Newspack\ContentDiffMigrator\Command;
 
 use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
+use Newspack\ContentDiffMigrator\Logic\DataImporter;
 use Newspack\ContentDiffMigrator\Logic\DB;
 use Newspack\ContentDiffMigrator\Logic\RunState;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
+use Newspack\ContentDiffMigrator\Utils\ReportCreator;
 use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
 use Psr\Log\LogLevel;
 use WP_CLI;
@@ -28,6 +30,13 @@ class ContentDiffMigrator {
 	 * @var ContentDiffLogic Logic.
 	 */
 	private ContentDiffLogic $logic;
+
+	/**
+	 * DataImporter instance for importing post-related data.
+	 *
+	 * @var DataImporter
+	 */
+	private DataImporter $data_importer;
 
 	/**
 	 * Database utilities class.
@@ -65,11 +74,13 @@ class ContentDiffMigrator {
 	 * @param bool $test_env For testing: suppresses confirmations and removes memory cleanup sleep time.
 	 */
 	public function __construct( bool $test_env = false ) {
-		// This class is presently just integration-tested, so no need to enable injection of any dependencies.
+		// $wpdb is global here because ContentDiffMigrator is integration-tested (real DB), while Logic classes accept injectable $wpdb for unit testing with mocks.
 		global $wpdb;
-		$this->logic    = new ContentDiffLogic( $wpdb );
-		$this->db       = new DB( $wpdb );
-		$this->test_env = $test_env;
+
+		$this->data_importer = new DataImporter( $wpdb );
+		$this->logic         = new ContentDiffLogic( $wpdb, null, $this->data_importer );
+		$this->db            = new DB( $wpdb );
+		$this->test_env      = $test_env;
 	}
 
 	/**
@@ -266,6 +277,7 @@ class ContentDiffMigrator {
 		
 		// Set instance properties.
 		global $wpdb;
+		// Only create RunState if not already injected (integration tests inject their own testable RunState).
 		if ( null === $this->run_state ) {
 			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/run-state' );
 		}
@@ -500,6 +512,8 @@ class ContentDiffMigrator {
 		if ( null === $this->run_state ) {
 			$this->run_state = new RunState( rtrim( $data_dir, '/' ) . '/run-state' );
 		}
+		// Set RunState on DataImporter for tracking users/terms.
+		$this->data_importer->set_run_state( $this->run_state );
 
 		// In case custom taxonomies were explicitly provided, but category/post_tag/author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( isset( $assoc_args['custom-taxonomies-csv'] ) ) {
@@ -669,6 +683,12 @@ class ContentDiffMigrator {
 		$term_updates = $this->logic->update_modified_terms( $live_table_prefix, $source_hostname, [ 'category', 'post_tag' ] );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d terms, updated %d.', $term_updates['checked'], $term_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Generate CSV reports from run-state JSONL files.
+		$reports_dir    = rtrim( (string) $data_dir, '/' ) . '/reports';
+		$report_creator = new ReportCreator( $this->run_state );
+		$report_result  = $report_creator->create_all_csvs( $reports_dir );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Reports generated in %s/ (posts: %d, users: %d, terms: %d rows)', $reports_dir, $report_result['counts']['posts'], $report_result['counts']['users'], $report_result['counts']['terms'] ) );
 
 		// Display info about available logs.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );

@@ -18,15 +18,17 @@ use Psr\Log\LogLevel;
 class RunState {
 
 	// Run-state filenames.
+	public const FILE_MANIFEST             = 'manifest.json';
 	public const FILE_NEW_IDS              = 'new_ids.json';
 	public const FILE_MODIFIED_IDS         = 'modified_ids.json';
-	public const FILE_MANIFEST             = 'manifest.json';
 	public const FILE_IMPORTED_POSTS       = 'imported_posts.jsonl';
 	public const FILE_UPDATED_PARENTS      = 'updated_parents.jsonl';
 	public const FILE_UPDATED_FEATURED     = 'updated_featured.jsonl';
 	public const FILE_UPDATED_BLOCKS       = 'updated_blocks.jsonl';
 	public const FILE_DELETED_MODIFIED_IDS = 'deleted_modified_ids.jsonl';
 	public const FILE_UNATTRIBUTED_CONTENT = 'unattributed_content.jsonl';
+	public const FILE_IMPORTED_USERS       = 'imported_users.jsonl';
+	public const FILE_IMPORTED_TERMS       = 'imported_terms.jsonl';
 
 	/**
 	 * Run-state directory path.
@@ -263,6 +265,128 @@ class RunState {
 	}
 
 	/**
+	 * Writes unattributed content IDs to a JSONL file (one JSON object per line).
+	 *
+	 * Overwrites any existing file with newly scanned data.
+	 *
+	 * @param array $post_ids       Array of unattributed post IDs.
+	 * @param array $attachment_ids Array of unattributed attachment IDs.
+	 * @param array $user_ids       Array of unattributed user IDs.
+	 * @param array $term_ids       Array of unattributed term IDs.
+	 *
+	 * @return string Full path to the run-state file.
+	 */
+	public function write_unattributed_content( array $post_ids, array $attachment_ids, array $user_ids, array $term_ids ): string {
+		$file_path = $this->get_file_path( self::FILE_UNATTRIBUTED_CONTENT );
+
+		// Overwrite existing file.
+		$result = file_put_contents( $file_path, '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
+		if ( false === $result ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to truncate run-state file %s, error: %s', self::FILE_UNATTRIBUTED_CONTENT, wp_json_encode( error_get_last() ) ) );
+			return $file_path;
+		}
+
+		foreach ( $post_ids as $id ) {
+			$this->append_jsonl(
+				self::FILE_UNATTRIBUTED_CONTENT,
+				[
+					'type' => 'post',
+					'ID'   => (int) $id,
+				] 
+			);
+		}
+		foreach ( $attachment_ids as $id ) {
+			$this->append_jsonl(
+				self::FILE_UNATTRIBUTED_CONTENT,
+				[
+					'type' => 'attachment',
+					'ID'   => (int) $id,
+				] 
+			);
+		}
+		foreach ( $user_ids as $id ) {
+			$this->append_jsonl(
+				self::FILE_UNATTRIBUTED_CONTENT,
+				[
+					'type' => 'user',
+					'ID'   => (int) $id,
+				] 
+			);
+		}
+		foreach ( $term_ids as $id ) {
+			$this->append_jsonl(
+				self::FILE_UNATTRIBUTED_CONTENT,
+				[
+					'type'    => 'term',
+					'term_id' => (int) $id,
+				] 
+			);
+		}
+
+		return $file_path;
+	}
+
+	/**
+	 * Appends an imported/merged/modified user record.
+	 *
+	 * @param array $user_data User data with 'id_old', 'id_new', 'status' keys.
+	 *                         Status should be 'imported', 'merged', or 'modified'.
+	 *
+	 * @return bool Success.
+	 */
+	public function append_imported_user( array $user_data ): bool {
+		return $this->append_jsonl( self::FILE_IMPORTED_USERS, $user_data );
+	}
+
+	/**
+	 * Reads all imported user records from the JSONL file.
+	 *
+	 * @return array Array of user records with 'id_old', 'id_new', 'status' keys.
+	 */
+	public function read_imported_users(): array {
+		return $this->read_jsonl( self::FILE_IMPORTED_USERS );
+	}
+
+	/**
+	 * Appends an imported/merged term record.
+	 *
+	 * @param array $term_data Term data with 'term_id_old', 'term_id_new', 'taxonomy', 'status' keys.
+	 *                         Status should be 'imported' or 'merged'.
+	 *
+	 * @return bool Success.
+	 */
+	public function append_imported_term( array $term_data ): bool {
+		return $this->append_jsonl( self::FILE_IMPORTED_TERMS, $term_data );
+	}
+
+	/**
+	 * Reads all imported term records from the JSONL file.
+	 *
+	 * @return array Array of term records with 'term_id_old', 'term_id_new', 'taxonomy', 'status' keys.
+	 */
+	public function read_imported_terms(): array {
+		return $this->read_jsonl( self::FILE_IMPORTED_TERMS );
+	}
+
+	/**
+	 * Reads all imported post records from the JSONL file.
+	 *
+	 * @return array Array of post records with 'post_type', 'id_old', 'id_new' keys.
+	 */
+	public function read_imported_posts(): array {
+		return $this->read_jsonl( self::FILE_IMPORTED_POSTS );
+	}
+
+	/**
+	 * Reads all deleted modified ID records from the JSONL file.
+	 *
+	 * @return array Array of records with 'live_id', 'local_id' keys.
+	 */
+	public function read_deleted_modified_ids(): array {
+		return $this->read_jsonl( self::FILE_DELETED_MODIFIED_IDS );
+	}
+
+	/**
 	 * Gets path to a run-state file.
 	 *
 	 * @param string $filename Filename (e.g., 'manifest.json', 'new_ids.json').
@@ -373,67 +497,5 @@ class RunState {
 		}
 		
 		return true;
-	}
-
-	/**
-	 * Writes unattributed content IDs to a JSONL file (one JSON object per line).
-	 *
-	 * Overwrites any existing file with newly scanned data.
-	 *
-	 * @param array $post_ids       Array of unattributed post IDs.
-	 * @param array $attachment_ids Array of unattributed attachment IDs.
-	 * @param array $user_ids       Array of unattributed user IDs.
-	 * @param array $term_ids       Array of unattributed term IDs.
-	 *
-	 * @return string Full path to the run-state file.
-	 */
-	public function write_unattributed_content( array $post_ids, array $attachment_ids, array $user_ids, array $term_ids ): string {
-		$file_path = $this->get_file_path( self::FILE_UNATTRIBUTED_CONTENT );
-
-		// Overwrite existing file.
-		$result = file_put_contents( $file_path, '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_file_put_contents
-		if ( false === $result ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to truncate run-state file %s, error: %s', self::FILE_UNATTRIBUTED_CONTENT, wp_json_encode( error_get_last() ) ) );
-			return $file_path;
-		}
-
-		foreach ( $post_ids as $id ) {
-			$this->append_jsonl(
-				self::FILE_UNATTRIBUTED_CONTENT,
-				[
-					'type' => 'post',
-					'ID'   => (int) $id,
-				] 
-			);
-		}
-		foreach ( $attachment_ids as $id ) {
-			$this->append_jsonl(
-				self::FILE_UNATTRIBUTED_CONTENT,
-				[
-					'type' => 'attachment',
-					'ID'   => (int) $id,
-				] 
-			);
-		}
-		foreach ( $user_ids as $id ) {
-			$this->append_jsonl(
-				self::FILE_UNATTRIBUTED_CONTENT,
-				[
-					'type' => 'user',
-					'ID'   => (int) $id,
-				] 
-			);
-		}
-		foreach ( $term_ids as $id ) {
-			$this->append_jsonl(
-				self::FILE_UNATTRIBUTED_CONTENT,
-				[
-					'type'    => 'term',
-					'term_id' => (int) $id,
-				] 
-			);
-		}
-
-		return $file_path;
 	}
 }

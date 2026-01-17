@@ -1032,8 +1032,14 @@ class ContentDiffLogic {
 				$this->wpdb->update( $this->wpdb->users, $updates, [ 'ID' => $local_id ] );
 				$updated++;
 				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated user %d: %s', $local_id, wp_json_encode( $updates ) ) );
+
+				// Track modified user.
+				$this->data_importer->track_modified_user( (int) $live_id, (int) $local_id );
 			} elseif ( $avatar_updated ) {
 				$updated++;
+
+				// Track modified user (avatar-only update).
+				$this->data_importer->track_modified_user( (int) $live_id, (int) $local_id );
 			}
 		}
 

@@ -25,6 +25,13 @@ class DataImporter {
 	private wpdb $wpdb;
 
 	/**
+	 * RunState for tracking imported items.
+	 *
+	 * @var RunState|null
+	 */
+	private ?RunState $run_state = null;
+
+	/**
 	 * Map of live term_id to local term_id for all taxonomies.
 	 * Populated on-the-fly during import by getting/creating, shared by all posts which use the same taxonomies.
 	 *
@@ -43,10 +50,41 @@ class DataImporter {
 	/**
 	 * DataImporter constructor.
 	 *
-	 * @param wpdb $wpdb Global $wpdb.
+	 * @param wpdb          $wpdb      Global $wpdb.
+	 * @param RunState|null $run_state Optional RunState for tracking imported items (used for reports).
 	 */
-	public function __construct( wpdb $wpdb ) {
-		$this->wpdb = $wpdb;
+	public function __construct( wpdb $wpdb, ?RunState $run_state = null ) {
+		$this->wpdb      = $wpdb;
+		$this->run_state = $run_state;
+	}
+
+	/**
+	 * Sets the RunState instance for tracking imported items.
+	 *
+	 * RunState depends on --data-dir CLI argument which is available after the command parses arguments and only then creates the RunState.
+	 *
+	 * @param RunState $run_state RunState instance.
+	 */
+	public function set_run_state( RunState $run_state ): void {
+		$this->run_state = $run_state;
+	}
+
+	/**
+	 * Tracks a modified user in RunState for reports.
+	 *
+	 * @param int $live_id  Live user ID.
+	 * @param int $local_id Local user ID.
+	 */
+	public function track_modified_user( int $live_id, int $local_id ): void {
+		if ( null !== $this->run_state ) {
+			$this->run_state->append_imported_user(
+				[
+					'id_old' => $live_id,
+					'id_new' => $local_id,
+					'status' => 'modified',
+				]
+			);
+		}
 	}
 
 	/**
@@ -599,10 +637,11 @@ class DataImporter {
 		}
 
 		// Log if this term is being merged from another source.
+		$term     = get_term( $local_term_id );
+		$taxonomy = $term instanceof \WP_Term ? $term->taxonomy : '(unknown)';
+
 		if ( ! empty( $any_old_id_meta ) ) {
-			$term      = get_term( $local_term_id );
 			$term_name = $term instanceof \WP_Term ? $term->name : '(unknown)';
-			$taxonomy  = $term instanceof \WP_Term ? $term->taxonomy : '(unknown)';
 			// Log all the cases to file with full context.
 			Logger::instance()->log(
 				Logger::OUTPUT_FILE,
@@ -621,6 +660,30 @@ class DataImporter {
 			if ( false === $cli_warned_term_merge ) {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_term: Some terms already exist on local and are being merged/reused, and an additional meta is set for those terms. See %s for full list (first example: term_name `%s`, taxonomy `%s`, live_term_id=%d, local_term_id=%d).', Logger::instance()->get_log_file_path(), $term_name, $taxonomy, $live_term_id, $local_term_id ) );
 				$cli_warned_term_merge = true;
+			}
+
+			// Track merged term for reports.
+			if ( null !== $this->run_state ) {
+				$this->run_state->append_imported_term(
+					[
+						'term_id_old' => $live_term_id,
+						'term_id_new' => $local_term_id,
+						'taxonomy'    => $taxonomy,
+						'status'      => 'merged',
+					]
+				);
+			}
+		} else { // phpcs:ignore -- allow lonely if inside this if/else block, for clarity around test environment Universal.ControlStructures.DisallowLonelyIf.Found.
+			// Track imported term for reports (first time this term is encountered from any source).
+			if ( null !== $this->run_state ) {
+				$this->run_state->append_imported_term(
+					[
+						'term_id_old' => $live_term_id,
+						'term_id_new' => $local_term_id,
+						'taxonomy'    => $taxonomy,
+						'status'      => 'imported',
+					]
+				);
 			}
 		}
 
@@ -695,6 +758,17 @@ class DataImporter {
 					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_user: Some users already exist on local (same login) and are being merged/reused, and an additional meta is set for those users. See %s for full list (first example: user_login=`%s`, live_user_id=%d, local_user_id=%d).', Logger::instance()->get_log_file_path(), $user_row['user_login'], $user_row['ID'], $local_user_id ) );
 					$cli_warned_user_merge = true;
 				}
+
+				// Track merged user for reports.
+				if ( null !== $this->run_state ) {
+					$this->run_state->append_imported_user(
+						[
+							'id_old' => (int) $user_row['ID'],
+							'id_new' => $local_user_id,
+							'status' => 'merged',
+						]
+					);
+				}
 			}
 
 			return $local_user_id;
@@ -750,6 +824,17 @@ class DataImporter {
 				'old_user_id' => $old_user_id,
 			];
 			Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to insert old_id usermeta for new user ID %d which may cause duplicate users. DB error: %s', $new_user_id, $this->wpdb->last_error ), $context );
+		}
+
+		// Track imported user for reports.
+		if ( null !== $this->run_state ) {
+			$this->run_state->append_imported_user(
+				[
+					'id_old' => $old_user_id,
+					'id_new' => $new_user_id,
+					'status' => 'imported',
+				]
+			);
 		}
 
 		return $new_user_id;
