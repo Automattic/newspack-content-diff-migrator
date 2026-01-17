@@ -687,13 +687,13 @@ class ContentDiffMigrator {
 		// Generate CSV reports from run-state JSONL files.
 		$reports_dir    = rtrim( (string) $data_dir, '/' ) . '/reports';
 		$report_creator = new ReportCreator( $this->run_state );
-		$report_result  = $report_creator->create_all_csvs( $reports_dir );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Reports generated in %s/ (posts: %d, users: %d, terms: %d rows)', $reports_dir, $report_result['counts']['posts'], $report_result['counts']['users'], $report_result['counts']['terms'] ) );
+		$report_creator->create_all_csvs( $reports_dir );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( "Reports generated in %s/ :\n- %s\n- %s\n- %s", $reports_dir, ReportCreator::REPORT_POSTS, ReportCreator::REPORT_USERS, ReportCreator::REPORT_TERMS ) );
 
 		// Display info about available logs.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done migrating content from %s! 🙌 ', $source_hostname ) );
 		wp_cache_flush();
 	}

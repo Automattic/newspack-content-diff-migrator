@@ -46,40 +46,27 @@ class ReportCreator {
 	 *
 	 * @param string $reports_dir Full path to the reports directory.
 	 *
-	 * @return array {
-	 *     @type array $files Array of created file paths.
-	 *     @type array $counts Array of row counts per report.
-	 * }
+	 * @return void
 	 */
-	public function create_all_csvs( string $reports_dir ): array {
+	public function create_all_csvs( string $reports_dir ): void {
 		// Ensure reports directory exists.
 		if ( ! is_dir( $reports_dir ) ) {
 			wp_mkdir_p( $reports_dir );
 		}
 
 		$reports_dir = rtrim( $reports_dir, '/' );
-		$files       = [];
-		$counts      = [];
 
 		// Create posts.csv.
-		$posts_path       = $reports_dir . '/' . self::REPORT_POSTS;
-		$counts['posts']  = $this->create_posts_csv( $posts_path );
-		$files['posts']   = $posts_path;
+		$posts_path = $reports_dir . '/' . self::REPORT_POSTS;
+		$this->create_posts_csv( $posts_path );
 
 		// Create users.csv.
-		$users_path       = $reports_dir . '/' . self::REPORT_USERS;
-		$counts['users']  = $this->create_users_csv( $users_path );
-		$files['users']   = $users_path;
+		$users_path = $reports_dir . '/' . self::REPORT_USERS;
+		$this->create_users_csv( $users_path );
 
 		// Create terms.csv.
-		$terms_path       = $reports_dir . '/' . self::REPORT_TERMS;
-		$counts['terms']  = $this->create_terms_csv( $terms_path );
-		$files['terms']   = $terms_path;
-
-		return [
-			'files'  => $files,
-			'counts' => $counts,
-		];
+		$terms_path = $reports_dir . '/' . self::REPORT_TERMS;
+		$this->create_terms_csv( $terms_path );
 	}
 
 	/**
@@ -90,7 +77,7 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_posts_csv( string $file_path ): int {
-		$handle = fopen( $file_path, 'w' ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fopen
+		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
 			return 0;
@@ -98,7 +85,7 @@ class ReportCreator {
 
 		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'status', 'post_type', 'id_old', 'id_new' ], ',', '"', '' );
+		fputcsv( $handle, [ 'status', 'post_type', 'id_old', 'id_new' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 
 		// Track unique posts by id_new to handle deduplication.
 		// A post might be imported then later modified - we want final status.
@@ -107,7 +94,7 @@ class ReportCreator {
 		// Read imported posts (status = "imported").
 		$imported_posts = $this->run_state->read_imported_posts();
 		foreach ( $imported_posts as $post ) {
-			$id_new = (int) $post['id_new'];
+			$id_new                     = (int) $post['id_new'];
 			$posts_by_id_new[ $id_new ] = [
 				'status'    => 'imported',
 				'post_type' => $post['post_type'] ?? 'post',
@@ -144,7 +131,7 @@ class ReportCreator {
 		$count = 0;
 		foreach ( $posts_by_id_new as $row ) {
 			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-			fputcsv( $handle, [ $row['status'], $row['post_type'], $row['id_old'], $row['id_new'] ], ',', '"', '' );
+			fputcsv( $handle, [ $row['status'], $row['post_type'], $row['id_old'], $row['id_new'] ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 			$count++;
 		}
 
@@ -160,7 +147,7 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_users_csv( string $file_path ): int {
-		$handle = fopen( $file_path, 'w' ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fopen
+		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
 			return 0;
@@ -168,7 +155,7 @@ class ReportCreator {
 
 		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'status', 'id_old', 'id_new' ], ',', '"', '' );
+		fputcsv( $handle, [ 'status', 'id_old', 'id_new' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 
 		// Track unique users by id_new to handle deduplication.
 		// Status priority: modified > merged > imported.
@@ -193,7 +180,7 @@ class ReportCreator {
 		$count = 0;
 		foreach ( $users_by_id_new as $row ) {
 			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-			fputcsv( $handle, [ $row['status'], $row['id_old'], $row['id_new'] ], ',', '"', '' );
+			fputcsv( $handle, [ $row['status'], $row['id_old'], $row['id_new'] ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 			$count++;
 		}
 
@@ -209,7 +196,7 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_terms_csv( string $file_path ): int {
-		$handle = fopen( $file_path, 'w' ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fopen
+		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
 			return 0;
@@ -217,7 +204,7 @@ class ReportCreator {
 
 		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'status', 'term_id_old', 'term_id_new', 'taxonomy' ], ',', '"', '' );
+		fputcsv( $handle, [ 'status', 'term_id_old', 'term_id_new', 'taxonomy' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 
 		// Track unique terms by term_id_new to handle deduplication.
 		// Status priority: merged > imported.
@@ -243,7 +230,7 @@ class ReportCreator {
 		$count = 0;
 		foreach ( $terms_by_id_new as $row ) {
 			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-			fputcsv( $handle, [ $row['status'], $row['term_id_old'], $row['term_id_new'], $row['taxonomy'] ], ',', '"', '' );
+			fputcsv( $handle, [ $row['status'], $row['term_id_old'], $row['term_id_new'], $row['taxonomy'] ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 			$count++;
 		}
 
