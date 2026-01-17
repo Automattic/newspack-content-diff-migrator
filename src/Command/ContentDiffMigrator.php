@@ -310,8 +310,9 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// List previously migrated source hostnames.
+		// List previously migrated source hostnames and warn if a similar hostname exists (to detect www or non-www variants of the same hostname).
 		$this->cmd_list_migrated_source_hostnames( [], [] );
+		$this->warn_if_similar_hostname_exists( $source_hostname );
 
 		// Search distinct Post types in live DB.
 		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
@@ -344,7 +345,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
 		if ( $unattributed_count > 0 && ! $this->test_env ) {
-			WP_CLI::confirm( sprintf( 'This unattributed local content will not be diff-ed against the live content during migration. Duplicates may be created if this existing unattributed content does belong to the source hostname %s. Would you like to continue with migration (y), or stop now (n) to first run `attribute-existing-content-to-hostname`?', $source_hostname ) );
+			WP_CLI::confirm( sprintf( 'This unattributed local content will not be diff-ed against the live content during migration. Duplicates may be created if this existing unattributed content does belong to the source hostname %s. Enter (y) to continue with migration, or (n) to quit now and first run `attribute-existing-content-to-hostname`?', $source_hostname ) );
 		}
 
 		// Get post types other than attachments.
@@ -471,7 +472,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done searching for new content on live 🙌 Proceed with running the `migrate-live-content` command 🚀' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done searching for new content on live 🙌  Proceed by running the `migrate-live-content` command 🚀' );
 	}
 
 	/**
@@ -534,8 +535,9 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// List previously migrated source hostnames.
+		// List previously migrated source hostnames and warn if similar hostname exists (to detect www or non-www variants of the same hostname)..
 		$this->cmd_list_migrated_source_hostnames( [], [] );
+		$this->warn_if_similar_hostname_exists( $source_hostname );
 
 		// Read post_types from manifest (saved by search command).
 		$manifest = $this->run_state->get_manifest();
@@ -663,7 +665,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d attachments, updated %d.', $attachment_updates['checked'], $attachment_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified term fields (category/post_tag)...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for modified term fields...' );
 		$term_updates = $this->logic->update_modified_terms( $live_table_prefix, $source_hostname, [ 'category', 'post_tag' ] );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d terms, updated %d.', $term_updates['checked'], $term_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
@@ -672,7 +674,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done migrating content! 🙌 ' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done migrating content from %s! 🙌 ', $source_hostname ) );
 		wp_cache_flush();
 	}
 
@@ -695,6 +697,33 @@ class ContentDiffMigrator {
 		}
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Previously migrated source hostnames: ' . implode( ', ', $source_sites ) );
+	}
+
+	/**
+	 * Checks if the given source hostname is similar to any previously migrated hostname.
+	 * If a substring match is found (in either direction), prompts the user for confirmation.
+	 *
+	 * @param string $source_hostname The source hostname provided by the user.
+	 */
+	private function warn_if_similar_hostname_exists( string $source_hostname ): void {
+		$existing_hostnames = $this->logic->get_migrated_source_hostnames();
+		if ( empty( $existing_hostnames ) ) {
+			return;
+		}
+
+		// Check for substring matches (both directions).
+		foreach ( $existing_hostnames as $existing ) {
+			if ( $existing === $source_hostname ) {
+				continue; // Exact match is fine, skip.
+			}
+			// Check if one is substring of the other.
+			if ( false !== strpos( $existing, $source_hostname ) || false !== strpos( $source_hostname, $existing ) ) {
+				if ( ! $this->test_env ) {
+					WP_CLI::confirm( sprintf( 'Did you mean `%s` (previously migrated)? Enter (y) to continue with `%s` as a separate site, or (n) to quit and change your `--source-hostname` to `%s`.', $existing, $source_hostname, $existing ) );
+				}
+				return; // Only warn once for the first match.
+			}
+		}
 	}
 
 	/**
@@ -1241,7 +1270,7 @@ class ContentDiffMigrator {
 					] 
 				);
 				if ( false === $dispayed_cli_warning_update_parents ) {
-					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some parent IDs not found on live. This is usually not an error, and happens either because parent_ids are not found on live, or are not being migrated (different post type). See %s for full list (first example: $id_old=%s, $id_new=%s, $parent_id_old=%s; $parent_id_new set to 0).', Logger::instance()->get_log_file_path(), $id_old, $id_new, $parent_id_old ) );
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some parent IDs not found on live. This is usually not an error (happens when parent_ids are not found on live, or are different post types that are not being migrated). See %s for full list (first example: $id_old=%s, $id_new=%s, $parent_id_old=%s; $parent_id_new set to 0).', Logger::instance()->get_log_file_path(), $id_old, $id_new, $parent_id_old ) );
 					$dispayed_cli_warning_update_parents = true;
 				}
 			}
