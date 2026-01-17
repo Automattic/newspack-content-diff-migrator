@@ -51,7 +51,7 @@ class DataImporter {
 	 * DataImporter constructor.
 	 *
 	 * @param wpdb          $wpdb      Global $wpdb.
-	 * @param RunState|null $run_state Optional RunState for tracking imported items (used for reports).
+	 * @param RunState|null $run_state RunState for tracking imported items (used for reports).
 	 */
 	public function __construct( wpdb $wpdb, ?RunState $run_state = null ) {
 		$this->wpdb      = $wpdb;
