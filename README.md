@@ -161,14 +161,15 @@ At the end of each migration run, CSV reports are created in the `reports/` subf
 Tracked in the reports:
 
 - Posts (all types) that were imported or reimported
+- Attachments that were imported or had MDCS field updates
 - Users that were imported, merged, or had MDCS field updates
-- Terms that were imported or merged
+- Terms that were imported, merged, or had MDCS field updates
 
 Not tracked in the reports:
 
-- Individual field updates on posts (only full reimports are tracked)
-- Attachment field updates (caption, alt text, etc.)
-- Post parent changes (these don't mark a post as "modified")
+- Post parent ID corrections (internal plumbing, not content changes)
+- Featured image ID corrections (internal plumbing)
+- Block attachment ID corrections (internal plumbing)
 - Comments and comment metadata
 
 ---

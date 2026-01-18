@@ -1923,4 +1923,489 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 		$new_child_post = get_post( $new_child_local_id );
 		$this->assertEquals( $new_parent_local_id, (int) $new_child_post->post_parent, 'Child should reference new parent ID.' );
 	}
+
+	// =========================================================================
+	// MDCS TRACKING TESTS - USERS
+	// =========================================================================
+
+	/**
+	 * Tests that user email update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_user_email_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 25001,
+				'user_login' => 'email_track_user_' . uniqid(),
+				'user_email' => 'original@test.local',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 25002,
+				'post_author' => 25001,
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Update email in live.
+		$wpdb->update( $this->live_table_prefix . 'users', [ 'user_email' => 'updated@test.local' ], [ 'ID' => 25001 ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify user is tracked as modified.
+		$imported_users = $this->run_state->read_imported_users();
+		$found_modified = false;
+		foreach ( $imported_users as $user ) {
+			if ( 25001 === (int) $user['id_old'] && 'modified' === $user['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'User with email update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that user display_name update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_user_display_name_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'           => 25101,
+				'user_login'   => 'display_track_user_' . uniqid(),
+				'display_name' => 'Original Name',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 25102,
+				'post_author' => 25101,
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Update display_name in live.
+		$wpdb->update( $this->live_table_prefix . 'users', [ 'display_name' => 'Updated Name' ], [ 'ID' => 25101 ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify user is tracked as modified.
+		$imported_users = $this->run_state->read_imported_users();
+		$found_modified = false;
+		foreach ( $imported_users as $user ) {
+			if ( 25101 === (int) $user['id_old'] && 'modified' === $user['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'User with display_name update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that user avatar update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_user_avatar_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 25201,
+				'user_login' => 'avatar_track_user_' . uniqid(),
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$avatar1 = $this->create_post_fixture(
+			[
+				'ID'          => 25202,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			] 
+		);
+		$avatar2 = $this->create_post_fixture(
+			[
+				'ID'          => 25203,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $avatar1 ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'posts', $avatar2 ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 25204,
+				'post_author' => 25201,
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Set initial avatar.
+		$wpdb->insert( $this->live_table_prefix . 'usermeta', // phpcs:ignore
+			[
+				'user_id'    => 25201,
+				'meta_key'   => SLAHelper::AVATAR_META_KEY, // phpcs:ignore
+				'meta_value' => maybe_serialize( [ 'media_id' => 25202, 'full' => 'http://test.local/a1.jpg', 'blog_id' => 1 ] ), // phpcs:ignore
+			]
+		);
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		// Update avatar in live.
+		$wpdb->update( $this->live_table_prefix . 'usermeta', // phpcs:ignore
+			[ 'meta_value' => maybe_serialize( [ 'media_id' => 25203, 'full' => 'http://test.local/a2.jpg', 'blog_id' => 1 ] ) ], // phpcs:ignore
+			[ 'user_id' => 25201, 'meta_key' => SLAHelper::AVATAR_META_KEY ] // phpcs:ignore
+		);
+
+		$this->run_migrate_command();
+
+		// Verify user is tracked as modified.
+		$imported_users = $this->run_state->read_imported_users();
+		$found_modified = false;
+		foreach ( $imported_users as $user ) {
+			if ( 25201 === (int) $user['id_old'] && 'modified' === $user['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'User with avatar update should be tracked as modified.' );
+	}
+
+	// =========================================================================
+	// MDCS TRACKING TESTS - ATTACHMENTS
+	// =========================================================================
+
+	/**
+	 * Tests that attachment caption update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_attachment_caption_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'           => 26001,
+				'post_type'    => 'attachment',
+				'post_status'  => 'inherit',
+				'post_excerpt' => 'Original caption',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+		$this->run_migrate_command();
+
+		// Update caption in live.
+		$wpdb->update( $this->live_table_prefix . 'posts', [ 'post_excerpt' => 'Updated caption' ], [ 'ID' => 26001 ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify attachment is tracked as modified.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$found_modified = false;
+		foreach ( $imported_posts as $post ) {
+			if ( 26001 === (int) $post['id_old'] && 'modified' === $post['status'] && 'attachment' === $post['post_type'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Attachment with caption update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that attachment alt text update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_attachment_alt_text_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'          => 26101,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'post_id' => 26101, 'meta_key' => '_wp_attachment_image_alt', 'meta_value' => 'Original alt' ] ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+		$this->run_migrate_command();
+
+		// Update alt text in live.
+		$wpdb->update( $this->live_table_prefix . 'postmeta', [ 'meta_value' => 'Updated alt' ], [ 'post_id' => 26101, 'meta_key' => '_wp_attachment_image_alt' ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify attachment is tracked as modified.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$found_modified = false;
+		foreach ( $imported_posts as $post ) {
+			if ( 26101 === (int) $post['id_old'] && 'modified' === $post['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Attachment with alt text update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that attachment description update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_attachment_description_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'           => 26201,
+				'post_type'    => 'attachment',
+				'post_status'  => 'inherit',
+				'post_content' => 'Original description',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+		$this->run_migrate_command();
+
+		// Update description in live.
+		$wpdb->update( $this->live_table_prefix . 'posts', [ 'post_content' => 'Updated description' ], [ 'ID' => 26201 ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify attachment is tracked as modified.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$found_modified = false;
+		foreach ( $imported_posts as $post ) {
+			if ( 26201 === (int) $post['id_old'] && 'modified' === $post['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Attachment with description update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that attachment media credit update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_attachment_media_credit_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'          => 26301,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'post_id' => 26301, 'meta_key' => '_media_credit', 'meta_value' => 'Original Credit' ] ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+		$this->run_migrate_command();
+
+		// Update media credit in live.
+		$wpdb->update( $this->live_table_prefix . 'postmeta', [ 'meta_value' => 'Updated Credit' ], [ 'post_id' => 26301, 'meta_key' => '_media_credit' ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify attachment is tracked as modified.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$found_modified = false;
+		foreach ( $imported_posts as $post ) {
+			if ( 26301 === (int) $post['id_old'] && 'modified' === $post['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Attachment with media credit update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that attachment credit URL update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_attachment_credit_url_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'          => 26401,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'post_id' => 26401, 'meta_key' => '_media_credit_url', 'meta_value' => 'https://original.example.com' ] ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+		$this->run_migrate_command();
+
+		// Update credit URL in live.
+		$wpdb->update( $this->live_table_prefix . 'postmeta', [ 'meta_value' => 'https://updated.example.com' ], [ 'post_id' => 26401, 'meta_key' => '_media_credit_url' ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify attachment is tracked as modified.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$found_modified = false;
+		foreach ( $imported_posts as $post ) {
+			if ( 26401 === (int) $post['id_old'] && 'modified' === $post['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Attachment with credit URL update should be tracked as modified.' );
+	}
+
+	// =========================================================================
+	// MDCS TRACKING TESTS - TERMS
+	// =========================================================================
+
+	/**
+	 * Tests that term slug update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_term_slug_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$term_name = 'SlugTrackTerm' . uniqid();
+		$post      = $this->create_post_fixture( [ 'ID' => 27001 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 27002, 'name' => $term_name, 'slug' => 'original-slug', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 27002, 'term_id' => 27002, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 27001, 'term_taxonomy_id' => 27002 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Update slug in live.
+		$wpdb->update( $this->live_table_prefix . 'terms', [ 'slug' => 'updated-slug' ], [ 'term_id' => 27002 ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify term is tracked as modified.
+		$imported_terms = $this->run_state->read_imported_terms();
+		$found_modified = false;
+		foreach ( $imported_terms as $term ) {
+			if ( 27002 === (int) $term['term_id_old'] && 'modified' === $term['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Term with slug update should be tracked as modified.' );
+	}
+
+	/**
+	 * Tests that term description update is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_term_description_update_as_modified_in_runstate(): void {
+		global $wpdb;
+
+		$term_name = 'DescTrackTerm' . uniqid();
+		$post      = $this->create_post_fixture( [ 'ID' => 27101 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 27102, 'name' => $term_name, 'slug' => sanitize_title( $term_name ), 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 27102, 'term_id' => 27102, 'taxonomy' => 'category', 'description' => 'Original description', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 27101, 'term_taxonomy_id' => 27102 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Update description in live.
+		$wpdb->update( $this->live_table_prefix . 'term_taxonomy', [ 'description' => 'Updated description' ], [ 'term_taxonomy_id' => 27102 ] ); // phpcs:ignore
+
+		$this->run_migrate_command();
+
+		// Verify term is tracked as modified.
+		$imported_terms = $this->run_state->read_imported_terms();
+		$found_modified = false;
+		foreach ( $imported_terms as $term ) {
+			if ( 27102 === (int) $term['term_id_old'] && 'modified' === $term['status'] ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Term with description update should be tracked as modified.' );
+	}
+
+	// =========================================================================
+	// MDCS TRACKING TESTS - POSTS
+	// =========================================================================
+
+	/**
+	 * Tests that reimported modified post is tracked as modified in run-state.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_track_reimported_modified_post_as_modified(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 28001,
+				'post_title'    => 'Original Title',
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Modify post in live.
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Modified Title',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 28001 ]
+		);
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post is tracked as modified (via deleted_modified_ids).
+		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
+		$this->assertArrayHasKey( 28001, $deleted_map, 'Reimported modified post should be in deleted_modified_ids.' );
+	}
 }

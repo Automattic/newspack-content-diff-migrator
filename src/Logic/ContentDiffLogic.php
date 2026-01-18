@@ -1033,13 +1033,13 @@ class ContentDiffLogic {
 				$updated++;
 				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated user %d: %s', $local_id, wp_json_encode( $updates ) ) );
 
-				// Track modified user.
-				$this->data_importer->track_modified_user( (int) $live_id, (int) $local_id );
+				// Append modified user to run-state for reports.
+				$this->data_importer->append_user( (int) $live_id, (int) $local_id, 'modified' );
 			} elseif ( $avatar_updated ) {
 				$updated++;
 
-				// Track modified user (avatar-only update).
-				$this->data_importer->track_modified_user( (int) $live_id, (int) $local_id );
+				// Append modified user (avatar-only update) to run-state for reports.
+				$this->data_importer->append_user( (int) $live_id, (int) $local_id, 'modified' );
 			}
 		}
 
@@ -1137,6 +1137,9 @@ class ContentDiffLogic {
 					LogLevel::DEBUG,
 					sprintf( 'Updated attachment %d', $local_id )
 				);
+
+				// Append modified attachment to run-state for reports.
+				$this->data_importer->append_post( (int) $live_id, (int) $local_id, 'attachment', 'modified' );
 			}
 		}
 
@@ -1241,6 +1244,9 @@ class ContentDiffLogic {
 					LogLevel::DEBUG,
 					sprintf( 'Updated term %d (taxonomy: %s)', $local_id, $local_term->taxonomy )
 				);
+
+				// Append modified term to run-state for reports.
+				$this->data_importer->append_term( (int) $live_id, (int) $local_id, $local_term->taxonomy, 'modified' );
 			}
 		}
 

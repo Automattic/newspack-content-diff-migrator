@@ -1179,8 +1179,8 @@ class ContentDiffMigrator {
 				);
 				$imported_posts_data[] = $result;
 
-				// Log imported post to run-state for resume capability.
-				$this->run_state->append_imported_post( $result );
+				// Append imported post to run-state for resume capability and reports.
+				$this->data_importer->append_post( (int) $result['id_old'], (int) $result['id_new'], $result['post_type'], 'imported' );
 			} catch ( \Exception $e ) {
 				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'import_posts error importing Live ID %d : %s', $id_live, $e->getMessage() ) );
 				// Continue importing other posts.

@@ -528,4 +528,285 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$final_local_id = $this->logic->get_current_post_id_by_old_id( 4010, $this->source_hostname );
 		$this->assertEquals( $new_local_id, $final_local_id, 'Post ID should remain the same after second migrate run.' );
 	}
+
+	// =========================================================================
+	// TRACKING TESTS - USERS
+	// =========================================================================
+
+	/**
+	 * Tests that imported users are saved to run-state with status "imported".
+	 *
+	 * @group run-state
+	 */
+	public function test_should_save_imported_user_to_runstate(): void {
+		global $wpdb;
+
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 20001,
+				'user_login' => 'runstate_user_' . uniqid(),
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 20002,
+				'post_author' => 20001,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify user was saved to run-state.
+		$imported_users = $this->run_state->read_imported_users();
+		$this->assertNotEmpty( $imported_users, 'Imported users should be saved to run-state.' );
+
+		// Find the user by old_id.
+		$found = false;
+		foreach ( $imported_users as $user ) {
+			if ( 20001 === (int) $user['id_old'] ) {
+				$found = true;
+				$this->assertEquals( 'imported', $user['status'], 'User status should be imported.' );
+				break;
+			}
+		}
+		$this->assertTrue( $found, 'User 20001 should be in run-state.' );
+	}
+
+	/**
+	 * Tests that merged users are saved to run-state with status "merged".
+	 *
+	 * @group run-state
+	 */
+	public function test_should_save_merged_user_to_runstate(): void {
+		global $wpdb;
+
+		$unique_login = 'merge_user_' . uniqid();
+
+		// Create local user first.
+		$local_user_id = $this->factory->user->create( [ 'user_login' => $unique_login ] );
+
+		// Create same user in live DB with different ID.
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 21001,
+				'user_login' => $unique_login,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 21002,
+				'post_author' => 21001,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify user was saved to run-state with merged status.
+		$imported_users = $this->run_state->read_imported_users();
+
+		$found = false;
+		foreach ( $imported_users as $user ) {
+			if ( 21001 === (int) $user['id_old'] && $local_user_id === (int) $user['id_new'] ) {
+				$found = true;
+				$this->assertEquals( 'merged', $user['status'], 'User status should be merged.' );
+				break;
+			}
+		}
+		$this->assertTrue( $found, 'Merged user should be in run-state.' );
+	}
+
+	// =========================================================================
+	// TRACKING TESTS - TERMS
+	// =========================================================================
+
+	/**
+	 * Tests that imported terms are saved to run-state with status "imported".
+	 *
+	 * @group run-state
+	 */
+	public function test_should_save_imported_term_to_runstate(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 22001 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create unique term name.
+		$term_name = 'ImportedTerm' . uniqid();
+		$term      = [
+			'term_id'    => 22002,
+			'name'       => $term_name,
+			'slug'       => sanitize_title( $term_name ),
+			'term_group' => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'terms', $term ); // phpcs:ignore
+
+		$term_taxonomy = [
+			'term_taxonomy_id' => 22002,
+			'term_id'          => 22002,
+			'taxonomy'         => 'category',
+			'description'      => '',
+			'parent'           => 0,
+			'count'            => 1,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', $term_taxonomy ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 22001, 'term_taxonomy_id' => 22002 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify term was saved to run-state.
+		$imported_terms = $this->run_state->read_imported_terms();
+		$this->assertNotEmpty( $imported_terms, 'Imported terms should be saved to run-state.' );
+
+		// Find the term by old_id.
+		$found = false;
+		foreach ( $imported_terms as $term_record ) {
+			if ( 22002 === (int) $term_record['term_id_old'] ) {
+				$found = true;
+				$this->assertEquals( 'imported', $term_record['status'], 'Term status should be imported.' );
+				$this->assertEquals( 'category', $term_record['taxonomy'], 'Term taxonomy should be category.' );
+				break;
+			}
+		}
+		$this->assertTrue( $found, 'Term 22002 should be in run-state.' );
+	}
+
+	/**
+	 * Tests that merged terms are saved to run-state with status "merged".
+	 *
+	 * @group run-state
+	 */
+	public function test_should_save_merged_term_to_runstate(): void {
+		global $wpdb;
+
+		$term_name = 'MergedTerm' . uniqid();
+
+		// Create local term first.
+		$local_term    = wp_insert_term( $term_name, 'category' );
+		$local_term_id = $local_term['term_id'];
+
+		// Create same term in live DB with different ID.
+		$post = $this->create_post_fixture( [ 'ID' => 23001 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$term = [
+			'term_id'    => 23002,
+			'name'       => $term_name,
+			'slug'       => sanitize_title( $term_name ),
+			'term_group' => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'terms', $term ); // phpcs:ignore
+
+		$term_taxonomy = [
+			'term_taxonomy_id' => 23002,
+			'term_id'          => 23002,
+			'taxonomy'         => 'category',
+			'description'      => '',
+			'parent'           => 0,
+			'count'            => 1,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', $term_taxonomy ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 23001, 'term_taxonomy_id' => 23002 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify term was saved to run-state with merged status.
+		$imported_terms = $this->run_state->read_imported_terms();
+
+		$found = false;
+		foreach ( $imported_terms as $term_record ) {
+			if ( 23002 === (int) $term_record['term_id_old'] && $local_term_id === (int) $term_record['term_id_new'] ) {
+				$found = true;
+				$this->assertEquals( 'merged', $term_record['status'], 'Term status should be merged.' );
+				break;
+			}
+		}
+		$this->assertTrue( $found, 'Merged term should be in run-state.' );
+	}
+
+	// =========================================================================
+	// TRACKING TESTS - ALL ENTITIES
+	// =========================================================================
+
+	/**
+	 * Tests that all entity types are tracked in a single migration run.
+	 *
+	 * @group run-state
+	 */
+	public function test_should_track_all_entity_types_in_single_migration_run(): void {
+		global $wpdb;
+
+		// Create user.
+		$live_user = $this->create_user_fixture(
+			[
+				'ID'         => 24001,
+				'user_login' => 'all_entities_user_' . uniqid(),
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'users', $live_user ); // phpcs:ignore
+
+		// Create term.
+		$term_name = 'AllEntitiesTerm' . uniqid();
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 24002, 'name' => $term_name, 'slug' => sanitize_title( $term_name ), 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 24002, 'term_id' => 24002, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+
+		// Create post with user and term.
+		$post = $this->create_post_fixture(
+			[
+				'ID'          => 24003,
+				'post_author' => 24001,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 24003, 'term_taxonomy_id' => 24002 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify all entities are tracked.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$imported_users = $this->run_state->read_imported_users();
+		$imported_terms = $this->run_state->read_imported_terms();
+
+		$this->assertNotEmpty( $imported_posts, 'Posts should be tracked.' );
+		$this->assertNotEmpty( $imported_users, 'Users should be tracked.' );
+		$this->assertNotEmpty( $imported_terms, 'Terms should be tracked.' );
+
+		// Verify specific IDs.
+		$post_found = false;
+		foreach ( $imported_posts as $p ) {
+			if ( 24003 === (int) $p['id_old'] ) {
+				$post_found = true;
+				break;
+			}
+		}
+		$this->assertTrue( $post_found, 'Post 24003 should be tracked.' );
+
+		$user_found = false;
+		foreach ( $imported_users as $u ) {
+			if ( 24001 === (int) $u['id_old'] ) {
+				$user_found = true;
+				break;
+			}
+		}
+		$this->assertTrue( $user_found, 'User 24001 should be tracked.' );
+
+		$term_found = false;
+		foreach ( $imported_terms as $t ) {
+			if ( 24002 === (int) $t['term_id_old'] ) {
+				$term_found = true;
+				break;
+			}
+		}
+		$this->assertTrue( $term_found, 'Term 24002 should be tracked.' );
+	}
 }

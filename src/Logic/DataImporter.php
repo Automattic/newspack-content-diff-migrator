@@ -70,18 +70,61 @@ class DataImporter {
 	}
 
 	/**
-	 * Tracks a modified user in RunState for reports.
+	 * Appends a user record to run-state for reports.
 	 *
-	 * @param int $live_id  Live user ID.
-	 * @param int $local_id Local user ID.
+	 * @param int    $live_id  Live user ID.
+	 * @param int    $local_id Local user ID.
+	 * @param string $status   Status: 'imported', 'merged', or 'modified'.
 	 */
-	public function track_modified_user( int $live_id, int $local_id ): void {
+	public function append_user( int $live_id, int $local_id, string $status ): void {
 		if ( null !== $this->run_state ) {
 			$this->run_state->append_imported_user(
 				[
 					'id_old' => $live_id,
 					'id_new' => $local_id,
-					'status' => 'modified',
+					'status' => $status,
+				]
+			);
+		}
+	}
+
+	/**
+	 * Appends a term record to run-state for reports.
+	 *
+	 * @param int    $live_id  Live term ID.
+	 * @param int    $local_id Local term ID.
+	 * @param string $taxonomy Term taxonomy.
+	 * @param string $status   Status: 'imported', 'merged', or 'modified'.
+	 */
+	public function append_term( int $live_id, int $local_id, string $taxonomy, string $status ): void {
+		if ( null !== $this->run_state ) {
+			$this->run_state->append_imported_term(
+				[
+					'term_id_old' => $live_id,
+					'term_id_new' => $local_id,
+					'taxonomy'    => $taxonomy,
+					'status'      => $status,
+				]
+			);
+		}
+	}
+
+	/**
+	 * Appends a post record to run-state for reports.
+	 *
+	 * @param int    $live_id   Live post ID.
+	 * @param int    $local_id  Local post ID.
+	 * @param string $post_type Post type.
+	 * @param string $status    Status: 'imported' or 'modified'.
+	 */
+	public function append_post( int $live_id, int $local_id, string $post_type, string $status ): void {
+		if ( null !== $this->run_state ) {
+			$this->run_state->append_imported_post(
+				[
+					'id_old'    => $live_id,
+					'id_new'    => $local_id,
+					'post_type' => $post_type,
+					'status'    => $status,
 				]
 			);
 		}
@@ -507,10 +550,42 @@ class DataImporter {
 			$live_tree    = $this->get_taxonomy_tree( $live_table_prefix, $live_term_taxonomy_row );
 			$created_tree = $this->get_or_create_taxonomy_tree( $this->wpdb->prefix, $live_tree );
 
-			// Import termmeta for this term (only once per term across all posts).
-			$this->import_termmeta( $data, $live_term_id, $created_tree['term_id'], $id_old, $post_id, $source_hostname );
+			$local_term_id = $created_tree['term_id'];
+			$term_existed  = $created_tree['term_existed'] ?? false;
 
-			return $created_tree['term_id'];
+			// Track the term for reports (merged if existed, imported if newly created).
+			$status = $term_existed ? 'merged' : 'imported';
+			$this->append_term( $live_term_id, $local_term_id, $taxonomy_name, $status );
+
+			// Log merge warning if term already existed.
+			if ( $term_existed ) {
+				$term      = get_term( $local_term_id );
+				$term_name = $term instanceof \WP_Term ? $term->name : '(unknown)';
+				// Log all the cases to file with full context.
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					'merge_term: Term with same name and taxonomy already exists on local, merging/reusing the local term.',
+					[
+						'term_name'       => $term_name,
+						'taxonomy'        => $taxonomy_name,
+						'local_term_id'   => $local_term_id,
+						'live_term_id'    => $live_term_id,
+						'source_hostname' => $source_hostname,
+					]
+				);
+				// Log DEBUG info to CLI only once with the first example.
+				static $cli_warned_term_merge = false;
+				if ( false === $cli_warned_term_merge ) {
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_term: Some terms already exist on local and are being merged/reused, and an additional meta is set for those terms. See %s for full list (first example: term_name `%s`, taxonomy `%s`, live_term_id=%d, local_term_id=%d).', Logger::instance()->get_log_file_path(), $term_name, $taxonomy_name, $live_term_id, $local_term_id ) );
+					$cli_warned_term_merge = true;
+				}
+			}
+
+			// Import termmeta for this term (only once per term across all posts).
+			$this->import_termmeta( $data, $live_term_id, $local_term_id, $id_old, $post_id, $source_hostname );
+
+			return $local_term_id;
 		} catch ( \Exception $e ) {
 			Logger::instance()->log_brief_and_verbose(
 				LogLevel::ERROR,
@@ -604,17 +679,6 @@ class DataImporter {
 			return;
 		}
 
-		// Check if term has old_id meta from ANY other source (indicates merge from multiple sources).
-		// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$any_old_id_meta = $this->wpdb->get_var(
-			$this->wpdb->prepare(
-				"SELECT meta_id FROM {$this->wpdb->termmeta} WHERE term_id = %d AND meta_key LIKE %s LIMIT 1",
-				$local_term_id,
-				ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX . '%'
-			)
-		);
-		// phpcs:enable
-
 		// Insert the source-specific old_id meta.
 		$inserted = $this->wpdb->insert(
 			$this->wpdb->termmeta,
@@ -634,57 +698,6 @@ class DataImporter {
 					'meta_key'      => $meta_key,
 				]
 			);
-		}
-
-		// Log if this term is being merged from another source.
-		$term     = get_term( $local_term_id );
-		$taxonomy = $term instanceof \WP_Term ? $term->taxonomy : '(unknown)';
-
-		if ( ! empty( $any_old_id_meta ) ) {
-			$term_name = $term instanceof \WP_Term ? $term->name : '(unknown)';
-			// Log all the cases to file with full context.
-			Logger::instance()->log(
-				Logger::OUTPUT_FILE,
-				LogLevel::DEBUG,
-				'merge_term: Term with same name and taxonomy already exists on local, merging/reusing the local term.',
-				[
-					'term_name'       => $term_name,
-					'taxonomy'        => $taxonomy ,
-					'local_term_id'   => $local_term_id,
-					'live_term_id'    => $live_term_id,
-					'source_hostname' => $source_hostname,
-				] 
-			);
-			// Log DEBUG info to CLI only once with the first example.
-			static $cli_warned_term_merge = false;
-			if ( false === $cli_warned_term_merge ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_term: Some terms already exist on local and are being merged/reused, and an additional meta is set for those terms. See %s for full list (first example: term_name `%s`, taxonomy `%s`, live_term_id=%d, local_term_id=%d).', Logger::instance()->get_log_file_path(), $term_name, $taxonomy, $live_term_id, $local_term_id ) );
-				$cli_warned_term_merge = true;
-			}
-
-			// Track merged term for reports.
-			if ( null !== $this->run_state ) {
-				$this->run_state->append_imported_term(
-					[
-						'term_id_old' => $live_term_id,
-						'term_id_new' => $local_term_id,
-						'taxonomy'    => $taxonomy,
-						'status'      => 'merged',
-					]
-				);
-			}
-		} else { // phpcs:ignore -- allow lonely if inside this if/else block, for clarity around test environment Universal.ControlStructures.DisallowLonelyIf.Found.
-			// Track imported term for reports (first time this term is encountered from any source).
-			if ( null !== $this->run_state ) {
-				$this->run_state->append_imported_term(
-					[
-						'term_id_old' => $live_term_id,
-						'term_id_new' => $local_term_id,
-						'taxonomy'    => $taxonomy,
-						'status'      => 'imported',
-					]
-				);
-			}
 		}
 
 		// Mark this term's termmeta as imported.
@@ -759,16 +772,8 @@ class DataImporter {
 					$cli_warned_user_merge = true;
 				}
 
-				// Track merged user for reports.
-				if ( null !== $this->run_state ) {
-					$this->run_state->append_imported_user(
-						[
-							'id_old' => (int) $user_row['ID'],
-							'id_new' => $local_user_id,
-							'status' => 'merged',
-						]
-					);
-				}
+				// Append merged user to run-state for reports.
+				$this->append_user( (int) $user_row['ID'], $local_user_id, 'merged' );
 			}
 
 			return $local_user_id;
@@ -826,16 +831,8 @@ class DataImporter {
 			Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to insert old_id usermeta for new user ID %d which may cause duplicate users. DB error: %s', $new_user_id, $this->wpdb->last_error ), $context );
 		}
 
-		// Track imported user for reports.
-		if ( null !== $this->run_state ) {
-			$this->run_state->append_imported_user(
-				[
-					'id_old' => $old_user_id,
-					'id_new' => $new_user_id,
-					'status' => 'imported',
-				]
-			);
-		}
+		// Append imported user to run-state for reports.
+		$this->append_user( $old_user_id, $new_user_id, 'imported' );
 
 		return $new_user_id;
 	}
@@ -1201,16 +1198,17 @@ class DataImporter {
 	/**
 	 * Rebuilds the full tree of a hierarchical taxonomy. Gets existing or creates new.
 	 *
-	 * @param string $table_prefix               DB table prefix.
+	 * @param string $table_prefix  DB table prefix.
 	 * @param array  $taxonomy_tree Nested taxonomy array to rebuild.
 	 *
-	 * @return array Rebuilt taxonomy tree.
+	 * @return array Rebuilt taxonomy tree with 'term_existed' key: true if found, false if created.
 	 */
 	private function get_or_create_taxonomy_tree( string $table_prefix, array $taxonomy_tree ): array {
 		// If this is the top parent taxonomy, get or create it.
 		if ( 0 == $taxonomy_tree['parent'] ) {
 			$taxonomy_top_parent_row     = $this->get_taxonomy_array_by_name_and_parent( $table_prefix, $taxonomy_tree['name'], $taxonomy_tree['taxonomy'], 0 );
 			$taxonomy_top_parent_term_id = $taxonomy_top_parent_row['term_id'] ?? null;
+			$term_existed                = null !== $taxonomy_top_parent_term_id;
 			if ( ! $taxonomy_top_parent_term_id ) {
 				$taxonomy_top_parent_term_id = $this->wp_insert_or_update_term(
 					$taxonomy_tree['name'],
@@ -1229,11 +1227,13 @@ class DataImporter {
 					);
 				}
 			}
-			return $this->get_term_and_taxonomy_array(
+			$result                 = $this->get_term_and_taxonomy_array(
 				$table_prefix,
 				[ 'term_id' => $taxonomy_top_parent_term_id ],
 				$taxonomy_tree['taxonomy']
 			);
+			$result['term_existed'] = $term_existed;
+			return $result;
 		}
 
 		// Recursively build parent tree first.
@@ -1242,6 +1242,7 @@ class DataImporter {
 		// Get or create this taxonomy.
 		$taxonomy_row     = $this->get_taxonomy_array_by_name_and_parent( $table_prefix, $taxonomy_tree['name'], $taxonomy_tree['taxonomy'], $current_parent_tree['term_id'] );
 		$taxonomy_term_id = $taxonomy_row['term_id'] ?? null;
+		$term_existed     = null !== $taxonomy_term_id;
 		if ( ! $taxonomy_term_id ) {
 			$taxonomy_term_id = $this->wp_insert_or_update_term(
 				$taxonomy_tree['name'],
@@ -1266,8 +1267,9 @@ class DataImporter {
 			$taxonomy_tree['taxonomy']
 		);
 
-		$rebuilt_taxonomy_tree           = $taxonomy;
-		$rebuilt_taxonomy_tree['parent'] = $current_parent_tree;
+		$rebuilt_taxonomy_tree                 = $taxonomy;
+		$rebuilt_taxonomy_tree['parent']       = $current_parent_tree;
+		$rebuilt_taxonomy_tree['term_existed'] = $term_existed;
 
 		return $rebuilt_taxonomy_tree;
 	}

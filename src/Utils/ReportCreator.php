@@ -89,14 +89,24 @@ class ReportCreator {
 
 		// Track unique posts by id_new to handle deduplication.
 		// A post might be imported then later modified - we want final status.
+		// Status priority: modified > imported.
 		$posts_by_id_new = [];
 
-		// Read imported posts (status = "imported").
+		// Read imported posts (may have status = "imported" or "modified" for MDCS field updates).
 		$imported_posts = $this->run_state->read_imported_posts();
 		foreach ( $imported_posts as $post ) {
-			$id_new                     = (int) $post['id_new'];
+			$id_new = (int) $post['id_new'];
+			$status = $post['status'] ?? 'imported';
+
+			// Only update if new status has higher priority (modified > imported).
+			$current_status = $posts_by_id_new[ $id_new ]['status'] ?? '';
+			if ( 'modified' === $current_status ) {
+				// Already modified, keep it.
+				continue;
+			}
+
 			$posts_by_id_new[ $id_new ] = [
-				'status'    => 'imported',
+				'status'    => $status,
 				'post_type' => $post['post_type'] ?? 'post',
 				'id_old'    => (int) $post['id_old'],
 				'id_new'    => $id_new,
