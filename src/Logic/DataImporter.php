@@ -201,7 +201,7 @@ class DataImporter {
 
 		// Get or create author (returns null for invalid/empty author_row, which means author_id = 0).
 		try {
-			$author_id_new = is_array( $author_row ) ? $this->get_or_create_user( $author_row, $usermeta_rows, $source_hostname ) : null;
+			$author_result = is_array( $author_row ) ? $this->get_or_create_user( $author_row, $usermeta_rows, $source_hostname ) : null;
 		} catch ( \Exception $e ) {
 			Logger::instance()->log_brief_and_verbose(
 				LogLevel::ERROR,
@@ -213,13 +213,11 @@ class DataImporter {
 					'usermeta_rows' => $usermeta_rows,
 				] 
 			);
-			$author_id_new = null;
+			$author_result = null;
 		}
 
 		// Some source posts might have author value 0 or invalid author.
-		if ( is_null( $author_id_new ) ) {
-			$author_id_new = 0;
-		}
+		$author_id_new = (int) ( $author_result['user_id'] ?? 0 );
 
 		// Update inserted Post's Author.
 		if ( $author_id_new != $author_id_old ) {
@@ -327,7 +325,7 @@ class DataImporter {
 		$comment_usermeta_rows = ! is_null( $comment_user_row ) ? $this->filter_array_elements( $data[ ContentDiffLogic::DATAKEY_USERMETA ], 'user_id', $comment_user_row['ID'] ) : [];
 
 		try {
-			$comment_user_id_new = ! is_null( $comment_user_row ) ? $this->get_or_create_user( $comment_user_row, $comment_usermeta_rows, $source_hostname ) : null;
+			$comment_user_result = ! is_null( $comment_user_row ) ? $this->get_or_create_user( $comment_user_row, $comment_usermeta_rows, $source_hostname ) : null;
 		} catch ( \Exception $e ) {
 			Logger::instance()->log_brief_and_verbose(
 				LogLevel::ERROR,
@@ -340,11 +338,11 @@ class DataImporter {
 					'comment_usermeta_rows' => $comment_usermeta_rows,
 				]
 			);
-			$comment_user_id_new = null;
+			$comment_user_result = null;
 		}
 
 		// If user couldn't be found/created, default to 0.
-		return $comment_user_id_new ?? 0;
+		return (int) ( $comment_user_result['user_id'] ?? 0 );
 	}
 
 	/**
@@ -734,9 +732,9 @@ class DataImporter {
 	 * @param array  $usermeta_rows   User meta rows from live DB.
 	 * @param string $source_hostname Source hostname.
 	 *
-	 * @return int|null User ID (existing or new), or null if user_row is invalid.
+	 * @return array|null User data with 'user_id' and 'user_existed' keys: user_existed is true if found, false if created. Returns null if user_row is invalid.
 	 */
-	public function get_or_create_user( array $user_row, array $usermeta_rows, string $source_hostname ): ?int {
+	public function get_or_create_user( array $user_row, array $usermeta_rows, string $source_hostname ): ?array {
 		if ( empty( $user_row ) || ! isset( $user_row['user_login'] ) ) {
 			return null;
 		}
@@ -776,7 +774,10 @@ class DataImporter {
 				$this->append_user( (int) $user_row['ID'], $local_user_id, 'merged' );
 			}
 
-			return $local_user_id;
+			return [
+				'user_id'      => $local_user_id,
+				'user_existed' => true,
+			];
 		}
 
 		// Insert new user with usermeta.
@@ -785,7 +786,10 @@ class DataImporter {
 			$this->insert_usermeta_row( $usermeta_row, $new_user_id );
 		}
 
-		return $new_user_id;
+		return [
+			'user_id'      => $new_user_id,
+			'user_existed' => false,
+		];
 	}
 
 	/**

@@ -924,9 +924,23 @@ class ContentDiffLogic {
 			$usermeta_rows = $this->select_usermeta_rows( $live_table_prefix, $user_row['ID'] );
 
 			try {
-				$user_id_local = $this->data_importer->get_or_create_user( $user_row, $usermeta_rows, $source_hostname );
-				if ( ! is_null( $user_id_local ) ) {
+				$user_result   = $this->data_importer->get_or_create_user( $user_row, $usermeta_rows, $source_hostname );
+				$user_id_local = is_array( $user_result ) ? (int) $user_result['user_id'] : 0;
+				if ( $user_id_local > 0 ) {
 					$users_map[ $user_row['ID'] ] = $user_id_local;
+					// Log to file if user was created (not existing).
+					if ( false === $user_result['user_existed'] ) {
+						Logger::instance()->log(
+							Logger::OUTPUT_FILE,
+							LogLevel::DEBUG,
+							'migrate_all_users: Inserted WP_User.',
+							[
+								'user_login'    => $user_row['user_login'] ?? '(unknown)',
+								'live_user_id'  => $user_row['ID'] ?? null,
+								'local_user_id' => $user_id_local,
+							]
+						);
+					}
 				} else {
 					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, 'migrate_all_users live DB user row is invalid, skipping user', [ 'user_row' => $user_row ] );
 				}

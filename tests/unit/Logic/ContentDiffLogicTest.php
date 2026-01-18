@@ -1710,7 +1710,12 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$user_id = self::factory()->user->create( [ 'user_login' => 'migrate_test_' . uniqid() ] );
 
 		$mock_data_importer = $this->createMock( DataImporter::class );
-		$mock_data_importer->method( 'get_or_create_user' )->willReturn( 999 );
+		$mock_data_importer->method( 'get_or_create_user' )->willReturn(
+			[
+				'user_id'      => 999,
+				'user_existed' => false,
+			] 
+		);
 
 		$logic = new ContentDiffLogic( $wpdb, null, $mock_data_importer );
 
@@ -1750,7 +1755,10 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 					if ( 1 === $call_count ) {
 							throw new \Exception( 'Test exception' );
 					}
-					return 888;
+					return [
+						'user_id'      => 888,
+						'user_existed' => false,
+					];
 				} 
 			);
 

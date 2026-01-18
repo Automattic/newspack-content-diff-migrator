@@ -593,7 +593,9 @@ class DataImporterTest extends WP_UnitTestCase {
 
 		$result = $this->importer->get_or_create_user( $user_row, [], 'example.com' );
 
-		$this->assertEquals( $user_id, $result );
+		$this->assertIsArray( $result );
+		$this->assertEquals( $user_id, $result['user_id'] );
+		$this->assertTrue( $result['user_existed'] );
 	}
 
 	/**
@@ -612,10 +614,12 @@ class DataImporterTest extends WP_UnitTestCase {
 
 		$result = $this->importer->get_or_create_user( $user_row, [], 'example.com' );
 
-		$this->assertIsInt( $result );
-		$this->assertGreaterThan( 0, $result );
+		$this->assertIsArray( $result );
+		$this->assertIsInt( $result['user_id'] );
+		$this->assertGreaterThan( 0, $result['user_id'] );
+		$this->assertFalse( $result['user_existed'] );
 
-		$user = get_user_by( 'id', $result );
+		$user = get_user_by( 'id', $result['user_id'] );
 		$this->assertInstanceOf( \WP_User::class, $user );
 		$this->assertEquals( $user_row['user_login'], $user->user_login );
 	}
@@ -644,7 +648,8 @@ class DataImporterTest extends WP_UnitTestCase {
 
 		$result = $this->importer->get_or_create_user( $user_row, $usermeta_rows, 'example.com' );
 
-		$this->assertEquals( 'custom_value', get_user_meta( $result, 'custom_meta', true ) );
+		$this->assertIsArray( $result );
+		$this->assertEquals( 'custom_value', get_user_meta( $result['user_id'], 'custom_meta', true ) );
 	}
 
 	/**
