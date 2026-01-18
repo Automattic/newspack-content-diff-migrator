@@ -1591,30 +1591,11 @@ class ContentDiffLogic {
 			}
 		}
 
-		// Log detailed updates to file only.
-		$log_context = [ 'id_new' => $post_id ];
-		if ( $content_before != $content_updated ) {
-			$log_context = array_merge(
-				$log_context,
-				[
-					'post_content_before' => $content_before,
-					'post_content_after'  => $content_updated,
-				]
-			);
-		}
-		if ( $excerpt_before != $excerpt_updated ) {
-			$log_context = array_merge(
-				$log_context,
-				[
-					'post_excerpt_before' => $excerpt_before,
-					'post_excerpt_after'  => $excerpt_updated,
-				]
-			);
-		}
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated block attachment IDs in content and excerpt for post ID %d.', $post_id ), $log_context );
+		// Log updated post_id info to file only.
+		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated block attachment IDs in content and excerpt for post ID %d.', $post_id ) );
 	}
 
-	/**
+	/**	
 	 * Returns an empty data array.
 	 *
 	 * @return array $args {
