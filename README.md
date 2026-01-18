@@ -226,8 +226,9 @@ The following fields are **directly scanned** for changes and update on these fi
 - **Date modified** — compared directly (`post_modified`)
 - **Status** — compared directly (`post_status`)
 - **Author** — compared directly (`post_author`)
+- **Category/tags/taxonomies** — compared directly (`term_relationships`), also covers changes in 'author' taxonmy term
 - **Featured image** — compared directly (`_thumbnail_id` postmeta)
-- **Category/tags/taxonomies** — compared directly (`term_relationships`)
+- **Comment count** — compared directly (`comment_count`)
 
 The following fields are **not scanned directly**, but changes to `post_modified` will update the entire post:
 
