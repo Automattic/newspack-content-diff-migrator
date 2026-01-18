@@ -684,16 +684,30 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Checked %d terms, updated %d.', $term_updates['checked'], $term_updates['updated'] ) );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Generate CSV reports from run-state JSONL files.
+		// Display info about available logs.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Full logs are saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- debug/action log (check for ERRORs or WARNINGs): %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
+
+		// Generate CSV reports from run-state JSONL files, and output list.
 		$reports_dir    = rtrim( (string) $data_dir, '/' ) . '/reports';
 		$report_creator = new ReportCreator( $this->run_state );
 		$report_creator->create_all_csvs( $reports_dir );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( "Reports generated in %s/ :\n- %s\n- %s\n- %s", $reports_dir, ReportCreator::REPORT_POSTS, ReportCreator::REPORT_USERS, ReportCreator::REPORT_TERMS ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( "CSV Reports are saved to %s/ :\n- %s\n- %s\n- %s", $reports_dir, ReportCreator::REPORT_POSTS, ReportCreator::REPORT_USERS, ReportCreator::REPORT_TERMS ) );
 
-		// Display info about available logs.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
+		// Output migration summary.
+		$summary = $this->run_state->get_migration_summary();
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Migration summary:' );
+		foreach ( $summary['posts'] as $post_type => $count ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total %s — %s', $post_type, number_format( $count ) ) );
+		}
+		if ( ! empty( $summary['users']['imported'] ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total new users — %s', number_format( $summary['users']['imported'] ) ) );
+		}
+		if ( ! empty( $summary['users']['merged'] ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total merged users — %s', number_format( $summary['users']['merged'] ) ) );
+		}
+
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done migrating content from %s! 🙌 ', $source_hostname ) );
 		wp_cache_flush();
 	}

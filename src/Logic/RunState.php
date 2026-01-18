@@ -387,6 +387,48 @@ class RunState {
 	}
 
 	/**
+	 * Gets migration summary counts by type and status.
+	 *
+	 * @return array {
+	 *     Summary data with counts grouped by type.
+	 *
+	 *     @type array $posts Array of post_type => count.
+	 *     @type array $users Array of status => count ('imported', 'merged', 'modified').
+	 *     @type array $terms Array of taxonomy => count.
+	 * }
+	 */
+	public function get_migration_summary(): array {
+		$summary = [
+			'posts' => [],
+			'users' => [],
+			'terms' => [],
+		];
+
+		// Count posts by post_type.
+		$imported_posts = $this->read_imported_posts();
+		foreach ( $imported_posts as $post ) {
+			$post_type                      = $post['post_type'] ?? 'post';
+			$summary['posts'][ $post_type ] = ( $summary['posts'][ $post_type ] ?? 0 ) + 1;
+		}
+
+		// Count users by status.
+		$imported_users = $this->read_imported_users();
+		foreach ( $imported_users as $user ) {
+			$status                      = $user['status'] ?? 'imported';
+			$summary['users'][ $status ] = ( $summary['users'][ $status ] ?? 0 ) + 1;
+		}
+
+		// Count terms by taxonomy.
+		$imported_terms = $this->read_imported_terms();
+		foreach ( $imported_terms as $term ) {
+			$taxonomy                      = $term['taxonomy'] ?? 'category';
+			$summary['terms'][ $taxonomy ] = ( $summary['terms'][ $taxonomy ] ?? 0 ) + 1;
+		}
+
+		return $summary;
+	}
+
+	/**
 	 * Gets path to a run-state file.
 	 *
 	 * @param string $filename Filename (e.g., 'manifest.json', 'new_ids.json').
