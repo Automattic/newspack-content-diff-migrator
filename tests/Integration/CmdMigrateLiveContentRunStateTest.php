@@ -9,6 +9,7 @@ namespace Newspack\ContentDiffMigrator\Tests\Integration;
 
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
 use Newspack\ContentDiffMigrator\Logic\RunState;
+use Newspack\ContentDiffMigrator\Utils\ReportCreator;
 
 /**
  * Integration test class for cmd_migrate_live_content command, run-state and resume capability.
@@ -731,6 +732,85 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 			}
 		}
 		$this->assertTrue( $found, 'Merged term should be in run-state.' );
+	}
+
+	/**
+	 * Tests that comment count changes mark a post as modified in run-state and reports.
+	 *
+	 * @group run-state
+	 */
+	public function test_should_mark_post_modified_when_comment_count_changes(): void {
+		global $wpdb;
+
+		$live_post_id = 25001;
+		$post         = $this->create_post_fixture(
+			[
+				'ID'            => $live_post_id,
+				'comment_count' => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Add a comment on live and update comment_count without changing post_modified.
+		$comment = [
+			'comment_ID'           => 25002,
+			'comment_post_ID'      => $live_post_id,
+			'comment_author'       => 'Test Commenter',
+			'comment_author_email' => 'commenter@test.local',
+			'comment_author_url'   => '',
+			'comment_author_IP'    => '127.0.0.1',
+			'comment_date'         => '2024-01-20 10:00:00',
+			'comment_date_gmt'     => '2024-01-20 10:00:00',
+			'comment_content'      => 'Test comment content',
+			'comment_karma'        => 0,
+			'comment_approved'     => '1',
+			'comment_agent'        => '',
+			'comment_type'         => '',
+			'comment_parent'       => 0,
+			'user_id'              => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'comments', $comment ); // phpcs:ignore
+		$wpdb->update( $this->live_table_prefix . 'posts', [ 'comment_count' => 1 ], [ 'ID' => $live_post_id ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify modified status is recorded in run-state.
+		$imported_posts = $this->run_state->read_imported_posts();
+		$found_modified = false;
+		foreach ( $imported_posts as $post_record ) {
+			if ( $live_post_id === (int) $post_record['id_old'] && 'modified' === ( $post_record['status'] ?? '' ) ) {
+				$found_modified = true;
+				break;
+			}
+		}
+		$this->assertTrue( $found_modified, 'Post should be recorded as modified in run-state when comment_count changes.' );
+
+		// Verify reports CSV contains modified status.
+		$reports_dir = rtrim( (string) $this->temp_data_dir, '/' ) . '/reports';
+		$posts_csv   = $reports_dir . '/' . ReportCreator::REPORT_POSTS;
+		$this->assertFileExists( $posts_csv, 'Posts report should be generated.' );
+
+		$handle = fopen( $posts_csv, 'r' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
+		$this->assertNotFalse( $handle, 'Posts report should be readable.' );
+
+		// Escape='' for RFC 4180 compliance (php.net/fgetcsv).
+		$header = fgetcsv( $handle, null, ',', '"', '' );
+		$this->assertNotEmpty( $header, 'Posts report header should be present.' );
+
+		$found_in_csv = false;
+		while ( ( $row = fgetcsv( $handle, null, ',', '"', '' ) ) !== false ) {
+			if ( 'modified' === $row[0] && $live_post_id === (int) $row[2] ) {
+				$found_in_csv = true;
+				break;
+			}
+		}
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+
+		$this->assertTrue( $found_in_csv, 'Posts report should include modified status for comment_count changes.' );
 	}
 
 	// =========================================================================

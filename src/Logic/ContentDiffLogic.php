@@ -186,7 +186,7 @@ class ContentDiffLogic {
 		// $wpdb->prepare can't handle table names, so we'll additionally str_replace {TABLE}.
 		// phpcs:disable
 		$sql_replace_table = $this->wpdb->prepare(
-			"SELECT ID, post_author, post_name, post_title, post_status, post_type, post_date, post_modified
+			"SELECT ID, post_author, post_name, post_title, post_status, post_type, post_date, post_modified, comment_count
 				FROM {TABLE}
 				WHERE post_type IN ( $post_types_placeholders_csv )
 				AND post_status IN ( $post_statuses_placeholders_csv );",
@@ -685,7 +685,14 @@ class ContentDiffLogic {
 				}
 			}
 
-			// Check 3: post_author changed (translate local author ID to live ID for comparison).
+			// Check 3: comment_count changed.
+			if ( ! $is_modified && isset( $live_post['comment_count'] ) && isset( $local_post['comment_count'] ) ) {
+				if ( (int) $live_post['comment_count'] !== (int) $local_post['comment_count'] ) {
+					$is_modified = true;
+				}
+			}
+
+			// Check 4: post_author changed (translate local author ID to live ID for comparison).
 			if ( ! $is_modified && ! empty( $local_to_live_user_map ) && isset( $live_post['post_author'] ) && isset( $local_post['post_author'] ) ) {
 				$local_author_id         = (int) $local_post['post_author'];
 				$live_author_id_expected = $local_to_live_user_map[ $local_author_id ] ?? null;
@@ -694,7 +701,7 @@ class ContentDiffLogic {
 				}
 			}
 
-			// Check 4: _thumbnail_id changed (translate local thumbnail ID to live ID for comparison).
+			// Check 5: _thumbnail_id changed (translate local thumbnail ID to live ID for comparison).
 			if ( ! $is_modified && ! empty( $local_to_live_attachment_map ) && ! empty( $live_table_prefix ) ) {
 				$local_thumbnail_id = (int) get_post_meta( $local_id, '_thumbnail_id', true );
 
@@ -717,7 +724,7 @@ class ContentDiffLogic {
 				}
 			}
 
-			// Check 5: taxonomies changed (compare term sets).
+			// Check 6: taxonomies changed (compare term sets).
 			if ( ! $is_modified && ! empty( $local_to_live_term_map ) && ! empty( $live_table_prefix ) ) {
 				// Get live term IDs.
 				$live_term_relationships = $this->select_term_relationships_rows( $live_table_prefix, $live_id );
