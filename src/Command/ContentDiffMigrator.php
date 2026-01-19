@@ -178,31 +178,157 @@ class ContentDiffMigrator {
 			]
 		);
 		WP_CLI::add_command(
-			'newspack-content-diff-migrator attribute-existing-content-to-hostname',
-			[ __CLASS__, 'cmd_attribute_existing_content_to_hostname' ],
+			'newspack-content-diff-migrator attribute-all-unattributed',
+			[ __CLASS__, 'cmd_attribute_all_unattributed' ],
 			[
-				'shortdesc' => 'Attributes existing local content to a source hostname by comparing with those live DB tables and adding source-specific metadata.',
+				'shortdesc' => 'Attributes ALL unattributed local content to a source hostname.',
+				'longdesc'  => "Finds all unattributed posts, attachments, users, and terms and attributes them to the source hostname WITHOUT matching to live tables. Use when you know all existing content came from one source.\n"
+								. "Data types attributed:\n"
+								. "- Posts/Pages/CPTs (wp_postmeta)\n"
+								. "- Attachments (wp_postmeta)\n"
+								. "- Users (wp_usermeta)\n"
+								. "- Terms (wp_termmeta)\n"
+								. 'USE CASE: If the site was cloned, initial attribution right after cloning.',
+				'synopsis'  => [
+					[
+						'type'        => 'assoc',
+						'name'        => 'source-hostname',
+						'description' => 'Source hostname (e.g., www.example.com).',
+						'optional'    => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'data-dir',
+						'description' => 'Data directory for logs and reports.',
+						'optional'    => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'post-types-csv',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. E.g., --post-types-csv=post,page,attachment,guest-author',
+						'optional'    => true,
+					],
+				],
+			]
+		);
+		WP_CLI::add_command(
+			'newspack-content-diff-migrator attribute-match-local-to-live-tables',
+			[ __CLASS__, 'cmd_attribute_match_local_to_live_tables' ],
+			[
+				'shortdesc' => 'Automatically attributes all existing local content to source hostname, by looking it up directly in the live DB tables. Just give this command the live DB table prefix and the source hostname, and it will do the rest.',
+				'longdesc'  => "Compares existing unattributed content from local with live tables, matches it, and adds attribution metas for matches.\n"
+								. "Data types attributed:\n"
+								. "- Posts/Pages/CPTs\n"
+								. "- Attachments\n"
+								. "- Users\n"
+								. "- Terms\n"
+								. 'USE CASE: If the site was cloned, but some other content was created (like Newspackification), and you need to attribute original live content to source hostname.',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
 						'name'        => 'live-table-prefix',
-						'description' => 'Live site table prefix.',
+						'description' => 'Live DB table prefix.',
 						'optional'    => false,
-						'repeating'   => false,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'source-hostname',
 						'description' => 'Source hostname (e.g., www.example.com).',
 						'optional'    => false,
-						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'data-dir',
+						'description' => 'Data directory for logs and reports.',
+						'optional'    => false,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to match and attribute. E.g., --post-types-csv=post,page,attachment,guest-author',
 						'optional'    => true,
-						'repeating'   => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'custom-taxonomies-csv',
+						'description' => 'CSV of taxonomies to match and attribute. Defaults to category,post_tag,author. E.g., --custom-taxonomies-csv=category,post_tag,author,brand',
+						'optional'    => true,
+					],
+				],
+			]
+		);
+		WP_CLI::add_command(
+			'newspack-content-diff-migrator attribute-ids',
+			[ __CLASS__, 'cmd_attribute_ids' ],
+			[
+				'shortdesc' => 'Attribute specific content by ID to source hostname.',
+				'longdesc'  => "Attributes specific posts, attachments, users, or terms (by ID) to the source hostname. Provide IDs via comma-separated values or files (one ID per line).\n"
+								. "DATA TYPES WHICH CAN BE ATTRIBUTED:\n"
+								. "- Posts/Pages/CPTs (wp_postmeta)\n"
+								. "- Attachments (wp_postmeta)\n"
+								. "- Users (wp_usermeta)\n"
+								. "- Terms (wp_termmeta)\n"
+								. 'USE CASE: Targeted attribution for specific records.',
+				'synopsis'  => [
+					[
+						'type'        => 'assoc',
+						'name'        => 'source-hostname',
+						'description' => 'Source hostname (e.g., www.example.com).',
+						'optional'    => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'data-dir',
+						'description' => 'Data directory for logs and reports.',
+						'optional'    => false,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'post-ids',
+						'description' => 'Comma-separated post IDs. Either use this, or provide file with IDs.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'post-ids-file',
+						'description' => 'File with post IDs, one ID per line.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'attachment-ids',
+						'description' => 'Comma-separated attachment IDs. Either use this, or provide file with IDs.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'attachment-ids-file',
+						'description' => 'File with post IDs, one ID per line.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'user-ids',
+						'description' => 'Comma-separated user IDs. Either use this, or provide file with IDs.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'user-ids-file',
+						'description' => 'File with user IDs, one ID per line.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'term-ids',
+						'description' => 'Comma-separated term IDs. Either use this, or provide file with IDs.',
+						'optional'    => true,
+					],
+					[
+						'type'        => 'assoc',
+						'name'        => 'term-ids-file',
+						'description' => 'File with term IDs, one ID per line.',
+						'optional'    => true,
 					],
 				],
 			]
@@ -264,12 +390,12 @@ class ContentDiffMigrator {
 	/**
 	 * Callable for `newspack-content-diff-migrator search-new-content-on-live`.
 	 *
-	 * @param array $args       CLI args.
-	 * @param array $assoc_args CLI assoc args.
+	 * @param array $pos_args   Positional CLI args.
+	 * @param array $assoc_args Associative CLI args.
 	 * 
 	 * @throws \Exception If error occurs.
 	 */
-	public function cmd_search_new_content_on_live( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_search_new_content_on_live( array $pos_args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
@@ -490,12 +616,12 @@ class ContentDiffMigrator {
 	/**
 	 * Callable for `newspack-content-diff-migrator migrate-live-content`.
 	 *
-	 * @param array $args       CLI args.
+	 * @param array $pos_args   Positional CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 * 
 	 * @throws \RuntimeException If run-state file not found or empty.
 	 */
-	public function cmd_migrate_live_content( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_migrate_live_content( array $pos_args, array $assoc_args ): void {
 		global $wpdb;
 
 		$data_dir              = $assoc_args['data-dir'] ?? false;
@@ -505,7 +631,15 @@ class ContentDiffMigrator {
 		
 		// Init logger.
 		Logger::instance()->init( rtrim( $data_dir, '/' ) . '/' . __FUNCTION__ . '.log' );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
+		Logger::instance()->log(
+			Logger::OUTPUT_FILE,
+			LogLevel::INFO,
+			sprintf( 'Starting %s', __FUNCTION__ ),
+			[
+				'pos_args'   => $pos_args,
+				'assoc_args' => $assoc_args,
+			] 
+		);
 
 		// Set instance properties.
 		$this->live_table_prefix = $live_table_prefix;
@@ -717,12 +851,20 @@ class ContentDiffMigrator {
 	 *
 	 * Lists all source hostnames from which content has been imported.
 	 *
-	 * @param array $args       CLI args.
+	 * @param array $pos_args   Positional CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 */
-	public function cmd_list_migrated_source_hostnames( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_list_migrated_source_hostnames( array $pos_args, array $assoc_args ): void {
 		Logger::instance()->init( __FUNCTION__ . '.log' );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s', __FUNCTION__ ) );
+		Logger::instance()->log(
+			Logger::OUTPUT_FILE,
+			LogLevel::INFO,
+			sprintf( 'Starting %s', __FUNCTION__ ),
+			[
+				'pos_args'   => $pos_args,
+				'assoc_args' => $assoc_args,
+			] 
+		);
 
 		$source_sites = $this->logic->get_migrated_source_hostnames();
 		if ( empty( $source_sites ) ) {
@@ -761,27 +903,170 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Callable for `newspack-content-diff-migrator attribute-existing-content-to-hostname`.
+	 * Callable for `newspack-content-diff-migrator attribute-all-unattributed`.
 	 *
-	 * Attributes existing local content to a source hostname by comparing with live DB and adding
-	 * source-specific metadata.
+	 * Attributes ALL unattributed content to source hostname without matching.
 	 *
-	 * @param array $args       CLI args.
+	 * @param array $pos_args   Positional CLI args.
 	 * @param array $assoc_args CLI assoc args.
 	 */
-	public function cmd_attribute_existing_content_to_hostname( array $args, array $assoc_args ): void {
+	public function cmd_attribute_all_unattributed( array $pos_args, array $assoc_args ): void {
+		$source_hostname = $assoc_args['source-hostname'] ?? false;
+		$data_dir        = $assoc_args['data-dir'] ?? false;
+		$post_types      = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
+
+		// Init logger.
+		Logger::instance()->init( $data_dir . '/' . __FUNCTION__ . '.log' );
+		Logger::instance()->log(
+			Logger::OUTPUT_FILE,
+			LogLevel::INFO,
+			sprintf( 'Starting %s', __FUNCTION__ ),
+			[
+				'pos_args'   => $pos_args,
+				'assoc_args' => $assoc_args,
+			] 
+		);
+
+		// Show unattributed content summary.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
+		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
+		if ( 0 === $unattributed_count ) {
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, 'No unattributed content found. Nothing to do.' );
+			return;
+		}
+
+		// Confirm action.
+		$this->attribute_confirm_action( sprintf( 'This will attribute ALL unattributed content listed above to %s WITHOUT matching to live tables.', $source_hostname ) );
+
+		// Variables.
+		global $wpdb;
+		$meta_key        = $this->logic->get_old_id_meta_key( $source_hostname );
+		$timestamp       = gmdate( 'Ymd_His' );
+		$attributed_data = [
+			'posts' => [],
+			'users' => [],
+			'terms' => [],
+		];
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing all unattributed content to %s...', $source_hostname ) );
+
+		// Attribute all post types (including attachments).
+		$post_ids = $this->logic->get_unattributed_post_ids( $post_types );
+		// Fetch post types.
+		$post_types_map = [];
+		if ( ! empty( $post_ids ) ) {
+			$ids_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$post_types_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $post_ids ), ARRAY_A );
+			// phpcs:enable
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			$post_types_map = array_column( $post_types_results, 'post_type', 'ID' );
+		}
+		foreach ( $post_ids as $key_post_id => $post_id ) {
+			// Skip if post doesn't exist in DB.
+			if ( ! isset( $post_types_map[ $post_id ] ) ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $post_id ) );
+				continue;
+			}
+			
+			update_post_meta( $post_id, $meta_key, $post_id );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 500 );
+			
+			$attributed_data['posts'][] = [
+				'local_id'  => $post_id,
+				'live_id'   => $post_id,
+				'post_type' => $post_types_map[ $post_id ],
+			];
+		}
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts/pages/attachments attributed.', count( $post_ids ) ) );
+
+		// Attribute users.
+		$user_ids = $this->logic->get_unattributed_user_ids();
+		foreach ( $user_ids as $user_id ) {
+			update_user_meta( $user_id, $meta_key, $user_id );
+			$attributed_data['users'][] = [
+				'local_id' => $user_id,
+				'live_id'  => $user_id,
+			];
+		}
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', count( $user_ids ) ) );
+
+		// Attribute terms.
+		$term_ids = $this->logic->get_unattributed_term_ids();
+		// Fetch taxonomies.
+		$term_taxonomies_map = [];
+		if ( ! empty( $term_ids ) ) {
+			$ids_placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$term_taxonomies_results = $wpdb->get_results( $wpdb->prepare( "SELECT t.term_id, tt.taxonomy  FROM {$wpdb->terms} t  INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id  WHERE t.term_id IN ( {$ids_placeholders} )", $term_ids ), ARRAY_A );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			// phpcs:enable
+			$term_taxonomies_map = array_column( $term_taxonomies_results, 'taxonomy', 'term_id' );
+		}
+		foreach ( $term_ids as $key_term_id => $term_id ) {
+			// Skip if term doesn't exist in DB.
+			if ( ! isset( $term_taxonomies_map[ $term_id ] ) ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Term ID %d not found in database, skipping attribution.', $term_id ) );
+				continue;
+			}
+			
+			update_term_meta( $term_id, $meta_key, $term_id );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 500 );
+
+			$attributed_data['terms'][] = [
+				'local_id' => $term_id,
+				'live_id'  => $term_id,
+				'taxonomy' => $term_taxonomies_map[ $term_id ],
+			];
+		}
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $term_ids ) ) );
+
+		// Generate timestamped CSV reports.
+		$reports_dir    = rtrim( $data_dir, '/' ) . '/reports';
+		$run_state      = new RunState( $data_dir );
+		$report_creator = new ReportCreator( $run_state );
+		$created_files  = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
+
+		// Re-count and display remaining unattributed content.
+		$this->attribute_recount_unattributed( $post_types );
+
+		// Display summary.
+		$this->attribute_display_summary( $reports_dir, $timestamp, $created_files );
+		
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s! 🙌', $source_hostname ) );
+	}
+
+	/**
+	 * Callable for `newspack-content-diff-migrator attribute-match-local-to-live-tables`.
+	 *
+	 * Matches local content to live DB tables and attributes matches to source hostname.
+	 *
+	 * @param array $pos_args   Positional CLI args.
+	 * @param array $assoc_args CLI assoc args.
+	 */
+	public function cmd_attribute_match_local_to_live_tables( array $pos_args, array $assoc_args ): void {
 		global $wpdb;
 
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
+		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
-		
-		// Init logger.
-		Logger::instance()->init( __FUNCTION__ . '.log' );
-		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::INFO, sprintf( 'Starting %s | source hostname: %s', __FUNCTION__, $source_hostname ) );
+		$taxonomies        = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 
-		// Introductory message (CLI only).
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'This command will match existing local content to live DB records (assign migration metas) and thereby attribute this content to source hostname "%s". That will let Content Diff know that this content came from this specificsource hostname, and that it should be matched/compared agains the existing live content and properly import the newest differences.', $source_hostname ) );
+		// Init logger.
+		Logger::instance()->init( $data_dir . '/' . __FUNCTION__ . '.log' );
+		Logger::instance()->log(
+			Logger::OUTPUT_FILE,
+			LogLevel::INFO,
+			sprintf( 'Starting %s', __FUNCTION__ ),
+			[
+				'pos_args'   => $pos_args,
+				'assoc_args' => $assoc_args,
+			] 
+		);
 
 		// Validate DBs.
 		try {
@@ -798,154 +1083,516 @@ class ContentDiffMigrator {
 			);
 		}
 
-		// Show count of unattributed content that will be processed.
+		// Show unattributed content summary.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
 		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
+		
 		if ( 0 === $unattributed_count ) {
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, 'No unattributed content found. Nothing to do.' );
 			return;
 		}
 
-		// Confirmation prompt.
-		if ( ! $this->test_env ) {
-			WP_CLI::confirm( sprintf( 'This will attribute ALL matched content to source hostname "%s". Continue?', $source_hostname ) );
-		}
+		// Confirm action.
+		$this->attribute_confirm_action( sprintf( 'This will automatically match local content to live DB and attribute matches to %s.', $source_hostname ) );
 
 		// Variables.
-		$meta_key = $this->logic->get_old_id_meta_key( $source_hostname );
-		// Post statuses by type.
+		$meta_key            = $this->logic->get_old_id_meta_key( $source_hostname );
 		$statuses_regular    = [ 'publish', 'future', 'draft', 'pending', 'private' ];
 		$statuses_attachment = [ 'inherit' ];
+		$timestamp           = gmdate( 'Ymd_His' );
+		$attributed_data     = [
+			'posts' => [],
+			'users' => [],
+			'terms' => [],
+		];
 
-		// Show existing source hostnames.
-		$existing_source_sites = $this->logic->get_migrated_source_hostnames();
-		if ( ! empty( $existing_source_sites ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Existing imported source hostnames: ' . implode( ', ', $existing_source_sites ) );
-		} else {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'No previous imported source hostnames found.' );
-		}
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching and attributing content to %s...', $source_hostname ) );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Matching local content (CPTs %s and users) to live DB, and attributing matches to source hostname %s ...', implode( ',', $post_types ), $source_hostname ) );
-		
-		// Process non-attachment post types.
+		/**
+		 * Match and attribute non-attachments post_types (memory efficient).
+		 */
 		$post_types_non_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
 		if ( ! empty( $post_types_non_attachments ) ) {
-			// Match non-attachment post types.
+			// Query local and live posts for matching.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local posts to live posts...', count( $results_local_posts ), count( $results_live_posts ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching...', count( $results_local_posts ), count( $results_live_posts ) ) );
 			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Save metas for matched posts, skip if already attributed.
-			foreach ( $matched_posts as $match ) {
-				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
-				if ( ! empty( $existing_meta ) ) {
+			// Fetch post types.
+			$post_types_map = [];
+			if ( ! empty( $matched_posts ) ) {
+				$local_ids        = array_column( $matched_posts, 'local_id' );
+				$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
+				// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+				$post_types_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $local_ids ), ARRAY_A );
+				// phpcs:enable
+				$post_types_map = array_column( $post_types_results, 'post_type', 'ID' );
+			}
+
+			// Fetch already-attributed post IDs.
+			$matched_local_ids      = array_column( $matched_posts, 'local_id' );
+			$already_attributed     = $this->logic->get_attributed_post_ids( $source_hostname, $matched_local_ids );
+			$already_attributed_map = array_flip( $already_attributed );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+			// Do the actual attribution.
+			foreach ( $matched_posts as $key_match => $match ) {
+				// Skip if post doesn't exist in DB.
+				if ( ! isset( $post_types_map[ $match['local_id'] ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $match['local_id'] ) );
 					continue;
 				}
-				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-				$context = [
-					'local_id' => $match['local_id'],
-					'live_id'  => $match['live_id'],
-				];
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Object attributed to source_hostname %s', $source_hostname ), $context );
-			}
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local non-attachment objects attributed out of %d total.', count( $matched_posts ), count( $results_local_posts ) ) );
-		}
-
-		// Process attachments separately (like in cmd_search).
-		$process_attachments = in_array( 'attachment', $post_types, true );
-		if ( $process_attachments ) {
-			// Match attachments.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
-			$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-			$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local attachments to live attachments...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
-			$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-
-			// Attribute matched attachments to source hostname, skip if already attributed.
-			foreach ( $matched_attachments as $match ) {
-				$existing_meta = get_post_meta( $match['local_id'], $meta_key, true );
-				if ( ! empty( $existing_meta ) ) {
+				// Skip if already attributed.
+				if ( isset( $already_attributed_map[ $match['local_id'] ] ) ) {
 					continue;
 				}
+				// Attribute post.
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-				// Detailed log to file only.
-				$context = [
-					'local_id' => $match['local_id'],
-					'live_id'  => $match['live_id'],
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+				// Log.
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Post attributed to %s', $source_hostname ),
+					[
+						'local_id' => $match['local_id'],
+						'live_id'  => $match['live_id'],
+					] 
+				);
+				$attributed_data['posts'][] = [
+					'local_id'  => $match['local_id'],
+					'live_id'   => $match['live_id'],
+					'post_type' => $post_types_map[ $match['local_id'] ],
 				];
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Attachment attributed to source_hostname %s', $source_hostname ), $context );
 			}
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local attachments attributed out of %d total.', count( $matched_attachments ), count( $results_local_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts/pages attributed.', count( $matched_posts ) ) );
 		}
 
-		// Match users.
+		/**
+		 * Match and attribute attachments.
+		 */
+		// Query local and live attachments for matching.
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
+		$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+		$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
+		$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Fetch already-attributed attachment IDs.
+		$matched_attachment_ids             = array_column( $matched_attachments, 'local_id' );
+		$already_attributed_attachments     = $this->logic->get_attributed_attachment_ids( $source_hostname, $matched_attachment_ids );
+		$already_attributed_attachments_map = array_flip( $already_attributed_attachments );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Do the actual attribution.
+		foreach ( $matched_attachments as $key_match => $match ) {
+			// Skip if already attributed.
+			if ( isset( $already_attributed_attachments_map[ $match['local_id'] ] ) ) {
+				continue;
+			}
+			// Attribute attachment.
+			update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+			// Log.
+			Logger::instance()->log(
+				Logger::OUTPUT_FILE,
+				LogLevel::DEBUG,
+				sprintf( 'Attachment attributed to %s', $source_hostname ),
+				[
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
+				] 
+			);
+			$attributed_data['posts'][] = [
+				'local_id'  => $match['local_id'],
+				'live_id'   => $match['live_id'],
+				'post_type' => 'attachment',
+			];
+		}
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d attachments attributed.', count( $matched_attachments ) ) );
+
+		/**
+		 * Match and attribute users.
+		 */
+		// Query local and live users for matching.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
 		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
 		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local users to live users...', count( $results_local_users ), count( $results_live_users ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching...', count( $results_local_users ), count( $results_live_users ) ) );
 		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Attribute matched users to source hostname, skip if already attributed.
-		foreach ( $matched_users as $match ) {
-			$existing_meta = get_user_meta( $match['local_id'], $meta_key, true );
-			if ( ! empty( $existing_meta ) ) {
+		// Fetch already-attributed user IDs.
+		$matched_user_ids             = array_column( $matched_users, 'local_id' );
+		$already_attributed_users     = $this->logic->get_attributed_user_ids( $source_hostname, $matched_user_ids );
+		$already_attributed_users_map = array_flip( $already_attributed_users );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Do the actual attribution.
+		foreach ( $matched_users as $key_match => $match ) {
+			// Skip if already attributed.
+			if ( isset( $already_attributed_users_map[ $match['local_id'] ] ) ) {
 				continue;
 			}
+			// Attribute user.
 			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			// Detailed log to file only.
-			$context = [
-				'local_user_id' => $match['local_id'],
-				'live_user_id'  => $match['live_id'],
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+			// Log.
+			Logger::instance()->log(
+				Logger::OUTPUT_FILE,
+				LogLevel::DEBUG,
+				sprintf( 'User attributed to %s', $source_hostname ),
+				[
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
+				] 
+			);
+			$attributed_data['users'][] = [
+				'local_id' => $match['local_id'],
+				'live_id'  => $match['live_id'],
 			];
-			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'User attributed to source_hostname %s', $source_hostname ), $context );
 		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local users attributed out of %d total.', count( $matched_users ), count( $results_local_users ) ) );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', count( $matched_users ) ) );
 
-		// Match terms.
+		/**
+		 * Match and attribute terms.
+		 */
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying terms...' );
 		$results_local_terms = $this->logic->get_terms_rows_for_attribution( $wpdb->prefix );
+		$results_live_terms  = $this->logic->get_terms_rows_for_attribution( $live_table_prefix );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$results_live_terms = $this->logic->get_terms_rows_for_attribution( $live_table_prefix );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching local terms to live terms...', count( $results_local_terms ), count( $results_live_terms ) ) );
+		
+		// Filter by specified taxonomies.
+		$results_local_terms = array_filter( $results_local_terms, fn( $term ) => in_array( $term['taxonomy'], $taxonomies, true ) );
+		$results_live_terms  = array_filter( $results_live_terms, fn( $term ) => in_array( $term['taxonomy'], $taxonomies, true ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live (filtered by taxonomies: %s). Matching...', count( $results_local_terms ), count( $results_live_terms ), implode( ',', $taxonomies ) ) );
 		$matched_terms = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Attribute matched terms to source hostname, skip if already attributed.
-		foreach ( $matched_terms as $match ) {
-			$existing_meta = get_term_meta( $match['local_id'], $meta_key, true );
-			if ( ! empty( $existing_meta ) ) {
+		// Fetch taxonomies for matched terms.
+		$term_taxonomies_map = [];
+		if ( ! empty( $matched_terms ) ) {
+			$local_ids        = array_column( $matched_terms, 'local_id' );
+			$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$term_taxonomies_results = $wpdb->get_results( $wpdb->prepare( "SELECT t.term_id, tt.taxonomy  FROM {$wpdb->terms} t  INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id  WHERE t.term_id IN ( {$ids_placeholders} )", $local_ids ), ARRAY_A );
+			// phpcs:enable
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			$term_taxonomies_map = array_column( $term_taxonomies_results, 'taxonomy', 'term_id' );
+		}
+
+		// Fetch already-attributed term IDs.
+		$matched_term_ids             = array_column( $matched_terms, 'local_id' );
+		$already_attributed_terms     = $this->logic->get_attributed_term_ids( $source_hostname, $matched_term_ids );
+		$already_attributed_terms_map = array_flip( $already_attributed_terms );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+
+		// Do the actual attribution.
+		foreach ( $matched_terms as $key_match => $match ) {
+			// Skip if term doesn't exist in DB.
+			if ( ! isset( $term_taxonomies_map[ $match['local_id'] ] ) ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Term ID %d not found in database, skipping attribution.', $match['local_id'] ) );
 				continue;
 			}
+			// Skip if already attributed.
+			if ( isset( $already_attributed_terms_map[ $match['local_id'] ] ) ) {
+				continue;
+			}
+			// Attribute term.
 			update_term_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			// Detailed log to file only.
-			$context = [
-				'local_term_id' => $match['local_id'],
-				'live_term_id'  => $match['live_id'],
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+			// Log.
+			Logger::instance()->log(
+				Logger::OUTPUT_FILE,
+				LogLevel::DEBUG,
+				sprintf( 'Term attributed to %s', $source_hostname ),
+				[
+					'local_id' => $match['local_id'],
+					'live_id'  => $match['live_id'],
+				] 
+			);
+			$attributed_data['terms'][] = [
+				'local_id' => $match['local_id'],
+				'live_id'  => $match['live_id'],
+				'taxonomy' => $term_taxonomies_map[ $match['local_id'] ],
 			];
-			Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Term attributed to source_hostname %s', $source_hostname ), $context );
 		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d local terms attributed out of %d total.', count( $matched_terms ), count( $results_local_terms ) ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s 🙌 ', $source_hostname ) );
+		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $matched_terms ) ) );
+
+		// Generate timestamped CSV reports.
+		$reports_dir    = rtrim( $data_dir, '/' ) . '/reports';
+		$run_state      = new RunState( $data_dir ); // Temporary for report generation.
+		$report_creator = new ReportCreator( $run_state );
+		$created_files  = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
+
+		// Re-count and display remaining unattributed content.
+		$this->attribute_recount_unattributed( $post_types );
+
+		// Display the summary.
+		$this->attribute_display_summary( $reports_dir, $timestamp, $created_files );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s! 🙌', $source_hostname ) );
+	}
+
+	/**
+	 * Callable for `newspack-content-diff-migrator attribute-ids`.
+	 *
+	 * Attributes specific content by ID to source hostname.
+	 *
+	 * @param array $pos_args   Positional CLI args.
+	 * @param array $assoc_args CLI assoc args.
+	 */
+	public function cmd_attribute_ids( array $pos_args, array $assoc_args ): void {
+		$source_hostname = $assoc_args['source-hostname'] ?? false;
+		$data_dir        = $assoc_args['data-dir'] ?? false;
+
+		// Parse IDs from arguments.
+		$post_ids       = $this->attribute_parse_ids_input( $assoc_args['post-ids'] ?? null, $assoc_args['post-ids-file'] ?? null );
+		$attachment_ids = $this->attribute_parse_ids_input( $assoc_args['attachment-ids'] ?? null, $assoc_args['attachment-ids-file'] ?? null );
+		$user_ids       = $this->attribute_parse_ids_input( $assoc_args['user-ids'] ?? null, $assoc_args['user-ids-file'] ?? null );
+		$term_ids       = $this->attribute_parse_ids_input( $assoc_args['term-ids'] ?? null, $assoc_args['term-ids-file'] ?? null );
+
+		// Validate at least one ID argument provided.
+		if ( empty( $post_ids ) && empty( $attachment_ids ) && empty( $user_ids ) && empty( $term_ids ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, 'At least one argument with IDs to attribute is required.' );
+			return;
+		}
+
+		// Init logger.
+		Logger::instance()->init( $data_dir . '/' . __FUNCTION__ . '.log' );
+		Logger::instance()->log(
+			Logger::OUTPUT_FILE,
+			LogLevel::INFO,
+			sprintf( 'Starting %s', __FUNCTION__ ),
+			[
+				'pos_args'   => $pos_args,
+				'assoc_args' => $assoc_args,
+			] 
+		);
+
+		// Confirm action.
+		$this->attribute_confirm_action( sprintf( 'This will attribute specific content (IDs from arguments) to %s.', $source_hostname ) );
+
+		// Variables.
+		global $wpdb;
+		$meta_key        = $this->logic->get_old_id_meta_key( $source_hostname );
+		$timestamp       = gmdate( 'Ymd_His' );
+		$attributed_data = [
+			'posts' => [],
+			'users' => [],
+			'terms' => [],
+		];
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing specific IDs to %s...', $source_hostname ) );
+
+		// Attribute posts.
+		if ( ! empty( $post_ids ) ) {
+			
+			$ids_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$existing_posts_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $post_ids ), ARRAY_A );
+			// phpcs:enable
+			$existing_posts = array_column( $existing_posts_results, 'post_type', 'ID' );
+			
+			// Fetch already-attributed post IDs.
+			$already_attributed_posts     = $this->logic->get_attributed_post_ids( $source_hostname, $post_ids );
+			$already_attributed_posts_map = array_flip( $already_attributed_posts );
+			
+			foreach ( $post_ids as $key_post_id => $post_id ) {
+				if ( ! isset( $existing_posts[ $post_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $post_id ) );
+					continue;
+				}
+				// Skip if already attributed.
+				if ( isset( $already_attributed_posts_map[ $post_id ] ) ) {
+					continue;
+				}
+				
+				update_post_meta( $post_id, $meta_key, $post_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 500 );
+				
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Post attributed to %s', $source_hostname ),
+					[
+						'local_id' => $post_id,
+						'live_id'  => $post_id,
+					] 
+				);
+				$attributed_data['posts'][] = [
+					'local_id'  => $post_id,
+					'live_id'   => $post_id,
+					'post_type' => $existing_posts[ $post_id ],
+				];
+			}
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts attributed.', count( $post_ids ) ) );
+
+		// Attribute attachments.
+		if ( ! empty( $attachment_ids ) ) {
+			$ids_placeholders = implode( ',', array_fill( 0, count( $attachment_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$existing_attachments_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} ) AND post_type = 'attachment'", $attachment_ids ), ARRAY_A );
+			// phpcs:enable
+			// Re-index as flat array for isset checks.
+			$existing_attachments = array_column( $existing_attachments_results, 'ID', 'ID' );
+			
+			// Fetch already-attributed attachment IDs.
+			$already_attributed_attachments     = $this->logic->get_attributed_attachment_ids( $source_hostname, $attachment_ids );
+			$already_attributed_attachments_map = array_flip( $already_attributed_attachments );
+			
+			foreach ( $attachment_ids as $key_attachment_id => $attachment_id ) {
+				if ( ! isset( $existing_attachments[ $attachment_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Attachment ID %d not found in database or is not an attachment, skipping attribution.', $attachment_id ) );
+					continue;
+				}
+				// Skip if already attributed.
+				if ( isset( $already_attributed_attachments_map[ $attachment_id ] ) ) {
+					continue;
+				}
+				
+				update_post_meta( $attachment_id, $meta_key, $attachment_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_attachment_id, 500 );
+				
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Attachment attributed to %s', $source_hostname ),
+					[
+						'local_id' => $attachment_id,
+						'live_id'  => $attachment_id,
+					] 
+				);
+				$attributed_data['posts'][] = [
+					'local_id'  => $attachment_id,
+					'live_id'   => $attachment_id,
+					'post_type' => 'attachment',
+				];
+			}
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d attachments attributed.', count( $attachment_ids ) ) );
+
+		// Attribute users.
+		if ( ! empty( $user_ids ) ) {
+			$ids_placeholders = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$existing_users_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID FROM {$wpdb->users} WHERE ID IN ( {$ids_placeholders} )", $user_ids ), ARRAY_A );
+			// phpcs:enable
+			// Re-index as flat array for isset checks.
+			$existing_users = array_column( $existing_users_results, 'ID', 'ID' );
+			
+			// Fetch already-attributed user IDs.
+			$already_attributed_users     = $this->logic->get_attributed_user_ids( $source_hostname, $user_ids );
+			$already_attributed_users_map = array_flip( $already_attributed_users );
+			
+			foreach ( $user_ids as $key_user_id => $user_id ) {
+				if ( ! isset( $existing_users[ $user_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'User ID %d not found in database, skipping attribution.', $user_id ) );
+					continue;
+				}
+				// Skip if already attributed.
+				if ( isset( $already_attributed_users_map[ $user_id ] ) ) {
+					continue;
+				}
+				
+				update_user_meta( $user_id, $meta_key, $user_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_user_id, 500 );
+				
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'User attributed to %s', $source_hostname ),
+					[
+						'local_id' => $user_id,
+						'live_id'  => $user_id,
+					] 
+				);
+				$attributed_data['users'][] = [
+					'local_id' => $user_id,
+					'live_id'  => $user_id,
+				];
+			}
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', count( $user_ids ) ) );
+
+		// Attribute terms.
+		if ( ! empty( $term_ids ) ) {
+			$ids_placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$existing_terms_results = $wpdb->get_results( $wpdb->prepare( "SELECT t.term_id, tt.taxonomy  FROM {$wpdb->terms} t  INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id  WHERE t.term_id IN ( {$ids_placeholders} )", $term_ids ), ARRAY_A );
+			// phpcs:enable
+			// Re-index by term_id for quick lookup.
+			$existing_terms = array_column( $existing_terms_results, 'taxonomy', 'term_id' );
+			
+			// Fetch already-attributed term IDs.
+			$already_attributed_terms     = $this->logic->get_attributed_term_ids( $source_hostname, $term_ids );
+			$already_attributed_terms_map = array_flip( $already_attributed_terms );
+			
+			foreach ( $term_ids as $key_term_id => $term_id ) {
+				if ( ! isset( $existing_terms[ $term_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Term ID %d not found in database, skipping attribution.', $term_id ) );
+					continue;
+				}
+				// Skip if already attributed.
+				if ( isset( $already_attributed_terms_map[ $term_id ] ) ) {
+					continue;
+				}
+				
+				update_term_meta( $term_id, $meta_key, $term_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 500 );
+				
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Term attributed to %s', $source_hostname ),
+					[
+						'local_id' => $term_id,
+						'live_id'  => $term_id,
+					] 
+				);
+				$attributed_data['terms'][] = [
+					'local_id' => $term_id,
+					'live_id'  => $term_id,
+					'taxonomy' => $existing_terms[ $term_id ],
+				];
+			}
+		}
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $term_ids ) ) );
+
+		// Generate timestamped CSV reports.
+		$reports_dir    = rtrim( $data_dir, '/' ) . '/reports';
+		$run_state      = new RunState( $data_dir );
+		$report_creator = new ReportCreator( $run_state );
+		$created_files  = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
+
+		// Re-count and display remaining unattributed content.
+		$post_types = [ 'post', 'page', 'attachment' ];
+		$this->attribute_recount_unattributed( $post_types );
+
+		// Display summary.
+		$this->attribute_display_summary( $reports_dir, $timestamp, $created_files );
+		
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done attributing content to %s! 🙌', $source_hostname ) );
 	}
 
 	/**
 	 * This function will display a table comparing the collations of Live and Core WP tables.
 	 *
-	 * @param array $args Positional arguments.
-	 * @param array $assoc_args Optional arguments.
+	 * @param array $pos_args   Positional arguments.
+	 * @param array $assoc_args Associative arguments.
 	 */
-	public function cmd_compare_collations_of_live_and_core_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_compare_collations_of_live_and_core_wp_tables( array $pos_args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$live_table_prefix     = $assoc_args['live-table-prefix'];
 		$skip_tables           = ! empty( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
@@ -974,10 +1621,10 @@ class ContentDiffMigrator {
 	 * tables to match the collation of Core WP tables.
 	 * Speed is auto-determined based on total size of tables to fix.
 	 *
-	 * @param array $args Positional arguments.
-	 * @param array $assoc_args Optional arguments.
+	 * @param array $pos_args   Positional arguments.
+	 * @param array $assoc_args Associative arguments.
 	 */
-	public function cmd_correct_collations_for_live_wp_tables( array $args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function cmd_correct_collations_for_live_wp_tables( array $pos_args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		$live_table_prefix = $assoc_args['live-table-prefix'];
 		$skip_tables       = isset( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 		
@@ -1473,5 +2120,98 @@ class ContentDiffMigrator {
 				wp_update_term_count_now( $terms, $taxonomy );
 			}
 		}
+	}
+
+	/**
+	 * Confirms attribution action with user (unless test environment).
+	 *
+	 * @param string $message Confirmation message.
+	 */
+	private function attribute_confirm_action( string $message ): void {
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, $message );
+		if ( ! $this->test_env ) {
+			WP_CLI::confirm( 'Continue?' );
+		}
+	}
+
+	/**
+	 * Re-counts and displays remaining unattributed content.
+	 *
+	 * @param array $post_types Post types to check.
+	 */
+	private function attribute_recount_unattributed( array $post_types ): void {
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Re-counting/validating remaining unattributed content...' );
+		$this->check_and_warn_if_there_is_unattributed_content( $post_types );
+	}
+
+	/**
+	 * Displays final attribution summary with report paths.
+	 *
+	 * @param string $reports_dir   Reports directory path.
+	 * @param string $timestamp     Timestamp used in filenames.
+	 * @param array  $created_files Array of created file paths.
+	 */
+	private function attribute_display_summary( string $reports_dir, string $timestamp, array $created_files ): void {
+		if ( ! empty( $created_files ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '📊 CSV Reports saved to %s/:', $reports_dir ) );
+			foreach ( $created_files as $file_path ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- %s', basename( $file_path ) ) );
+			}
+		}
+	}
+
+	/**
+	 * Parses comma-separated IDs or reads from file.
+	 *
+	 * @param string|null $csv  Comma-separated IDs.
+	 * @param string|null $file File path with IDs (one per line).
+	 *
+	 * @return array Array of integer IDs.
+	 */
+	private function attribute_parse_ids_input( ?string $csv, ?string $file ): array {
+		// Check mutual exclusivity.
+		if ( ! empty( $csv ) && ! empty( $file ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, 'Cannot use both CSV and file arguments for the same type' );
+			return [];
+		}
+
+		$ids = [];
+
+		// Parse CSV.
+		if ( ! empty( $csv ) ) {
+			$parts = explode( ',', $csv );
+			foreach ( $parts as $part ) {
+				$part = trim( $part );
+				if ( is_numeric( $part ) ) {
+					$ids[] = (int) $part;
+				}
+			}
+		}
+
+		// Parse file.
+		if ( ! empty( $file ) ) {
+			if ( ! file_exists( $file ) ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'File not found: %s', $file ) );
+				return [];
+			}
+
+			$lines = file( $file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown
+			if ( false === $lines ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to read file: %s', $file ) );
+				return [];
+			}
+
+			foreach ( $lines as $line ) {
+				$line = trim( $line );
+				if ( empty( $line ) ) {
+					continue;
+				}
+				if ( is_numeric( $line ) ) {
+					$ids[] = (int) $line;
+				}
+			}
+		}
+
+		return array_unique( $ids );
 	}
 }

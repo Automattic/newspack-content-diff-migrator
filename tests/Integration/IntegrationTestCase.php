@@ -375,7 +375,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Calls cmd_attribute_existing_content_to_hostname with given arguments.
+	 * Calls cmd_attribute_match_local_to_live_tables with given arguments.
 	 *
 	 * @param array $assoc_args Associative arguments for the command.
 	 */
@@ -383,9 +383,10 @@ class IntegrationTestCase extends WP_UnitTestCase {
 		$default_args = [
 			'live-table-prefix' => $this->live_table_prefix,
 			'source-hostname'   => $this->source_hostname,
+			'data-dir'          => $this->temp_data_dir,
 		];
 
-		$this->command->cmd_attribute_existing_content_to_hostname( [], array_merge( $default_args, $assoc_args ) );
+		$this->command->cmd_attribute_match_local_to_live_tables( [], array_merge( $default_args, $assoc_args ) );
 	}
 
 	/**

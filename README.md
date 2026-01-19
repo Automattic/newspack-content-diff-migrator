@@ -31,7 +31,7 @@ Use latest release from the [Newspack Plugins Repository](https://github.com/new
 ### Quick Start
 
 1. **Import Live Tables**: Import live site database tables with a specific prefix (e.g., `cdiff_`)
-2. **Attribute Existing Content** (e.g. if local site was cloned from source): see [`attribute-existing-content-to-hostname`](#attribute-existing-content-to-hostname) command for details, nedds to be run only once to attribute the existing content to the source hostname so that the migrator knows it should be matched/compared against your source site's content
+2. **Attribute Existing Content** (optional): If local site already contains some content from source(s) (e.g. cloned from live)), see [Attribution Commands](#attribution-commands) to attribute it to the source hostname before migrating. Needs to be run only once per source to attribute existing content, and it lets the plugin know that this existing local content came from these source hostnames, so it can properly match it to that site and properlycompare during subsequent migrations.
 3. **Run Migration** (two commands, run in sequence):
 ```bash
 # Step 1: Search for new/modified content
@@ -96,17 +96,110 @@ Lists all previously migrated source hostnames. Useful for checking what sources
 wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 ```
 
-#### `attribute-existing-content-to-hostname`
+### Attribution Commands
 
-If the local site already contains some of the live site's content (for example, if local site was cloned from source), you should first attribute the existing content to a source hostname before running migrations.
+If the local site contains content from one or more source sites (e.g. cloned from live DB), you should attribute this content to the source hostname before running migrations. This is done by simply setting the "old ID" meta to the content, whics lets the plugin know that this content came from these source hostnames, so it can properly match and compare it during subsequent migrations.
 
-This command compares local content with live DB tables and adds source-specific metadata (`newspackcontentdiff_oldid_{hostname}`) to matched objects. This lets the plugin know that the existing local content came from this specific source hostname, so it can be properly matched and compared during subsequent migrations.
+You can run commands to attribute all content automatically, or manually provide the IDs of specific content to attribute. Chose which of the three "subcommands" to use.
+
+**Data Types which CDiff can attribute to a source hostname:**
+- Posts/Pages/CPTs ("old IDs" and source hostname stored in `wp_postmeta`)
+- Attachments ("old IDs" and source hostname stored in `wp_postmeta`)
+- Users ("old IDs" and source hostname stored in `wp_usermeta`)
+- Terms ("old IDs" and source hostname stored in `wp_termmeta`)
+
+**Attribution reports**: All attribution commands generate timestamped CSV reports in `{data-dir}/reports/`:
+- `attributed_posts_{timestamp}.csv` - Posts and attachments attributed
+- `attributed_users_{timestamp}.csv` - Users attributed  
+- `attributed_terms_{timestamp}.csv` - Terms attributed
+
+#### `attribute-all-unattributed`
+
+Attributes ALL unattributed local content to a source hostname.
+
+**Use case**: Run this immediately after cloning a site to let CDiff know that this content came from that source hostname. It will just assign the "old ID" metas to the content.
+
+**Arguments**:
+- `--source-hostname` (required): Source hostname (e.g., www.example.com)
+- `--data-dir` (required): Data directory for logs and reports
+- `--post-types-csv` (optional): CSV of post types to attribute.
 
 ```bash
-wp newspack-content-diff-migrator attribute-existing-content-to-hostname \
-    --live-table-prefix=<prefix> \
-    --source-hostname=<hostname> \
-    [--post-types-csv=post,page,attachment,...]
+wp newspack-content-diff-migrator attribute-all-unattributed \
+    --source-hostname=www.example.com \
+    --data-dir=/tmp/migration_data/
+
+# With custom post types
+wp newspack-content-diff-migrator attribute-all-unattributed \
+    --source-hostname=www.example.com \
+    --data-dir=/tmp/migration_data/ \
+    [--post-types-csv=post,page,attachment,guest-author]
+```
+
+#### `attribute-match-local-to-live-tables`
+
+Automatically searches the unattributed local content in the live DB tables and attributes it to the source hostname. Just give this command the live DB table prefix and the source hostname, and it will do the rest.
+
+**Use case**: You cloned the live DB to your local site, but some custom content was created on it too (e.g. Newspackification pages, users, terms, etc.), and you need to attribute just the original cloned content to the source hostname, but not custom content.
+
+**Arguments**:
+- `--live-table-prefix` (required): Live DB table prefix
+- `--source-hostname` (required): Source hostname (e.g., www.example.com)
+- `--data-dir` (required): Data directory for logs and reports
+- `--post-types-csv` (optional): CSV of post types to match and attribute
+- `--custom-taxonomies-csv` (optional): CSV of taxonomies to match and attribute
+
+```bash
+wp newspack-content-diff-migrator attribute-match-local-to-live-tables \
+    --live-table-prefix=cdiff_ \
+    --source-hostname=www.example.com \
+    --data-dir=/tmp/migration_data/
+
+# With custom post types and taxonomies
+wp newspack-content-diff-migrator attribute-match-local-to-live-tables \
+    --live-table-prefix=cdiff_ \
+    --source-hostname=www.example.com \
+    --data-dir=/tmp/migration_data/ \
+    [--post-types-csv=post,page,attachment,guest-author] \
+    [--custom-taxonomies-csv=category,post_tag,author,brand]
+```
+
+#### `attribute-ids`
+
+Attribute specific content IDs. Best for targeted attribution or fixing specific records.
+
+**Use case**: Maybe some content was migrated using a specific migrator which didn't preserve ID fields correctly. So just provide, e.g. post IDs and user IDs to let CDiff attribute them to source hostname.
+
+**Arguments**:
+- `--source-hostname` (required): Source hostname (e.g., www.example.com)
+- `--data-dir` (required): Data directory for logs and reports
+- `--post-ids` or `--post-ids-file` (optional): List of post IDs
+- `--attachment-ids` or `--attachment-ids-file` (optional): List of attachment IDs
+- `--user-ids` or `--user-ids-file` (optional): List of user IDs
+- `--term-ids` or `--term-ids-file` (optional): List of term IDs
+
+```bash
+# Multiple types at once
+wp newspack-content-diff-migrator attribute-ids \
+    --source-hostname=www.example.com \
+    --data-dir=/tmp/migration_data/ \
+    --post-ids=123,456,789 \
+    --user-ids=10,20,30 \
+    --term-ids=5,15,25
+
+# Or via files with IDs (one ID per line)
+wp newspack-content-diff-migrator attribute-ids \
+    --source-hostname=www.example.com \
+    --data-dir=/tmp/migration_data/ \
+    --post-ids-file=/tmp/post_ids.txt \
+    --user-ids-file=/tmp/user_ids.txt
+```
+
+**ID file format**:
+```
+123
+456
+789
 ```
 
 ---
@@ -416,7 +509,7 @@ Use `list-previously-migrated-source-hostnames` to see which sources have been p
 
 ### Attributing Cloned Content
 
-If your local site was cloned from the live site, you must first attribute that existing local content to the source hostname before running the content diff migration. See [`attribute-existing-content-to-hostname`](#attribute-existing-content-to-hostname) for details.
+If your local site was cloned from the live site, you must first attribute that existing local content to the source hostname before running the content diff migration. See [Attribution Commands](#attribution-commands) for details.
 
 ---
 

@@ -264,4 +264,177 @@ class ReportCreator {
 			default    => 0,
 		};
 	}
+
+	/**
+	 * Creates timestamped attributed_*.csv reports for attribution commands.
+	 *
+	 * @param string $reports_dir     Reports directory path.
+	 * @param array  $attributed_data Data arrays grouped by type.
+	 * @param string $source_hostname Source hostname for CSV rows.
+	 * @param string $timestamp       Timestamp for filenames (Ymd_His).
+	 *
+	 * @return array Paths to created CSV files.
+	 */
+	public function create_attributed_csvs(
+		string $reports_dir,
+		array $attributed_data,
+		string $source_hostname,
+		string $timestamp
+	): array {
+		// Ensure reports directory exists.
+		if ( ! is_dir( $reports_dir ) ) {
+			wp_mkdir_p( $reports_dir );
+		}
+
+		$reports_dir   = rtrim( $reports_dir, '/' );
+		$created_files = [];
+
+		// Create attributed_posts_{timestamp}.csv.
+		if ( ! empty( $attributed_data['posts'] ) ) {
+			$posts_path = $reports_dir . "/attributed_posts_{$timestamp}.csv";
+			$this->create_attributed_posts_csv( $posts_path, $attributed_data['posts'], $source_hostname );
+			$created_files[] = $posts_path;
+		}
+
+		// Create attributed_users_{timestamp}.csv.
+		if ( ! empty( $attributed_data['users'] ) ) {
+			$users_path = $reports_dir . "/attributed_users_{$timestamp}.csv";
+			$this->create_attributed_users_csv( $users_path, $attributed_data['users'], $source_hostname );
+			$created_files[] = $users_path;
+		}
+
+		// Create attributed_terms_{timestamp}.csv.
+		if ( ! empty( $attributed_data['terms'] ) ) {
+			$terms_path = $reports_dir . "/attributed_terms_{$timestamp}.csv";
+			$this->create_attributed_terms_csv( $terms_path, $attributed_data['terms'], $source_hostname );
+			$created_files[] = $terms_path;
+		}
+
+		return $created_files;
+	}
+
+	/**
+	 * Creates attributed_posts_{timestamp}.csv from attributed data.
+	 *
+	 * @param string $file_path       Full path to the output CSV file.
+	 * @param array  $posts_data      Array of post attribution records.
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int Number of rows written.
+	 */
+	private function create_attributed_posts_csv( string $file_path, array $posts_data, string $source_hostname ): int {
+		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
+		if ( ! $handle ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
+			return 0;
+		}
+
+		// Write header: local_id,live_id,post_type,source_hostname.
+		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
+		fputcsv( $handle, [ 'local_id', 'live_id', 'post_type', 'source_hostname' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+
+		$count = 0;
+		foreach ( $posts_data as $record ) {
+			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
+			fputcsv( // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+				$handle,
+				[
+					$record['local_id'],
+					$record['live_id'],
+					$record['post_type'] ?? 'post',
+					$source_hostname,
+				],
+				',',
+				'"',
+				''
+			); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+			$count++;
+		}
+
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		return $count;
+	}
+
+	/**
+	 * Creates attributed_users_{timestamp}.csv from attributed data.
+	 *
+	 * @param string $file_path       Full path to the output CSV file.
+	 * @param array  $users_data      Array of user attribution records.
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int Number of rows written.
+	 */
+	private function create_attributed_users_csv( string $file_path, array $users_data, string $source_hostname ): int {
+		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
+		if ( ! $handle ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
+			return 0;
+		}
+
+		// Write header: local_id,live_id,source_hostname.
+		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
+		fputcsv( $handle, [ 'local_id', 'live_id', 'source_hostname' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+
+		$count = 0;
+		foreach ( $users_data as $record ) {
+			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
+			fputcsv( // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+				$handle,
+				[
+					$record['local_id'],
+					$record['live_id'],
+					$source_hostname,
+				],
+				',',
+				'"',
+				''
+			); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+			$count++;
+		}
+
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		return $count;
+	}
+
+	/**
+	 * Creates attributed_terms_{timestamp}.csv from attributed data.
+	 *
+	 * @param string $file_path       Full path to the output CSV file.
+	 * @param array  $terms_data      Array of term attribution records.
+	 * @param string $source_hostname Source hostname.
+	 *
+	 * @return int Number of rows written.
+	 */
+	private function create_attributed_terms_csv( string $file_path, array $terms_data, string $source_hostname ): int {
+		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
+		if ( ! $handle ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
+			return 0;
+		}
+
+		// Write header: local_id,live_id,taxonomy,source_hostname.
+		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
+		fputcsv( $handle, [ 'local_id', 'live_id', 'taxonomy', 'source_hostname' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+
+		$count = 0;
+		foreach ( $terms_data as $record ) {
+			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
+			fputcsv( // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+				$handle,
+				[
+					$record['local_id'],
+					$record['live_id'],
+					$record['taxonomy'] ?? '',
+					$source_hostname,
+				],
+				',',
+				'"',
+				''
+			); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+			$count++;
+		}
+
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		return $count;
+	}
 }

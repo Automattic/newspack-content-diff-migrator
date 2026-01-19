@@ -2101,6 +2101,194 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	/**
 	 * =========================================================================
+	 * get_attributed_post_ids Tests
+	 * =========================================================================
+	 */
+	public function test_get_attributed_post_ids_should_return_attributed_ids(): void {
+		$source_hostname = 'test-source.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create posts - one attributed to test source, one to different source, one unattributed.
+		$post_attributed   = self::factory()->post->create();
+		$post_other_source = self::factory()->post->create();
+		$post_unattributed = self::factory()->post->create();
+
+		update_post_meta( $post_attributed, $meta_key, 999 );
+		update_post_meta( $post_other_source, ContentDiffLogic::get_old_id_meta_key( 'other.com' ), 888 );
+
+		$result = $this->logic->get_attributed_post_ids( $source_hostname, [ $post_attributed, $post_other_source, $post_unattributed ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $post_attributed, $result );
+		$this->assertNotContains( $post_other_source, $result );
+		$this->assertNotContains( $post_unattributed, $result );
+	}
+
+	public function test_get_attributed_post_ids_should_return_empty_for_empty_input(): void {
+		$result = $this->logic->get_attributed_post_ids( 'test.example.com', [] );
+		$this->assertEquals( [], $result );
+	}
+
+	public function test_get_attributed_post_ids_should_filter_by_source_hostname(): void {
+		$source_hostname_1 = 'source1.example.com';
+		$source_hostname_2 = 'source2.example.com';
+
+		$post1 = self::factory()->post->create();
+		$post2 = self::factory()->post->create();
+
+		update_post_meta( $post1, ContentDiffLogic::get_old_id_meta_key( $source_hostname_1 ), 100 );
+		update_post_meta( $post2, ContentDiffLogic::get_old_id_meta_key( $source_hostname_2 ), 200 );
+
+		$result = $this->logic->get_attributed_post_ids( $source_hostname_1, [ $post1, $post2 ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $post1, $result );
+		$this->assertNotContains( $post2, $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * get_attributed_attachment_ids Tests
+	 * =========================================================================
+	 */
+	public function test_get_attributed_attachment_ids_should_return_attributed_ids(): void {
+		$source_hostname = 'test-source.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create attachments - one attributed to test source, one to different source, one unattributed.
+		$attachment_attributed   = self::factory()->attachment->create();
+		$attachment_other_source = self::factory()->attachment->create();
+		$attachment_unattributed = self::factory()->attachment->create();
+
+		update_post_meta( $attachment_attributed, $meta_key, 999 );
+		update_post_meta( $attachment_other_source, ContentDiffLogic::get_old_id_meta_key( 'other.com' ), 888 );
+
+		$result = $this->logic->get_attributed_attachment_ids( $source_hostname, [ $attachment_attributed, $attachment_other_source, $attachment_unattributed ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $attachment_attributed, $result );
+		$this->assertNotContains( $attachment_other_source, $result );
+		$this->assertNotContains( $attachment_unattributed, $result );
+	}
+
+	public function test_get_attributed_attachment_ids_should_return_empty_for_empty_input(): void {
+		$result = $this->logic->get_attributed_attachment_ids( 'test.example.com', [] );
+		$this->assertEquals( [], $result );
+	}
+
+	public function test_get_attributed_attachment_ids_should_filter_by_source_hostname(): void {
+		$source_hostname_1 = 'source1.example.com';
+		$source_hostname_2 = 'source2.example.com';
+
+		$attachment1 = self::factory()->attachment->create();
+		$attachment2 = self::factory()->attachment->create();
+
+		update_post_meta( $attachment1, ContentDiffLogic::get_old_id_meta_key( $source_hostname_1 ), 100 );
+		update_post_meta( $attachment2, ContentDiffLogic::get_old_id_meta_key( $source_hostname_2 ), 200 );
+
+		$result = $this->logic->get_attributed_attachment_ids( $source_hostname_1, [ $attachment1, $attachment2 ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $attachment1, $result );
+		$this->assertNotContains( $attachment2, $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * get_attributed_user_ids Tests
+	 * =========================================================================
+	 */
+	public function test_get_attributed_user_ids_should_return_attributed_ids(): void {
+		$source_hostname = 'test-source.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create users - one attributed to test source, one to different source, one unattributed.
+		$user_attributed   = self::factory()->user->create();
+		$user_other_source = self::factory()->user->create();
+		$user_unattributed = self::factory()->user->create();
+
+		update_user_meta( $user_attributed, $meta_key, 999 );
+		update_user_meta( $user_other_source, ContentDiffLogic::get_old_id_meta_key( 'other.com' ), 888 );
+
+		$result = $this->logic->get_attributed_user_ids( $source_hostname, [ $user_attributed, $user_other_source, $user_unattributed ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $user_attributed, $result );
+		$this->assertNotContains( $user_other_source, $result );
+		$this->assertNotContains( $user_unattributed, $result );
+	}
+
+	public function test_get_attributed_user_ids_should_return_empty_for_empty_input(): void {
+		$result = $this->logic->get_attributed_user_ids( 'test.example.com', [] );
+		$this->assertEquals( [], $result );
+	}
+
+	public function test_get_attributed_user_ids_should_filter_by_source_hostname(): void {
+		$source_hostname_1 = 'source1.example.com';
+		$source_hostname_2 = 'source2.example.com';
+
+		$user1 = self::factory()->user->create();
+		$user2 = self::factory()->user->create();
+
+		update_user_meta( $user1, ContentDiffLogic::get_old_id_meta_key( $source_hostname_1 ), 100 );
+		update_user_meta( $user2, ContentDiffLogic::get_old_id_meta_key( $source_hostname_2 ), 200 );
+
+		$result = $this->logic->get_attributed_user_ids( $source_hostname_1, [ $user1, $user2 ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $user1, $result );
+		$this->assertNotContains( $user2, $result );
+	}
+
+	/**
+	 * =========================================================================
+	 * get_attributed_term_ids Tests
+	 * =========================================================================
+	 */
+	public function test_get_attributed_term_ids_should_return_attributed_ids(): void {
+		$source_hostname = 'test-source.example.com';
+		$meta_key        = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
+
+		// Create terms - one attributed to test source, one to different source, one unattributed.
+		$term_attributed   = wp_insert_term( 'Attributed Term ' . uniqid(), 'category' );
+		$term_other_source = wp_insert_term( 'Other Source Term ' . uniqid(), 'category' );
+		$term_unattributed = wp_insert_term( 'Unattributed Term ' . uniqid(), 'category' );
+
+		update_term_meta( $term_attributed['term_id'], $meta_key, 999 );
+		update_term_meta( $term_other_source['term_id'], ContentDiffLogic::get_old_id_meta_key( 'other.com' ), 888 );
+
+		$result = $this->logic->get_attributed_term_ids( $source_hostname, [ $term_attributed['term_id'], $term_other_source['term_id'], $term_unattributed['term_id'] ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $term_attributed['term_id'], $result );
+		$this->assertNotContains( $term_other_source['term_id'], $result );
+		$this->assertNotContains( $term_unattributed['term_id'], $result );
+	}
+
+	public function test_get_attributed_term_ids_should_return_empty_for_empty_input(): void {
+		$result = $this->logic->get_attributed_term_ids( 'test.example.com', [] );
+		$this->assertEquals( [], $result );
+	}
+
+	public function test_get_attributed_term_ids_should_filter_by_source_hostname(): void {
+		$source_hostname_1 = 'source1.example.com';
+		$source_hostname_2 = 'source2.example.com';
+
+		$term1 = wp_insert_term( 'Term Source 1 ' . uniqid(), 'category' );
+		$term2 = wp_insert_term( 'Term Source 2 ' . uniqid(), 'category' );
+
+		update_term_meta( $term1['term_id'], ContentDiffLogic::get_old_id_meta_key( $source_hostname_1 ), 100 );
+		update_term_meta( $term2['term_id'], ContentDiffLogic::get_old_id_meta_key( $source_hostname_2 ), 200 );
+
+		$result = $this->logic->get_attributed_term_ids( $source_hostname_1, [ $term1['term_id'], $term2['term_id'] ] );
+
+		$this->assertIsArray( $result );
+		$this->assertContains( $term1['term_id'], $result );
+		$this->assertNotContains( $term2['term_id'], $result );
+	}
+
+	/**
+	 * =========================================================================
 	 * get_terms_rows_for_attribution Tests
 	 * =========================================================================
 	 */

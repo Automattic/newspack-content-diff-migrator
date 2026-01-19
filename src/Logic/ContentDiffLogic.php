@@ -493,6 +493,37 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Gets IDs of posts that already have old_id attribution for a specific source.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param array  $post_ids        Array of post IDs to check.
+	 *
+	 * @return int[] Array of attributed post IDs.
+	 */
+	public function get_attributed_post_ids( string $source_hostname, array $post_ids ): array {
+		if ( empty( $post_ids ) ) {
+			return [];
+		}
+
+		$meta_key         = $this->get_old_id_meta_key( $source_hostname );
+		$ids_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$results = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT DISTINCT post_id 
+				FROM {$this->wpdb->postmeta} 
+				WHERE meta_key = %s 
+				AND post_id IN ( {$ids_placeholders} )",
+				array_merge( [ $meta_key ], $post_ids )
+			)
+		);
+		// phpcs:enable
+
+		return array_map( 'intval', $results );
+	}
+
+	/**
 	 * Gets IDs of attachments that don't have old_id attribution from any source.
 	 *
 	 * @return int[] Array of unattributed attachment IDs.
@@ -506,6 +537,37 @@ class ContentDiffLogic {
 				LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key LIKE %s
 				WHERE p.post_type = 'attachment' AND p.post_status = 'inherit' AND pm.meta_id IS NULL",
 				self::SAVED_META_LIVE_ID_PREFIX . '%'
+			)
+		);
+		// phpcs:enable
+
+		return array_map( 'intval', $results );
+	}
+
+	/**
+	 * Gets IDs of attachments that already have old_id attribution for a specific source.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param array  $attachment_ids  Array of attachment IDs to check.
+	 *
+	 * @return int[] Array of attributed attachment IDs.
+	 */
+	public function get_attributed_attachment_ids( string $source_hostname, array $attachment_ids ): array {
+		if ( empty( $attachment_ids ) ) {
+			return [];
+		}
+
+		$meta_key         = $this->get_old_id_meta_key( $source_hostname );
+		$ids_placeholders = implode( ',', array_fill( 0, count( $attachment_ids ), '%d' ) );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$results = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT DISTINCT post_id 
+				FROM {$this->wpdb->postmeta} 
+				WHERE meta_key = %s 
+				AND post_id IN ( {$ids_placeholders} )",
+				array_merge( [ $meta_key ], $attachment_ids )
 			)
 		);
 		// phpcs:enable
@@ -535,6 +597,37 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Gets IDs of users that already have old_id attribution for a specific source.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param array  $user_ids        Array of user IDs to check.
+	 *
+	 * @return int[] Array of attributed user IDs.
+	 */
+	public function get_attributed_user_ids( string $source_hostname, array $user_ids ): array {
+		if ( empty( $user_ids ) ) {
+			return [];
+		}
+
+		$meta_key         = $this->get_old_id_meta_key( $source_hostname );
+		$ids_placeholders = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$results = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT DISTINCT user_id 
+				FROM {$this->wpdb->usermeta} 
+				WHERE meta_key = %s 
+				AND user_id IN ( {$ids_placeholders} )",
+				array_merge( [ $meta_key ], $user_ids )
+			)
+		);
+		// phpcs:enable
+
+		return array_map( 'intval', $results );
+	}
+
+	/**
 	 * Gets IDs of terms that don't have old_id attribution from any source.
 	 *
 	 * @return int[] Array of unattributed term IDs.
@@ -548,6 +641,37 @@ class ContentDiffLogic {
 				LEFT JOIN {$this->wpdb->termmeta} tm ON t.term_id = tm.term_id AND tm.meta_key LIKE %s
 				WHERE tm.meta_id IS NULL",
 				self::SAVED_META_LIVE_ID_PREFIX . '%'
+			)
+		);
+		// phpcs:enable
+
+		return array_map( 'intval', $results );
+	}
+
+	/**
+	 * Gets IDs of terms that already have old_id attribution for a specific source.
+	 *
+	 * @param string $source_hostname Source hostname.
+	 * @param array  $term_ids        Array of term IDs to check.
+	 *
+	 * @return int[] Array of attributed term IDs.
+	 */
+	public function get_attributed_term_ids( string $source_hostname, array $term_ids ): array {
+		if ( empty( $term_ids ) ) {
+			return [];
+		}
+
+		$meta_key         = $this->get_old_id_meta_key( $source_hostname );
+		$ids_placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
+
+		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$results = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT DISTINCT term_id 
+				FROM {$this->wpdb->termmeta} 
+				WHERE meta_key = %s 
+				AND term_id IN ( {$ids_placeholders} )",
+				array_merge( [ $meta_key ], $term_ids )
 			)
 		);
 		// phpcs:enable
@@ -1595,7 +1719,7 @@ class ContentDiffLogic {
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, sprintf( 'Updated block attachment IDs in content and excerpt for post ID %d.', $post_id ) );
 	}
 
-	/**	
+	/** 
 	 * Returns an empty data array.
 	 *
 	 * @return array $args {
