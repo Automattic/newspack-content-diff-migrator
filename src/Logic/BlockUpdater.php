@@ -74,6 +74,7 @@ class BlockUpdater {
 	 * - wp:jetpack/tiled-gallery
 	 * - wp:jetpack/slideshow
 	 * - wp:jetpack/image-compare
+	 * - wp:block (pattern references)
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference, will be updated.
@@ -91,6 +92,7 @@ class BlockUpdater {
 		$content = $this->update_jetpacktiledgallery_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_jetpackslideshow_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_jetpackimagecompare_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
+		$content = $this->update_patterns_wp_block_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 
 		return $content;
 	}
@@ -624,6 +626,48 @@ class BlockUpdater {
 			// Replace block in content.
 			$content_updated = str_replace( serialize_block( $block ), serialize_block( $block_updated ), $content_updated );
 		}
+
+		return $content_updated;
+	}
+
+	/**
+	 * Updates pattern IDs in wp:block blocks.
+	 *
+	 * Pattern block format:
+	 * <!-- wp:block {"ref":28} /-->
+	 *
+	 * @param string $content                      Post content.
+	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference.
+	 * @param array  $local_hostname_aliases       Hostnames to treat as local (unused for patterns).
+	 *
+	 * @return string Updated content.
+	 */
+	public function update_patterns_wp_block_ids( string $content, array &$known_attachment_ids_updates, array $local_hostname_aliases = [] ): string { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		// Pattern to match complete self-closing wp:block: <!-- wp:block {"ref":123} /-->
+		$pattern = '/<!--\s+wp:block\s+\{"ref":(\d+)\}\s+\/-->/';
+
+		$content_updated = preg_replace_callback(
+			$pattern,
+			function ( $matches ) use ( &$known_attachment_ids_updates ) {
+				$old_id = (int) $matches[1];
+
+				// Check if we have a mapping for this pattern ID.
+				if ( ! isset( $known_attachment_ids_updates[ $old_id ] ) ) {
+					return $matches[0]; // Return unchanged.
+				}
+
+				$new_id = $known_attachment_ids_updates[ $old_id ];
+				if ( $old_id === $new_id ) {
+					return $matches[0]; // Return unchanged.
+				}
+
+				$new_id = $this->cast_to_int_if_numeric( $new_id );
+
+				// Return the updated block.
+				return sprintf( '<!-- wp:block {"ref":%d} /-->', $new_id );
+			},
+			$content
+		);
 
 		return $content_updated;
 	}

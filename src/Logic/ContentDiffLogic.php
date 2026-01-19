@@ -338,6 +338,23 @@ class ContentDiffLogic {
 	}
 
 	/**
+	 * Filters imported data to get only wp_block patterns.
+	 *
+	 * @param array $imported_data Result from get_all_imported_post_id_mapping_from_db().
+	 *
+	 * @return array Filtered map, keys are old/live IDs, values are new/local IDs.
+	 */
+	public function filter_imported_wp_blocks( array $imported_data ): array {
+		$filtered = [];
+		foreach ( $imported_data as $record ) {
+			if ( 'wp_block' === $record['post_type'] ) {
+				$filtered[ $record['old_id'] ] = $record['new_id'];
+			}
+		}
+		return $filtered;
+	}
+
+	/**
 	 * Gets an array of all User IDs imported by Content Diff, their "old_id"=>"new_id" from the usermeta.
 	 *
 	 * @param string $source_hostname Source hostname.

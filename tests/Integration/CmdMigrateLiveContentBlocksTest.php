@@ -484,4 +484,53 @@ class CmdMigrateLiveContentBlocksTest extends IntegrationTestCase {
 		$this->assertStringContainsString( '"id":' . $new_att1_id, $new_post->post_content );
 		$this->assertStringContainsString( '"id":' . $new_att2_id, $new_post->post_content );
 	}
+
+	/**
+	 * @group blocks
+	 */
+	public function test_should_update_pattern_wp_block_ref_ids(): void {
+		global $wpdb;
+
+		// Create a wp_block pattern post on live.
+		$pattern = $this->create_post_fixture(
+			[
+				'ID'          => 12001,
+				'post_type'   => 'wp_block',
+				'post_status' => 'publish',
+				'post_title'  => 'Test Pattern',
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $pattern ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+
+		// Create a post that references the pattern.
+		$content = '<!-- wp:paragraph -->
+<p>Before pattern</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:block {"ref":12001} /-->
+
+<!-- wp:paragraph -->
+<p>After pattern</p>
+<!-- /wp:paragraph -->';
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'           => 12002,
+				'post_content' => $content,
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,wp_block' ] );
+		$this->run_migrate_command();
+
+		$new_post_id    = $this->logic->get_current_post_id_by_old_id( 12002, $this->source_hostname );
+		$new_pattern_id = $this->logic->get_current_post_id_by_old_id( 12001, $this->source_hostname );
+
+		$new_post = get_post( $new_post_id );
+
+		// Verify pattern ref ID was updated.
+		$this->assertStringContainsString( '"ref":' . $new_pattern_id, $new_post->post_content );
+		$this->assertStringNotContainsString( '"ref":12001', $new_post->post_content );
+	}
 }

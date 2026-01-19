@@ -126,7 +126,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,wp_block,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -205,7 +205,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. E.g., --post-types-csv=post,page,attachment,guest-author',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. E.g., --post-types-csv=post,page,attachment,wp_block,guest-author',
 						'optional'    => true,
 					],
 				],
@@ -245,7 +245,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to match and attribute. E.g., --post-types-csv=post,page,attachment,guest-author',
+						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to match and attribute. E.g., --post-types-csv=post,page,attachment,wp_block,guest-author',
 						'optional'    => true,
 					],
 					[
@@ -399,7 +399,7 @@ class ContentDiffMigrator {
 		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
-		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment', 'wp_block' ];
 		
 		// Set instance properties.
 		global $wpdb;
@@ -779,6 +779,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		$imported_attachment_ids_map    = $this->logic->filter_imported_attachments( $all_imported_ids );
 		$imported_nonattachment_ids_map = $this->logic->filter_imported_non_attachments( $all_imported_ids );
+		$imported_wp_block_ids_map      = $this->logic->filter_imported_wp_blocks( $all_imported_ids );
 		$imported_ids_map               = [];
 		foreach ( $all_imported_ids as $record ) {
 			$imported_ids_map[ $record['old_id'] ] = $record['new_id'];
@@ -794,7 +795,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
-		$this->update_attachment_ids_in_blocks( $imported_posts_data, $source_hostname, $imported_nonattachment_ids_map, $imported_attachment_ids_map );
+		$this->update_attachment_ids_in_blocks( $imported_posts_data, $source_hostname, $imported_nonattachment_ids_map, $imported_attachment_ids_map, $imported_wp_block_ids_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Recalculate counts for all migrated taxonomies.
@@ -913,7 +914,7 @@ class ContentDiffMigrator {
 	public function cmd_attribute_all_unattributed( array $pos_args, array $assoc_args ): void {
 		$source_hostname = $assoc_args['source-hostname'] ?? false;
 		$data_dir        = $assoc_args['data-dir'] ?? false;
-		$post_types      = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
+		$post_types      = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment', 'wp_block' ];
 
 		// Init logger.
 		Logger::instance()->init( $data_dir . '/' . __FUNCTION__ . '.log' );
@@ -2055,8 +2056,9 @@ class ContentDiffMigrator {
 	 * @param string $source_hostname              Source hostname.
 	 * @param array  $imported_nonattachment_ids_map Map of old_id => new_id for non-attachment posts.
 	 * @param array  $imported_attachment_ids_map    Map of old_id => new_id for attachments.
+	 * @param array  $imported_wp_block_ids_map      Map of old_id => new_id for wp_block patterns.
 	 */
-	private function update_attachment_ids_in_blocks( array $imported_posts_data, string $source_hostname, array $imported_nonattachment_ids_map, array $imported_attachment_ids_map ): void {
+	private function update_attachment_ids_in_blocks( array $imported_posts_data, string $source_hostname, array $imported_nonattachment_ids_map, array $imported_attachment_ids_map, array $imported_wp_block_ids_map ): void {
 
 		// Get IDs which already had block attachment IDs updated, and skip them.
 		$already_updated_ids_map = $this->run_state->get_updated_block_post_ids_map();
@@ -2076,6 +2078,9 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d posts already had their blocks\' IDs updated, continuing from there...', count( $already_updated_ids_map ), count( $imported_nonattachment_ids_map ) ) );
 		}
 
+		// Merge attachment and wp_block IDs for block updating.
+		$block_reference_ids_map = $imported_attachment_ids_map + $imported_wp_block_ids_map;
+
 		// Update block attachment IDs.
 		$progress = new Progress( count( $ids_map_for_blocks_update ), 20 );
 		$step     = 0;
@@ -2087,7 +2092,7 @@ class ContentDiffMigrator {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
-			$this->logic->update_blocks_ids( $id_new, $imported_attachment_ids_map );
+			$this->logic->update_blocks_ids( $id_new, $block_reference_ids_map );
 
 			// Save to run-state for resume capability (even if post's blocks weren't updated, it has still been processed).
 			$this->run_state->append_updated_block_post(

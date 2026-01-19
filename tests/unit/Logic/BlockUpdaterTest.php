@@ -1777,4 +1777,70 @@ HTML;
 		// Should return content unchanged (no mapping available).
 		$this->assertStringContainsString( '"id":111', $result );
 	}
+
+	// =========================================================================
+	// PATTERN BLOCK (wp:block) TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers BlockUpdater::update_patterns_wp_block_ids
+	 */
+	public function pattern_wp_block_updates_ref_attribute(): void {
+		$content = '<!-- wp:block {"ref":28} /-->';
+
+		$known_ids = [ 28 => 42 ];
+		$result    = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
+
+		$this->assertStringContainsString( '"ref":42', $result );
+		$this->assertStringNotContainsString( '"ref":28', $result );
+	}
+
+	/**
+	 * @test
+	 * @covers BlockUpdater::update_patterns_wp_block_ids
+	 */
+	public function pattern_wp_block_handles_multiple_patterns(): void {
+		$content = <<<'HTML'
+<!-- wp:block {"ref":10} /-->
+
+<p>Some content between patterns</p>
+
+<!-- wp:block {"ref":20} /-->
+
+<!-- wp:block {"ref":30} /-->
+HTML;
+
+		$known_ids = [
+			10 => 100,
+			20 => 200,
+			30 => 300,
+		];
+		$result    = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
+
+		$this->assertStringContainsString( '"ref":100', $result );
+		$this->assertStringContainsString( '"ref":200', $result );
+		$this->assertStringContainsString( '"ref":300', $result );
+		$this->assertStringNotContainsString( '"ref":10}', $result );
+		$this->assertStringNotContainsString( '"ref":20}', $result );
+		$this->assertStringNotContainsString( '"ref":30}', $result );
+	}
+
+	/**
+	 * @test
+	 * @covers BlockUpdater::update_patterns_wp_block_ids
+	 */
+	public function pattern_wp_block_preserves_content_when_no_mapping(): void {
+		$content = '<!-- wp:block {"ref":99} /-->';
+
+		$known_ids = [
+			10 => 100,
+			20 => 200,
+		]; // No mapping for ID 99.
+		$result    = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
+
+		// Should return content unchanged when no mapping exists.
+		$this->assertEquals( $content, $result );
+		$this->assertStringContainsString( '"ref":99', $result );
+	}
 }
