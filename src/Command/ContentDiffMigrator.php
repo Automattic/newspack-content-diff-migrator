@@ -69,38 +69,17 @@ class ContentDiffMigrator {
 	private bool $test_env;
 
 	/**
-	 * Constructor.
+	 * Command definitions by category.
+	 * Single source of truth for both registration and interactive index.
 	 *
-	 * @param bool $test_env For testing: suppresses confirmations and removes memory cleanup sleep time.
+	 * @var array
 	 */
-	public function __construct( bool $test_env = false ) {
-		// $wpdb is global here because ContentDiffMigrator is integration-tested (real DB), while Logic classes accept injectable $wpdb for unit testing with mocks.
-		global $wpdb;
-
-		$this->data_importer = new DataImporter( $wpdb );
-		$this->logic         = new ContentDiffLogic( $wpdb, null, $this->data_importer );
-		$this->db            = new DB( $wpdb );
-		$this->test_env      = $test_env;
-	}
-
-	/**
-	 * Set RunState instance, used in testing environment.
-	 *
-	 * @param RunState $run_state RunState instance.
-	 */
-	public function set_run_state( RunState $run_state ): void {
-		$this->run_state = $run_state;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public static function register_commands(): void {
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator search-new-content-on-live',
-			[ __CLASS__, 'cmd_search_new_content_on_live' ],
-			[
+	private const COMMANDS = [
+		'main'    => [
+			'search-new-content-on-live' => [
+				'method'    => 'cmd_search_new_content_on_live',
 				'shortdesc' => 'Searches for new posts existing in the Live site tables and not in the local site tables, and exports the IDs to a file.',
+				'longdesc'  => '',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
@@ -131,13 +110,11 @@ class ContentDiffMigrator {
 						'repeating'   => false,
 					],
 				],
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator migrate-live-content',
-			[ __CLASS__, 'cmd_migrate_live_content' ],
-			[
+			],
+			'migrate-live-content'       => [
+				'method'    => 'cmd_migrate_live_content',
 				'shortdesc' => 'Migrates content from Live site tables to local site tables.',
+				'longdesc'  => '',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
@@ -168,19 +145,17 @@ class ContentDiffMigrator {
 						'repeating'   => false,
 					],
 				],
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator list-previously-migrated-source-hostnames',
-			[ __CLASS__, 'cmd_list_migrated_source_hostnames' ],
-			[
+			],
+		],
+		'utility' => [
+			'list-previously-migrated-source-hostnames' => [
+				'method'    => 'cmd_list_migrated_source_hostnames',
 				'shortdesc' => 'Lists all source hostnames from which content has been imported.',
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator attribute-all-unattributed',
-			[ __CLASS__, 'cmd_attribute_all_unattributed' ],
-			[
+				'longdesc'  => '',
+				'synopsis'  => [],
+			],
+			'attribute-all-unattributed'                => [
+				'method'    => 'cmd_attribute_all_unattributed',
 				'shortdesc' => 'Attributes ALL unattributed local content to a source hostname.',
 				'longdesc'  => "Finds all unattributed posts, attachments, users, and terms and attributes them to the source hostname WITHOUT matching to live tables. Use when you know all existing content came from one source.\n"
 								. "Data types attributed:\n"
@@ -209,12 +184,9 @@ class ContentDiffMigrator {
 						'optional'    => true,
 					],
 				],
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator attribute-match-local-to-live-tables',
-			[ __CLASS__, 'cmd_attribute_match_local_to_live_tables' ],
-			[
+			],
+			'attribute-match-local-to-live-tables'      => [
+				'method'    => 'cmd_attribute_match_local_to_live_tables',
 				'shortdesc' => 'Automatically attributes all existing local content to source hostname, by looking it up directly in the live DB tables. Just give this command the live DB table prefix and the source hostname, and it will do the rest.',
 				'longdesc'  => "Compares existing unattributed content from local with live tables, matches it, and adds attribution metas for matches.\n"
 								. "Data types attributed:\n"
@@ -255,12 +227,9 @@ class ContentDiffMigrator {
 						'optional'    => true,
 					],
 				],
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator attribute-ids',
-			[ __CLASS__, 'cmd_attribute_ids' ],
-			[
+			],
+			'attribute-ids'                             => [
+				'method'    => 'cmd_attribute_ids',
 				'shortdesc' => 'Attribute specific content by ID to source hostname.',
 				'longdesc'  => "Attributes specific posts, attachments, users, or terms (by ID) to the source hostname. Provide IDs via comma-separated values or files (one ID per line).\n"
 								. "DATA TYPES WHICH CAN BE ATTRIBUTED:\n"
@@ -331,13 +300,11 @@ class ContentDiffMigrator {
 						'optional'    => true,
 					],
 				],
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator display-collations-comparison',
-			[ __CLASS__, 'cmd_compare_collations_of_live_and_core_wp_tables' ],
-			[
-				'shortdesc' => 'Display a table comparing collations of Live and Core WP tables.',
+			],
+			'display-collations-comparison'             => [
+				'method'    => 'cmd_compare_collations_of_live_and_core_wp_tables',
+				'shortdesc' => 'Display a table comparing collations of Live and Core WP tables that differ.',
+				'longdesc'  => '',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
@@ -353,20 +320,12 @@ class ContentDiffMigrator {
 						'optional'    => true,
 						'repeating'   => false,
 					],
-					[
-						'type'        => 'flag',
-						'name'        => 'different-collations-only',
-						'description' => 'This flag determines to only display tables with differing collations.',
-						'optional'    => true,
-					],
 				],
-			]
-		);
-		WP_CLI::add_command(
-			'newspack-content-diff-migrator correct-collations-for-live-wp-tables',
-			[ __CLASS__, 'cmd_correct_collations_for_live_wp_tables' ],
-			[
+			],
+			'correct-collations-for-live-wp-tables'     => [
+				'method'    => 'cmd_correct_collations_for_live_wp_tables',
 				'shortdesc' => 'This command will handle the necessary operations to match collations across Live and Core WP tables. Speed is auto-determined based on total table size.',
+				'longdesc'  => '',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
@@ -383,8 +342,60 @@ class ContentDiffMigrator {
 						'repeating'   => false,
 					],
 				],
-			]
-		);
+			],
+		],
+	];
+
+	/**
+	 * Constructor.
+	 *
+	 * @param bool $test_env For testing: suppresses confirmations and removes memory cleanup sleep time.
+	 */
+	public function __construct( bool $test_env = false ) {
+		// $wpdb is global here because ContentDiffMigrator is integration-tested (real DB), while Logic classes accept injectable $wpdb for unit testing with mocks.
+		global $wpdb;
+
+		$this->data_importer = new DataImporter( $wpdb );
+		$this->logic         = new ContentDiffLogic( $wpdb, null, $this->data_importer );
+		$this->db            = new DB( $wpdb );
+		$this->test_env      = $test_env;
+	}
+
+	/**
+	 * Set RunState instance, used in testing environment.
+	 *
+	 * @param RunState $run_state RunState instance.
+	 */
+	public function set_run_state( RunState $run_state ): void {
+		$this->run_state = $run_state;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public static function register_commands(): void {
+		foreach ( self::COMMANDS as $category => $commands ) {
+			foreach ( $commands as $cmd_name => $cmd_config ) {
+				WP_CLI::add_command(
+					'newspack-content-diff-migrator ' . $cmd_name,
+					[ __CLASS__, $cmd_config['method'] ],
+					[
+						'shortdesc' => $cmd_config['shortdesc'],
+						'longdesc'  => $cmd_config['longdesc'] ?? '',
+						'synopsis'  => $cmd_config['synopsis'] ?? [],
+					]
+				);
+			}
+		}
+	}
+
+	/**
+	 * Get command definitions for interactive index.
+	 *
+	 * @return array Command definitions organized by category.
+	 */
+	public static function get_commands(): array {
+		return self::COMMANDS;
 	}
 
 	/**
@@ -1594,19 +1605,14 @@ class ContentDiffMigrator {
 	 * @param array $assoc_args Associative arguments.
 	 */
 	public function cmd_compare_collations_of_live_and_core_wp_tables( array $pos_args, array $assoc_args ): void { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		$live_table_prefix     = $assoc_args['live-table-prefix'];
-		$skip_tables           = ! empty( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
-		$different_tables_only = $assoc_args['different-collations-only'] ?? false;
+		$live_table_prefix = $assoc_args['live-table-prefix'];
+		$skip_tables       = ! empty( $assoc_args['skip-tables'] ) ? explode( ',', $assoc_args['skip-tables'] ) : [];
 
 		Logger::instance()->init( __FUNCTION__ . '.log' );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command compare-collations-of-live-and-core-wp-tables...' );
 
-		$tables = [];
-		if ( $different_tables_only ) {
-			$tables = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
-		} else {
-			$tables = $this->db->get_collation_comparison_of_live_and_core_wp_tables( $live_table_prefix, $skip_tables );
-		}
+		$tables = $this->db->filter_for_different_collated_tables( $live_table_prefix, $skip_tables );
+		
 		if ( ! empty( $tables ) ) {
 			ob_start();
 			\WP_CLI\Utils\format_items( 'table', $tables, array_keys( $tables[0] ) );

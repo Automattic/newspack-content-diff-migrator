@@ -14,6 +14,7 @@ namespace Newspack\ContentDiffMigrator;
 
 use Newspack\ContentDiffMigrator\PluginSetup;
 use Newspack\ContentDiffMigrator\Command\ContentDiffMigrator;
+use Newspack\ContentDiffMigrator\Command\ContentDiffMigratorIndex;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 
 // Don't do anything outside WP CLI.
@@ -31,3 +32,4 @@ PluginSetup::register_ticker();
 Logger::configure( true );
 
 ContentDiffMigrator::register_commands();
+ContentDiffMigratorIndex::register_command();
