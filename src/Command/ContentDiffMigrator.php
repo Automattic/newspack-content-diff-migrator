@@ -828,19 +828,19 @@ class ContentDiffMigrator {
 		$reports_dir    = rtrim( (string) $data_dir, '/' ) . '/reports';
 		$report_creator = new ReportCreator( $this->run_state );
 		$report_creator->create_all_csvs( $reports_dir );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( "CSV Reports are saved to %s/ :\n- %s\n- %s\n- %s", $reports_dir, ReportCreator::REPORT_POSTS, ReportCreator::REPORT_USERS, ReportCreator::REPORT_TERMS ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( "CSV Reports are saved to %s:\n- %s\n- %s\n- %s", $reports_dir, ReportCreator::REPORT_POSTS, ReportCreator::REPORT_USERS, ReportCreator::REPORT_TERMS ) );
 
 		// Output migration summary.
 		$summary = $this->run_state->get_migration_summary();
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'Migration summary:' );
 		foreach ( $summary['posts'] as $post_type => $count ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total %s — %s', $post_type, number_format( $count ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total %s: %s', $post_type, number_format( $count ) ) );
 		}
 		if ( ! empty( $summary['users']['imported'] ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total new users — %s', number_format( $summary['users']['imported'] ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total new users: %s', number_format( $summary['users']['imported'] ) ) );
 		}
 		if ( ! empty( $summary['users']['merged'] ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total merged users — %s', number_format( $summary['users']['merged'] ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total merged users: %s', number_format( $summary['users']['merged'] ) ) );
 		}
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done migrating content from %s! 🙌 ', $source_hostname ) );
