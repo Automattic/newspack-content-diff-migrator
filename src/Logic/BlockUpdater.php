@@ -637,18 +637,18 @@ class BlockUpdater {
 	 * <!-- wp:block {"ref":28} /-->
 	 *
 	 * @param string $content                      Post content.
-	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference.
+	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new).
 	 * @param array  $local_hostname_aliases       Hostnames to treat as local (unused for patterns).
 	 *
 	 * @return string Updated content.
 	 */
-	public function update_patterns_wp_block_ids( string $content, array &$known_attachment_ids_updates, array $local_hostname_aliases = [] ): string { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+	public function update_patterns_wp_block_ids( string $content, array $known_attachment_ids_updates, array $local_hostname_aliases = [] ): string { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
 		// Pattern to match complete self-closing wp:block: <!-- wp:block {"ref":123} /-->
 		$pattern = '/<!--\s+wp:block\s+\{"ref":(\d+)\}\s+\/-->/';
 
 		$content_updated = preg_replace_callback(
 			$pattern,
-			function ( $matches ) use ( &$known_attachment_ids_updates ) {
+			function ( $matches ) use ( $known_attachment_ids_updates ) {
 				$old_id = (int) $matches[1];
 
 				// Check if we have a mapping for this pattern ID.
