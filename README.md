@@ -28,6 +28,16 @@ Use latest release from the [Newspack Plugins Repository](https://github.com/new
 
 ## Usage
 
+### Interactive Mode (Easiest)
+
+New to the plugin or prefer a guided interactive mode? Use the `index` command:
+
+```bash
+wp newspack-content-diff-migrator index
+```
+
+This launches an interactive menu that guides you through selecting any of the available commands, with their descriptions, and prompts you for all required arguments step-by-step. Perfect for learning the plugin or running commands without memorizing syntax.
+
 ### Quick Start
 
 1. **Import Live Tables**: Import live site database tables with a specific prefix (e.g., `cdiff_`)
@@ -86,7 +96,7 @@ wp newspack-content-diff-migrator migrate-live-content \
 
 ---
 
-### Helper Commands
+### Utility Commands
 
 #### `list-previously-migrated-source-hostnames`
 
