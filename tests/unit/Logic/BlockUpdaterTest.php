@@ -2,8 +2,8 @@
 /**
  * Unit tests for BlockUpdater.
  *
- * Pure unit tests - no database required.
- * Tests string manipulation and ID replacement logic for Gutenberg blocks.
+ * These tests assert/validate that the entire content and block strings are valid,
+ * not just individual ID updates, but the entire block content and the surrounding HTML.
  *
  * @package Newspack_Content_Diff_Migrator
  */
@@ -68,6 +68,7 @@ class BlockUpdaterTest extends TestCase {
 	 * @covers BlockUpdater::set_attachment_url_resolver
 	 */
 	public function attachment_url_resolver_can_be_injected(): void {
+
 		// Create a resolver that always returns a specific ID.
 		$resolver = function ( string $url ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.Found.
 			return 999;
@@ -75,16 +76,21 @@ class BlockUpdaterTest extends TestCase {
 
 		$updater = new BlockUpdater( $resolver );
 
-		$content = <<<'HTML'
-<!-- wp:image {"id":111} -->
-<figure class="wp-block-image"><img src="https://example.com/test.jpg" class="wp-image-111"/></figure>
+		$template = <<<'HTML'
+<!-- wp:image {"id":%d} -->
+<figure class="wp-block-image"><img src="https://example.com/test.jpg" class="wp-image-%d"/></figure>
 <!-- /wp:image -->
 HTML;
 
-		$known_ids = [];
-		$result    = $updater->update_image_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 111, 111 );
+		$content_after_expected = sprintf( $template, 999, 999 );
 
-		$this->assertIsString( $result );
+		// Must provide local_hostname_aliases to tell the logic that example.com should be queried as local.
+		$known_ids              = [];
+		$local_hostname_aliases = [ 'example.com' ];
+		$result                 = $updater->update_image_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	// =========================================================================
@@ -96,19 +102,19 @@ HTML;
 	 * @covers BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_updates_id_in_header_and_class(): void {
-		$content = <<<'HTML'
-<!-- wp:image {"id":111111,"sizeSlug":"large","linkDestination":"none"} -->
-<figure class="wp-block-image size-large"><img src="https://example.com/image.jpg" alt="" class="wp-image-111111"/></figure>
+		$template = <<<'HTML'
+<!-- wp:image {"id":%d,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large"><img src="https://example.com/image.jpg" alt="" class="wp-image-%d"/></figure>
 <!-- /wp:image -->
 HTML;
 
-		$known_ids = [ 111111 => 999999 ];
-		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 111111, 111111 );
+		$content_after_expected = sprintf( $template, 999999, 999999 );
 
-		$this->assertStringContainsString( '"id":999999', $result );
-		$this->assertStringContainsString( 'wp-image-999999', $result );
-		$this->assertStringNotContainsString( '"id":111111', $result );
-		$this->assertStringNotContainsString( 'wp-image-111111', $result );
+		$known_ids = [ 111111 => 999999 ];
+		$result    = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -125,10 +131,7 @@ HTML;
 		$known_ids = [ 999999 => 888888 ]; // Different ID.
 		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"id":111111', $result );
-		$this->assertStringContainsString( 'wp-image-111111', $result );
-		$this->assertStringNotContainsString( '"id":999999', $result );
-		$this->assertStringNotContainsString( 'wp-image-999999', $result );
+		$this->assertEquals( $content, $result );
 	}
 
 	/**
@@ -136,7 +139,18 @@ HTML;
 	 * @covers BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_blocks_nested_in_gallery_get_updated(): void {
-		$content = $this->load_fixture( 'image-blocks' );
+		$content_before = $this->load_fixture( 'image-blocks' );
+
+		// Validate fixture contains expected IDs.
+		$this->assertStringContainsString( '111111', $content_before, 'Fixture image-blocks.html does not contain expected ID 111111' );
+		$this->assertStringContainsString( '222222', $content_before, 'Fixture image-blocks.html does not contain expected ID 222222' );
+		$this->assertStringContainsString( '333333', $content_before, 'Fixture image-blocks.html does not contain expected ID 333333' );
+
+		$content_after_expected = str_replace(
+			[ '111111', '222222', '333333' ],
+			[ '999111', '999222', '999333' ],
+			$content_before
+		);
 
 		$known_ids = [
 			111111 => 999111,
@@ -144,27 +158,9 @@ HTML;
 			333333 => 999333,
 		];
 
-		$result = $this->updater->update_image_blocks_ids( $content, $known_ids );
+		$result = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
 
-		// All IDs should be updated.
-		$this->assertStringContainsString( '"id":999111', $result );
-		$this->assertStringContainsString( '"id":999222', $result );
-		$this->assertStringContainsString( '"id":999333', $result );
-
-		// Old IDs should be gone.
-		$this->assertStringNotContainsString( '"id":111111', $result );
-		$this->assertStringNotContainsString( '"id":222222', $result );
-		$this->assertStringNotContainsString( '"id":333333', $result );
-
-		// All classes 
-		$this->assertStringContainsString( 'wp-image-999111', $result );
-		$this->assertStringContainsString( 'wp-image-999222', $result );
-		$this->assertStringContainsString( 'wp-image-999333', $result );
-
-		// Old classes should be gone.
-		$this->assertStringNotContainsString( 'wp-image-111111', $result );
-		$this->assertStringNotContainsString( 'wp-image-222222', $result );
-		$this->assertStringNotContainsString( 'wp-image-333333', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -172,21 +168,21 @@ HTML;
 	 * @covers BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_wrapped_in_group_gets_updated(): void {
-		$content = <<<'HTML'
+		$template = <<<'HTML'
 <!-- wp:group -->
-<!-- wp:image {"id":12345} -->
-<figure class="wp-block-image"><img src="test.jpg" class="wp-image-12345"/></figure>
+<!-- wp:image {"id":%d} -->
+<figure class="wp-block-image"><img src="test.jpg" class="wp-image-%d"/></figure>
 <!-- /wp:image -->
 <!-- /wp:group -->
 HTML;
 
-		$known_ids = [ 12345 => 67890 ];
-		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 12345, 12345 );
+		$content_after_expected = sprintf( $template, 67890, 67890 );
 
-		$this->assertStringContainsString( '"id":67890', $result );
-		$this->assertStringContainsString( 'wp-image-67890', $result );
-		$this->assertStringNotContainsString( '"id":12345', $result );
-		$this->assertStringNotContainsString( 'wp-image-12345', $result );
+		$known_ids = [ 12345 => 67890 ];
+		$result    = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -194,12 +190,13 @@ HTML;
 	 * @covers BlockUpdater::update_image_element_attribute
 	 */
 	public function update_image_element_attribute_updates_data_id(): void {
-		$content = '<img src="test.jpg" data-id="11111" class="wp-image-11111"/>';
-		$id_map  = [ 11111 => 99999 ];
-		$result  = $this->updater->update_image_element_attribute( 'data-id', $id_map, $content );
+		$content_before         = '<img src="test.jpg" data-id="11111" class="wp-image-11111"/>';
+		$content_after_expected = '<img src="test.jpg" data-id="99999" class="wp-image-11111"/>';
 
-		$this->assertStringContainsString( 'data-id="99999"', $result );
-		$this->assertStringNotContainsString( 'data-id="11111"', $result );
+		$id_map = [ 11111 => 99999 ];
+		$result = $this->updater->update_image_element_attribute( 'data-id', $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -207,12 +204,13 @@ HTML;
 	 * @covers BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_updates_wp_image_class(): void {
-		$content = '<img src="test.jpg" class="wp-image-11111"/>';
-		$id_map  = [ 11111 => 99999 ];
-		$result  = $this->updater->update_image_element_class_attribute( $id_map, $content );
+		$content_before         = '<img src="test.jpg" class="wp-image-11111"/>';
+		$content_after_expected = '<img src="test.jpg" class="wp-image-99999"/>';
 
-		$this->assertStringContainsString( 'wp-image-99999', $result );
-		$this->assertStringNotContainsString( 'wp-image-11111', $result );
+		$id_map = [ 11111 => 99999 ];
+		$result = $this->updater->update_image_element_class_attribute( $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -220,13 +218,13 @@ HTML;
 	 * @covers BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_preserves_other_classes(): void {
-		$content = '<img src="test.jpg" class="aligncenter wp-image-11111 size-large"/>';
-		$id_map  = [ 11111 => 99999 ];
-		$result  = $this->updater->update_image_element_class_attribute( $id_map, $content );
+		$content_before         = '<img src="test.jpg" class="aligncenter wp-image-11111 size-large"/>';
+		$content_after_expected = '<img src="test.jpg" class="aligncenter wp-image-99999 size-large"/>';
 
-		$this->assertStringContainsString( 'aligncenter', $result );
-		$this->assertStringContainsString( 'size-large', $result );
-		$this->assertStringContainsString( 'wp-image-99999', $result );
+		$id_map = [ 11111 => 99999 ];
+		$result = $this->updater->update_image_element_class_attribute( $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -234,11 +232,13 @@ HTML;
 	 * @covers BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_handles_class_at_start(): void {
-		$content = '<img src="test.jpg" class="wp-image-11111 otherclass"/>';
-		$id_map  = [ 11111 => 99999 ];
-		$result  = $this->updater->update_image_element_class_attribute( $id_map, $content );
+		$content_before         = '<img src="test.jpg" class="wp-image-11111 otherclass"/>';
+		$content_after_expected = '<img src="test.jpg" class="wp-image-99999 otherclass"/>';
 
-		$this->assertStringContainsString( 'wp-image-99999', $result );
+		$id_map = [ 11111 => 99999 ];
+		$result = $this->updater->update_image_element_class_attribute( $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -246,11 +246,13 @@ HTML;
 	 * @covers BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_handles_class_at_end(): void {
-		$content = '<img src="test.jpg" class="otherclass wp-image-11111"/>';
-		$id_map  = [ 11111 => 99999 ];
-		$result  = $this->updater->update_image_element_class_attribute( $id_map, $content );
+		$content_before         = '<img src="test.jpg" class="otherclass wp-image-11111"/>';
+		$content_after_expected = '<img src="test.jpg" class="otherclass wp-image-99999"/>';
 
-		$this->assertStringContainsString( 'wp-image-99999', $result );
+		$id_map = [ 11111 => 99999 ];
+		$result = $this->updater->update_image_element_class_attribute( $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -258,19 +260,19 @@ HTML;
 	 * @covers BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_with_mapping_to_different_value_updates(): void {
-		$content = <<<'HTML'
-<!-- wp:image {"id":1000,"sizeSlug":"large"} -->
-<figure class="wp-block-image"><img src="https://example.com/image.jpg" class="wp-image-1000"/></figure>
+		$template = <<<'HTML'
+<!-- wp:image {"id":%d,"sizeSlug":"large"} -->
+<figure class="wp-block-image"><img src="https://example.com/image.jpg" class="wp-image-%d"/></figure>
 <!-- /wp:image -->
 HTML;
 
-		$known_ids = [ 1000 => 2000 ];
-		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 1000, 1000 );
+		$content_after_expected = sprintf( $template, 2000, 2000 );
 
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
+		$known_ids = [ 1000 => 2000 ];
+		$result    = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -287,7 +289,6 @@ HTML;
 		$known_ids = [ 1000 => 1000 ]; // Maps to itself.
 		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
 
-		// Should remain unchanged.
 		$this->assertEquals( $content, $result );
 	}
 
@@ -349,7 +350,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:image {"id":1000} -->
 <figure class="wp-block-image"><img src="https://example.com/image1.jpg" class="wp-image-1000"/></figure>
 <!-- /wp:image -->
@@ -363,25 +364,17 @@ HTML;
 <!-- /wp:image -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"id":1000}', 'wp-image-1000', '{"id":1001}', 'wp-image-1001' ],
+			[ '{"id":99999}', 'wp-image-99999', '{"id":88888}', 'wp-image-88888' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_image_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_image_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Images 1 and 3 should be updated.
-		$this->assertStringContainsString( '"id":99999', $result );
-		$this->assertStringContainsString( '"id":88888', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( '"id":1001', $result );
-		$this->assertStringContainsString( 'wp-image-99999', $result );
-		$this->assertStringContainsString( 'wp-image-88888', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1001', $result );
-
-		// Image 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( '"id":77777', $result );
-		$this->assertStringNotContainsString( 'wp-image-77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -402,23 +395,29 @@ HTML;
 	 * @covers BlockUpdater::update_image_blocks_ids
 	 */
 	public function core_gallery_block_updates_all_ids_using_update_image_blocks_ids(): void {
-		$content = $this->load_fixture( 'core-gallery-block' );
+		$content_before = $this->load_fixture( 'core-gallery-block' );
+
+		// Validate fixture contains expected IDs.
+		$this->assertStringContainsString( '7001', $content_before, 'Fixture core-gallery-block.html does not contain expected ID 7001' );
+		$this->assertStringContainsString( '7002', $content_before, 'Fixture core-gallery-block.html does not contain expected ID 7002' );
+		$this->assertStringContainsString( '7003', $content_before, 'Fixture core-gallery-block.html does not contain expected ID 7003' );
+
+		$content_after_expected = str_replace(
+			[ '7001', '7002', '7003' ],
+			[ '99991', '99992', '99993' ],
+			$content_before
+		);
 
 		$known_ids = [
 			7001 => 99991,
 			7002 => 99992,
 			7003 => 99993,
 		];
-		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"id":99991', $result );
-		$this->assertStringContainsString( '"id":99992', $result );
-		$this->assertStringContainsString( '"id":99993', $result );
-		$this->assertStringContainsString( 'class="wp-image-99991"', $result );
-		$this->assertStringContainsString( 'class="wp-image-99992"', $result );
-		$this->assertStringContainsString( 'class="wp-image-99993"', $result );
+		$result = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
-
 
 	// =========================================================================
 	// AUDIO BLOCK TESTS
@@ -429,13 +428,17 @@ HTML;
 	 * @covers BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_updates_id(): void {
-		$content = $this->load_fixture( 'audio-block' );
+		$content_before = $this->load_fixture( 'audio-block' );
+
+		// Validate fixture contains expected ID.
+		$this->assertStringContainsString( '1111', $content_before, 'Fixture audio-block.html does not contain expected ID 1111' );
+
+		$content_after_expected = str_replace( '1111', '9999', $content_before );
 
 		$known_ids = [ 1111 => 9999 ];
-		$result    = $this->updater->update_audio_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_audio_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"id":9999', $result );
-		$this->assertStringNotContainsString( '"id":1111', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -443,7 +446,7 @@ HTML;
 	 * @covers BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_multiple_blocks_updated(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:audio {"id":1111} -->
 <figure class="wp-block-audio"><audio controls src="https://example.com/audio1.mp3"></audio></figure>
 <!-- /wp:audio -->
@@ -453,14 +456,19 @@ HTML;
 <!-- /wp:audio -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"id":1111}', '{"id":2222}' ],
+			[ '{"id":9111}', '{"id":9222}' ],
+			$content_before
+		);
+
 		$known_ids = [
 			1111 => 9111,
 			2222 => 9222,
 		];
-		$result    = $this->updater->update_audio_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_audio_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"id":9111', $result );
-		$this->assertStringContainsString( '"id":9222', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -468,17 +476,19 @@ HTML;
 	 * @covers BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_with_mapping_to_different_value_updates(): void {
-		$content = <<<'HTML'
-<!-- wp:audio {"id":1000} -->
+		$template = <<<'HTML'
+<!-- wp:audio {"id":%d} -->
 <figure class="wp-block-audio"><audio controls src="https://example.com/audio.mp3"></audio></figure>
 <!-- /wp:audio -->
 HTML;
 
-		$known_ids = [ 1000 => 2000 ];
-		$result    = $this->updater->update_audio_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 1000 );
+		$content_after_expected = sprintf( $template, 2000 );
 
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
+		$known_ids = [ 1000 => 2000 ];
+		$result    = $this->updater->update_audio_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -539,7 +549,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:audio {"id":1000} -->
 <figure class="wp-block-audio"><audio controls src="https://example.com/audio1.mp3"></audio></figure>
 <!-- /wp:audio -->
@@ -553,19 +563,17 @@ HTML;
 <!-- /wp:audio -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"id":1000}', '{"id":1001}' ],
+			[ '{"id":99999}', '{"id":88888}' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_audio_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_audio_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Audios 1 and 3 should be updated.
-		$this->assertStringContainsString( '"id":99999', $result );
-		$this->assertStringContainsString( '"id":88888', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( '"id":1001', $result );
-
-		// Audio 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringNotContainsString( '"id":77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -586,13 +594,17 @@ HTML;
 	 * @covers BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_updates_id(): void {
-		$content = $this->load_fixture( 'video-block' );
+		$content_before = $this->load_fixture( 'video-block' );
+
+		// Validate fixture contains expected ID.
+		$this->assertStringContainsString( '2222', $content_before, 'Fixture video-block.html does not contain expected ID 2222' );
+
+		$content_after_expected = str_replace( '2222', '8888', $content_before );
 
 		$known_ids = [ 2222 => 8888 ];
-		$result    = $this->updater->update_video_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_video_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"id":8888', $result );
-		$this->assertStringNotContainsString( '"id":2222', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -600,7 +612,7 @@ HTML;
 	 * @covers BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_does_not_update_other_block_types(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:video {"id":1111} -->
 <figure class="wp-block-video"><video controls src="video.mp4"></video></figure>
 <!-- /wp:video -->
@@ -610,13 +622,16 @@ HTML;
 <!-- /wp:somecustomblock -->
 HTML;
 
-		$known_ids = [ 1111 => 9999 ];
-		$result    = $this->updater->update_video_blocks_ids( $content, $known_ids );
+		$content_after_expected = str_replace(
+			'<!-- wp:video {"id":1111} -->',
+			'<!-- wp:video {"id":9999} -->',
+			$content_before
+		);
 
-		// Video block should be updated.
-		$this->assertStringContainsString( '<!-- wp:video {"id":9999}', $result );
-		// Custom block should NOT be updated.
-		$this->assertStringContainsString( '<!-- wp:somecustomblock {"id":1111}', $result );
+		$known_ids = [ 1111 => 9999 ];
+		$result    = $this->updater->update_video_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -624,17 +639,19 @@ HTML;
 	 * @covers BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_with_mapping_to_different_value_updates(): void {
-		$content = <<<'HTML'
-<!-- wp:video {"id":1000} -->
+		$template = <<<'HTML'
+<!-- wp:video {"id":%d} -->
 <figure class="wp-block-video"><video controls src="https://example.com/video.mp4"></video></figure>
 <!-- /wp:video -->
 HTML;
 
-		$known_ids = [ 1000 => 2000 ];
-		$result    = $this->updater->update_video_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 1000 );
+		$content_after_expected = sprintf( $template, 2000 );
 
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
+		$known_ids = [ 1000 => 2000 ];
+		$result    = $this->updater->update_video_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -695,7 +712,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:video {"id":1000} -->
 <figure class="wp-block-video"><video controls src="https://example.com/video1.mp4"></video></figure>
 <!-- /wp:video -->
@@ -709,19 +726,17 @@ HTML;
 <!-- /wp:video -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"id":1000}', '{"id":1001}' ],
+			[ '{"id":99999}', '{"id":88888}' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_video_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_video_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Videos 1 and 3 should be updated.
-		$this->assertStringContainsString( '"id":99999', $result );
-		$this->assertStringContainsString( '"id":88888', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( '"id":1001', $result );
-
-		// Video 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringNotContainsString( '"id":77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -742,13 +757,17 @@ HTML;
 	 * @covers BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_updates_id(): void {
-		$content = $this->load_fixture( 'file-block' );
+		$content_before = $this->load_fixture( 'file-block' );
+
+		// Validate fixture contains expected ID.
+		$this->assertStringContainsString( '3333', $content_before, 'Fixture file-block.html does not contain expected ID 3333' );
+
+		$content_after_expected = str_replace( '3333', '7777', $content_before );
 
 		$known_ids = [ 3333 => 7777 ];
-		$result    = $this->updater->update_file_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_file_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"id":7777', $result );
-		$this->assertStringNotContainsString( '"id":3333', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -756,17 +775,19 @@ HTML;
 	 * @covers BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_with_mapping_to_different_value_updates(): void {
-		$content = <<<'HTML'
-<!-- wp:file {"id":1000,"href":"https://example.com/document.pdf"} -->
+		$template = <<<'HTML'
+<!-- wp:file {"id":%d,"href":"https://example.com/document.pdf"} -->
 <div class="wp-block-file"><a href="https://example.com/document.pdf">Download</a></div>
 <!-- /wp:file -->
 HTML;
 
-		$known_ids = [ 1000 => 2000 ];
-		$result    = $this->updater->update_file_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 1000 );
+		$content_after_expected = sprintf( $template, 2000 );
 
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
+		$known_ids = [ 1000 => 2000 ];
+		$result    = $this->updater->update_file_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -827,7 +848,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:file {"id":1000,"href":"https://example.com/file1.pdf"} -->
 <div class="wp-block-file"><a href="https://example.com/file1.pdf">file1.pdf</a></div>
 <!-- /wp:file -->
@@ -841,19 +862,17 @@ HTML;
 <!-- /wp:file -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"id":1000,', '{"id":1001,' ],
+			[ '{"id":99999,', '{"id":88888,' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_file_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_file_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Files 1 and 3 should be updated.
-		$this->assertStringContainsString( '"id":99999', $result );
-		$this->assertStringContainsString( '"id":88888', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( '"id":1001', $result );
-
-		// File 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringNotContainsString( '"id":77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -874,15 +893,17 @@ HTML;
 	 * @covers BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_updates_id_in_header_and_class(): void {
-		$content = $this->load_fixture( 'cover-block' );
+		$content_before = $this->load_fixture( 'cover-block' );
+
+		// Validate fixture contains expected ID.
+		$this->assertStringContainsString( '4444', $content_before, 'Fixture cover-block.html does not contain expected ID 4444' );
+
+		$content_after_expected = str_replace( '4444', '8888', $content_before );
 
 		$known_ids = [ 4444 => 8888 ];
-		$result    = $this->updater->update_cover_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_cover_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"id":8888', $result );
-		$this->assertStringContainsString( 'wp-image-8888', $result );
-		$this->assertStringNotContainsString( '"id":4444', $result );
-		$this->assertStringNotContainsString( 'wp-image-4444', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -890,19 +911,19 @@ HTML;
 	 * @covers BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_with_mapping_to_different_value_updates(): void {
-		$content = <<<'HTML'
-<!-- wp:cover {"url":"https://example.com/cover.jpg","id":1000} -->
-<div class="wp-block-cover"><img class="wp-block-cover__image-background wp-image-1000" src="https://example.com/cover.jpg"/></div>
+		$template = <<<'HTML'
+<!-- wp:cover {"url":"https://example.com/cover.jpg","id":%d} -->
+<div class="wp-block-cover"><img class="wp-block-cover__image-background wp-image-%d" src="https://example.com/cover.jpg"/></div>
 <!-- /wp:cover -->
 HTML;
 
-		$known_ids = [ 1000 => 2000 ];
-		$result    = $this->updater->update_cover_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 1000, 1000 );
+		$content_after_expected = sprintf( $template, 2000, 2000 );
 
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
+		$known_ids = [ 1000 => 2000 ];
+		$result    = $this->updater->update_cover_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -963,7 +984,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:cover {"url":"https://example.com/cover1.jpg","id":1000} -->
 <div class="wp-block-cover"><span aria-hidden="true" class="wp-block-cover__background has-background-dim-100 has-background-dim"></span><img class="wp-block-cover__image-background wp-image-1000" alt="" src="https://example.com/cover1.jpg" data-object-fit="cover"/><div class="wp-block-cover__inner-container"><!-- wp:paragraph {"align":"center","placeholder":"Write title…","fontSize":"large"} -->
 <p class="has-text-align-center has-large-font-size"></p>
@@ -983,25 +1004,17 @@ HTML;
 <!-- /wp:cover -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ ',"id":1000}', 'wp-image-1000', ',"id":1001}', 'wp-image-1001' ],
+			[ ',"id":99999}', 'wp-image-99999', ',"id":88888}', 'wp-image-88888' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_cover_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_cover_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Covers 1 and 3 should be updated.
-		$this->assertStringContainsString( '"id":99999', $result );
-		$this->assertStringContainsString( '"id":88888', $result );
-		$this->assertStringNotContainsString( '"id":1000', $result );
-		$this->assertStringNotContainsString( '"id":1001', $result );
-		$this->assertStringContainsString( 'wp-image-99999', $result );
-		$this->assertStringContainsString( 'wp-image-88888', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1001', $result );
-
-		// Cover 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( '"id":2000', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( '"id":77777', $result );
-		$this->assertStringNotContainsString( 'wp-image-77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -1022,15 +1035,17 @@ HTML;
 	 * @covers BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_updates_media_id_and_class(): void {
-		$content = $this->load_fixture( 'media-text-block' );
+		$content_before = $this->load_fixture( 'media-text-block' );
+
+		// Validate fixture contains expected ID.
+		$this->assertStringContainsString( '5555', $content_before, 'Fixture media-text-block.html does not contain expected ID 5555' );
+
+		$content_after_expected = str_replace( '5555', '9555', $content_before );
 
 		$known_ids = [ 5555 => 9555 ];
-		$result    = $this->updater->update_mediatext_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_mediatext_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"mediaId":9555', $result );
-		$this->assertStringContainsString( 'wp-image-9555', $result );
-		$this->assertStringNotContainsString( '"mediaId":5555', $result );
-		$this->assertStringNotContainsString( 'wp-image-5555', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1038,18 +1053,19 @@ HTML;
 	 * @covers BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_with_mapping_to_different_value_updates(): void {
-		$content = <<<'HTML'
-<!-- wp:media-text {"mediaId":1000,"mediaLink":"https://example.com/post/"} -->
-<div class="wp-block-media-text"><figure class="wp-block-media-text__media"><img src="https://example.com/image.jpg" class="wp-image-1000"/></figure></div>
+		$template = <<<'HTML'
+<!-- wp:media-text {"mediaId":%d,"mediaLink":"https://example.com/post/"} -->
+<div class="wp-block-media-text"><figure class="wp-block-media-text__media"><img src="https://example.com/image.jpg" class="wp-image-%d"/></figure></div>
 <!-- /wp:media-text -->
 HTML;
 
-		$known_ids = [ 1000 => 2000 ];
-		$result    = $this->updater->update_mediatext_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 1000, 1000 );
+		$content_after_expected = sprintf( $template, 2000, 2000 );
 
-		$this->assertStringContainsString( '"mediaId":2000', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( '"mediaId":1000', $result );
+		$known_ids = [ 1000 => 2000 ];
+		$result    = $this->updater->update_mediatext_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1110,7 +1126,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:media-text {"mediaId":1000,"mediaLink":"https://example.com/post/"} -->
 <div class="wp-block-media-text"><figure class="wp-block-media-text__media"><img src="https://example.com/media1.jpg" class="wp-image-1000"/></figure></div>
 <!-- /wp:media-text -->
@@ -1124,25 +1140,17 @@ HTML;
 <!-- /wp:media-text -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"mediaId":1000,', 'wp-image-1000', '{"mediaId":1001,', 'wp-image-1001' ],
+			[ '{"mediaId":99999,', 'wp-image-99999', '{"mediaId":88888,', 'wp-image-88888' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_mediatext_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_mediatext_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Media-texts 1 and 3 should be updated.
-		$this->assertStringContainsString( '"mediaId":99999', $result );
-		$this->assertStringContainsString( '"mediaId":88888', $result );
-		$this->assertStringNotContainsString( '"mediaId":1000', $result );
-		$this->assertStringNotContainsString( '"mediaId":1001', $result );
-		$this->assertStringContainsString( 'wp-image-99999', $result );
-		$this->assertStringContainsString( 'wp-image-88888', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1001', $result );
-
-		// Media-text 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( '"mediaId":2000', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( '"mediaId":77777', $result );
-		$this->assertStringNotContainsString( 'wp-image-77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -1163,26 +1171,28 @@ HTML;
 	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_updates_all_ids(): void {
-		$content = $this->load_fixture( 'jetpack-tiled-gallery' );
+		$content_before = $this->load_fixture( 'jetpack-tiled-gallery' );
+
+		// Validate fixture contains expected IDs.
+		$this->assertStringContainsString( '6001', $content_before, 'Fixture jetpack-tiled-gallery.html does not contain expected ID 6001' );
+		$this->assertStringContainsString( '6002', $content_before, 'Fixture jetpack-tiled-gallery.html does not contain expected ID 6002' );
+		$this->assertStringContainsString( '6003', $content_before, 'Fixture jetpack-tiled-gallery.html does not contain expected ID 6003' );
+
+		$content_after_expected = str_replace(
+			[ '6001', '6002', '6003' ],
+			[ '9001', '9002', '9003' ],
+			$content_before
+		);
 
 		$known_ids = [
 			6001 => 9001,
 			6002 => 9002,
 			6003 => 9003,
 		];
-		$result    = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
 
-		// Header IDs array should be updated.
-		$this->assertStringContainsString( '"ids":[9001,9002,9003]', $result );
+		$result = $this->updater->update_jetpacktiledgallery_blocks_ids( $content_before, $known_ids );
 
-		// data-id attributes should be updated.
-		$this->assertStringContainsString( 'data-id="9001"', $result );
-		$this->assertStringContainsString( 'data-id="9002"', $result );
-		$this->assertStringContainsString( 'data-id="9003"', $result );
-
-		// Old IDs should be gone.
-		$this->assertStringNotContainsString( '"ids":[6001,6002,6003]', $result );
-		$this->assertStringNotContainsString( 'data-id="6001"', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1190,7 +1200,7 @@ HTML;
 	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_with_mapping_to_different_values_updates(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:jetpack/tiled-gallery {"ids":[1001,1002,1003]} -->
 <div class="wp-block-jetpack-tiled-gallery">
 <img data-id="1001" src="https://example.com/img1.jpg" class="wp-image-1001"/>
@@ -1200,18 +1210,21 @@ HTML;
 <!-- /wp:jetpack/tiled-gallery -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '1001', '1002', '1003' ],
+			[ '2001', '2002', '2003' ],
+			$content_before
+		);
+
 		$known_ids = [
 			1001 => 2001,
 			1002 => 2002,
 			1003 => 2003,
 		];
-		$result    = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"ids":[2001,2002,2003]', $result );
-		$this->assertStringContainsString( 'data-id="2001"', $result );
-		$this->assertStringContainsString( 'data-id="2002"', $result );
-		$this->assertStringContainsString( 'data-id="2003"', $result );
-		$this->assertStringContainsString( 'wp-image-2001', $result );
+		$result = $this->updater->update_jetpacktiledgallery_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1229,7 +1242,8 @@ HTML;
 			1001 => 1001,
 			1002 => 1002,
 		];
-		$result    = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
+
+		$result = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
 
 		$this->assertEquals( $content, $result );
 	}
@@ -1246,7 +1260,8 @@ HTML;
 HTML;
 
 		$known_ids = [];
-		$result    = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
+
+		$result = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
 
 		$this->assertEquals( $content, $result );
 	}
@@ -1275,7 +1290,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:jetpack/tiled-gallery {"ids":[1000,1001,2000]} -->
 <div><img data-id="1000" src="https://example.com/gallery1.jpg" class="wp-image-1000"/></div>
 <div><img data-id="2000" src="https://not-local-hostname-alias.com/gallery3.jpg" class="wp-image-2000"/></div>
@@ -1283,25 +1298,17 @@ HTML;
 <!-- /wp:jetpack/tiled-gallery -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '"ids":[1000,1001,2000]', 'data-id="1000"', 'wp-image-1000', 'data-id="1001"', 'wp-image-1001' ],
+			[ '"ids":[99999,88888,2000]', 'data-id="99999"', 'wp-image-99999', 'data-id="88888"', 'wp-image-88888' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_jetpacktiledgallery_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Images 1 and 3 should be updated.
-		$this->assertStringContainsString( 'data-id="99999"', $result );
-		$this->assertStringContainsString( 'data-id="88888"', $result );
-		$this->assertStringNotContainsString( 'data-id="1000"', $result );
-		$this->assertStringNotContainsString( 'data-id="1001"', $result );
-		$this->assertStringContainsString( 'wp-image-99999', $result );
-		$this->assertStringContainsString( 'wp-image-88888', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1001', $result );
-
-		// Image 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( 'data-id="2000"', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( 'data-id="77777"', $result );
-		$this->assertStringNotContainsString( 'wp-image-77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -1322,27 +1329,28 @@ HTML;
 	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_updates_all_ids(): void {
-		$content = $this->load_fixture( 'jetpack-slideshow' );
+		$content_before = $this->load_fixture( 'jetpack-slideshow' );
+
+		// Validate fixture contains expected IDs.
+		$this->assertStringContainsString( '7001', $content_before, 'Fixture jetpack-slideshow.html does not contain expected ID 7001' );
+		$this->assertStringContainsString( '7002', $content_before, 'Fixture jetpack-slideshow.html does not contain expected ID 7002' );
+		$this->assertStringContainsString( '7003', $content_before, 'Fixture jetpack-slideshow.html does not contain expected ID 7003' );
+
+		$content_after_expected = str_replace(
+			[ '7001', '7002', '7003' ],
+			[ '9701', '9702', '9703' ],
+			$content_before
+		);
 
 		$known_ids = [
 			7001 => 9701,
 			7002 => 9702,
 			7003 => 9703,
 		];
-		$result    = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids );
 
-		// Header IDs array should be updated.
-		$this->assertStringContainsString( '"ids":[9701,9702,9703]', $result );
+		$result = $this->updater->update_jetpackslideshow_blocks_ids( $content_before, $known_ids );
 
-		// data-id and class attributes should be updated.
-		$this->assertStringContainsString( 'data-id="9701"', $result );
-		$this->assertStringContainsString( 'wp-image-9701', $result );
-		$this->assertStringContainsString( 'data-id="9702"', $result );
-		$this->assertStringContainsString( 'data-id="9703"', $result );
-
-		// Old IDs should be gone.
-		$this->assertStringNotContainsString( 'data-id="7001"', $result );
-		$this->assertStringNotContainsString( 'wp-image-7001', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1350,7 +1358,7 @@ HTML;
 	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_with_mapping_to_different_values_updates(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:jetpack/slideshow {"ids":[1001,1002,1003]} -->
 <div class="wp-block-jetpack-slideshow">
 <img data-id="1001" src="https://example.com/img1.jpg" class="wp-image-1001"/>
@@ -1360,17 +1368,21 @@ HTML;
 <!-- /wp:jetpack/slideshow -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '1001', '1002', '1003' ],
+			[ '2001', '2002', '2003' ],
+			$content_before
+		);
+
 		$known_ids = [
 			1001 => 2001,
 			1002 => 2002,
 			1003 => 2003,
 		];
-		$result    = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"ids":[2001,2002,2003]', $result );
-		$this->assertStringContainsString( 'data-id="2001"', $result );
-		$this->assertStringContainsString( 'data-id="2002"', $result );
-		$this->assertStringContainsString( 'wp-image-2001', $result );
+		$result = $this->updater->update_jetpackslideshow_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1388,7 +1400,8 @@ HTML;
 			1001 => 1001,
 			1002 => 1002,
 		];
-		$result    = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids );
+
+		$result = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids );
 
 		$this->assertEquals( $content, $result );
 	}
@@ -1405,7 +1418,8 @@ HTML;
 HTML;
 
 		$known_ids = [];
-		$result    = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids );
+
+		$result = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids );
 
 		$this->assertEquals( $content, $result );
 	}
@@ -1434,7 +1448,7 @@ HTML;
 			} 
 		);
 
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:jetpack/slideshow {"ids":[1000,1001,2000]} -->
 <div><img data-id="1000" src="https://example.com/slide1.jpg" class="wp-image-1000"/></div>
 <div><img data-id="2000" src="https://not-local-hostname-alias.com/slide3.jpg" class="wp-image-2000"/></div>
@@ -1442,25 +1456,17 @@ HTML;
 <!-- /wp:jetpack/slideshow -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '"ids":[1000,1001,2000]', 'data-id="1000"', 'wp-image-1000', 'data-id="1001"', 'wp-image-1001' ],
+			[ '"ids":[99999,88888,2000]', 'data-id="99999"', 'wp-image-99999', 'data-id="88888"', 'wp-image-88888' ],
+			$content_before
+		);
+
 		$known_ids              = [];
 		$local_hostname_aliases = [ 'example.com' ];
-		$result                 = $this->updater->update_jetpackslideshow_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+		$result                 = $this->updater->update_jetpackslideshow_blocks_ids( $content_before, $known_ids, $local_hostname_aliases );
 
-		// Images 1 and 3 should be updated.
-		$this->assertStringContainsString( 'data-id="99999"', $result );
-		$this->assertStringContainsString( 'data-id="88888"', $result );
-		$this->assertStringNotContainsString( 'data-id="1000"', $result );
-		$this->assertStringNotContainsString( 'data-id="1001"', $result );
-		$this->assertStringContainsString( 'wp-image-99999', $result );
-		$this->assertStringContainsString( 'wp-image-88888', $result );
-		$this->assertStringNotContainsString( 'wp-image-1000', $result );
-		$this->assertStringNotContainsString( 'wp-image-1001', $result );
-
-		// Image 2 should not be updated because it is not a local hostname alias.
-		$this->assertStringContainsString( 'data-id="2000"', $result );
-		$this->assertStringContainsString( 'wp-image-2000', $result );
-		$this->assertStringNotContainsString( 'data-id="77777"', $result );
-		$this->assertStringNotContainsString( 'wp-image-77777', $result );
+		$this->assertEquals( $content_after_expected, $result );
 
 		// Assert that $known_ids gets updated with the new IDs.
 		$this->assertEquals(
@@ -1481,27 +1487,26 @@ HTML;
 	 * @covers BlockUpdater::update_jetpackimagecompare_blocks_ids
 	 */
 	public function jetpack_image_compare_updates_both_ids(): void {
-		$content = $this->load_fixture( 'jetpack-image-compare' );
+		$content_before = $this->load_fixture( 'jetpack-image-compare' );
+
+		// Validate fixture contains expected IDs.
+		$this->assertStringContainsString( '8001', $content_before, 'Fixture jetpack-image-compare.html does not contain expected ID 8001' );
+		$this->assertStringContainsString( '8002', $content_before, 'Fixture jetpack-image-compare.html does not contain expected ID 8002' );
+
+		$content_after_expected = str_replace(
+			[ '8001', '8002' ],
+			[ '9801', '9802' ],
+			$content_before
+		);
 
 		$known_ids = [
 			8001 => 9801,
 			8002 => 9802,
 		];
-		$result    = $this->updater->update_jetpackimagecompare_blocks_ids( $content, $known_ids );
 
-		// Header imageBefore and imageAfter should be updated.
-		$this->assertStringContainsString( '"id":9801', $result );
-		$this->assertStringContainsString( '"id":9802', $result );
+		$result = $this->updater->update_jetpackimagecompare_blocks_ids( $content_before, $known_ids );
 
-		// HTML element id attributes should be updated.
-		$this->assertStringContainsString( 'id="9801"', $result );
-		$this->assertStringContainsString( 'id="9802"', $result );
-
-		// Old IDs should be gone.
-		$this->assertStringNotContainsString( '"id":8001', $result );
-		$this->assertStringNotContainsString( '"id":8002', $result );
-		$this->assertStringNotContainsString( 'id="8001"', $result );
-		$this->assertStringNotContainsString( 'id="8002"', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1509,7 +1514,7 @@ HTML;
 	 * @covers BlockUpdater::update_jetpackimagecompare_blocks_ids
 	 */
 	public function jetpack_image_compare_with_mapping_to_different_values_updates_both_images(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:jetpack/image-compare {"imageBefore":{"id":1001,"url":"https://example.com/before.jpg"},"imageAfter":{"id":1002,"url":"https://example.com/after.jpg"}} -->
 <figure class="wp-block-jetpack-image-compare">
 <img id="1001" src="https://example.com/before.jpg" class="image-compare__image-before wp-image-1001"/>
@@ -1518,21 +1523,20 @@ HTML;
 <!-- /wp:jetpack/image-compare -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '1001', '1002' ],
+			[ '2001', '2002' ],
+			$content_before
+		);
+
 		$known_ids = [
 			1001 => 2001,
 			1002 => 2002,
 		];
-		$result    = $this->updater->update_jetpackimagecompare_blocks_ids( $content, $known_ids );
 
-		// Block header attributes.
-		$this->assertStringContainsString( '"id":2001', $result );
-		$this->assertStringContainsString( '"id":2002', $result );
-		// HTML id attributes.
-		$this->assertStringContainsString( 'id="2001"', $result );
-		$this->assertStringContainsString( 'id="2002"', $result );
-		// HTML class attributes.
-		$this->assertStringContainsString( 'wp-image-2001', $result );
-		$this->assertStringContainsString( 'wp-image-2002', $result );
+		$result = $this->updater->update_jetpackimagecompare_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1550,7 +1554,8 @@ HTML;
 			1001 => 1001,
 			1002 => 1002,
 		];
-		$result    = $this->updater->update_jetpackimagecompare_blocks_ids( $content, $known_ids );
+
+		$result = $this->updater->update_jetpackimagecompare_blocks_ids( $content, $known_ids );
 
 		$this->assertEquals( $content, $result );
 	}
@@ -1567,7 +1572,8 @@ HTML;
 HTML;
 
 		$known_ids = [];
-		$result    = $this->updater->update_jetpackimagecompare_blocks_ids( $content, $known_ids );
+
+		$result = $this->updater->update_jetpackimagecompare_blocks_ids( $content, $known_ids );
 
 		$this->assertEquals( $content, $result );
 	}
@@ -1581,7 +1587,7 @@ HTML;
 	 * @covers BlockUpdater::update_gutenberg_blocks_headers_single_id
 	 */
 	public function update_headers_single_id_updates_specific_block_type(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:image {"id":1111,"sizeSlug":"large"} -->
 <figure>Image</figure>
 <!-- /wp:image -->
@@ -1591,13 +1597,16 @@ HTML;
 <!-- /wp:audio -->
 HTML;
 
-		$id_map = [ 1111 => 9999 ];
-		$result = $this->updater->update_gutenberg_blocks_headers_single_id( 'wp:image', $id_map, $content );
+		$content_after_expected = str_replace(
+			'<!-- wp:image {"id":1111,',
+			'<!-- wp:image {"id":9999,',
+			$content_before
+		);
 
-		// Image block should be updated.
-		$this->assertStringContainsString( '<!-- wp:image {"id":9999', $result );
-		// Audio block should NOT be updated (different block type).
-		$this->assertStringContainsString( '<!-- wp:audio {"id":2222', $result );
+		$id_map = [ 1111 => 9999 ];
+		$result = $this->updater->update_gutenberg_blocks_headers_single_id( 'wp:image', $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1605,16 +1614,18 @@ HTML;
 	 * @covers BlockUpdater::update_gutenberg_blocks_headers_multiple_ids
 	 */
 	public function update_headers_multiple_ids_updates_ids_array(): void {
-		$content = '<!-- wp:jetpack/slideshow {"ids":[1111,2222,3333],"sizeSlug":"large"} -->';
+		$content_before         = '<!-- wp:jetpack/slideshow {"ids":[1111,2222,3333],"sizeSlug":"large"} -->';
+		$content_after_expected = '<!-- wp:jetpack/slideshow {"ids":[9111,9222,9333],"sizeSlug":"large"} -->';
 
 		$id_map = [
 			1111 => 9111,
 			2222 => 9222,
 			3333 => 9333,
 		];
-		$result = $this->updater->update_gutenberg_blocks_headers_multiple_ids( $id_map, $content );
 
-		$this->assertStringContainsString( '"ids":[9111,9222,9333]', $result );
+		$result = $this->updater->update_gutenberg_blocks_headers_multiple_ids( $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1622,7 +1633,8 @@ HTML;
 	 * @covers BlockUpdater::update_gutenberg_blocks_headers_multiple_ids
 	 */
 	public function update_headers_multiple_ids_partial_update(): void {
-		$content = '<!-- wp:jetpack/tiled-gallery {"ids":[1111,2222,3333]} -->';
+		$content_before         = '<!-- wp:jetpack/tiled-gallery {"ids":[1111,2222,3333]} -->';
+		$content_after_expected = '<!-- wp:jetpack/tiled-gallery {"ids":[9111,2222,9333]} -->';
 
 		// Only map some IDs.
 		$id_map = [
@@ -1630,11 +1642,11 @@ HTML;
 			// 2222 not mapped - should stay as is.
 			3333 => 9333,
 		];
-		$result = $this->updater->update_gutenberg_blocks_headers_multiple_ids( $id_map, $content );
 
-		$this->assertStringContainsString( '"ids":[9111,2222,9333]', $result );
+		$result = $this->updater->update_gutenberg_blocks_headers_multiple_ids( $id_map, $content_before );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
-
 
 	// =========================================================================
 	// UPDATE ALL BLOCKS TESTS
@@ -1645,7 +1657,7 @@ HTML;
 	 * @covers BlockUpdater::update_all_blocks_ids
 	 */
 	public function update_all_blocks_ids_processes_all_block_types(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:image {"id":1111} -->
 <figure class="wp-block-image"><img src="img.jpg" class="wp-image-1111"/></figure>
 <!-- /wp:image -->
@@ -1659,16 +1671,21 @@ HTML;
 <!-- /wp:video -->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"id":1111}', 'wp-image-1111', '{"id":2222}', '{"id":3333}' ],
+			[ '{"id":9111}', 'wp-image-9111', '{"id":9222}', '{"id":9333}' ],
+			$content_before
+		);
+
 		$known_ids = [
 			1111 => 9111,
 			2222 => 9222,
 			3333 => 9333,
 		];
-		$result    = $this->updater->update_all_blocks_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"id":9111', $result );
-		$this->assertStringContainsString( '"id":9222', $result );
-		$this->assertStringContainsString( '"id":9333', $result );
+		$result = $this->updater->update_all_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1689,10 +1706,12 @@ HTML;
 	 * @covers BlockUpdater::update_all_blocks_ids
 	 */
 	public function update_all_blocks_returns_unchanged_with_empty_content(): void {
-		$known_ids = [ 1111 => 9999 ];
-		$result    = $this->updater->update_all_blocks_ids( '', $known_ids );
+		$content = '';
 
-		$this->assertEquals( '', $result );
+		$known_ids = [ 1111 => 9999 ];
+		$result    = $this->updater->update_all_blocks_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
 	}
 
 	// =========================================================================
@@ -1703,52 +1722,54 @@ HTML;
 	 * @test
 	 */
 	public function handles_multiple_same_ids_in_content(): void {
-		$content = <<<'HTML'
-<!-- wp:image {"id":12345} -->
-<figure class="wp-block-image"><img src="img1.jpg" class="wp-image-12345"/></figure>
+		$template = <<<'HTML'
+<!-- wp:image {"id":%d} -->
+<figure class="wp-block-image"><img src="img1.jpg" class="wp-image-%d"/></figure>
 <!-- /wp:image -->
 
 <!-- wp:gallery {"linkTo":"none"} -->
-<figure class="wp-block-gallery"><!-- wp:image {"id":12345} -->
-<figure class="wp-block-image"><img src="img1.jpg" class="wp-image-12345"/></figure>
+<figure class="wp-block-gallery"><!-- wp:image {"id":%d} -->
+<figure class="wp-block-image"><img src="img1.jpg" class="wp-image-%d"/></figure>
 <!-- /wp:image --></figure>
 <!-- /wp:gallery -->
 HTML;
 
-		$known_ids = [ 12345 => 99999 ];
-		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
+		$content_before         = sprintf( $template, 12345, 12345, 12345, 12345 );
+		$content_after_expected = sprintf( $template, 99999, 99999, 99999, 99999 );
 
-		// Both occurrences should be updated.
-		$this->assertEquals( 2, substr_count( $result, '"id":99999' ) );
-		$this->assertEquals( 2, substr_count( $result, 'wp-image-99999' ) );
-		$this->assertEquals( 0, substr_count( $result, '"id":12345' ) );
+		$known_ids = [ 12345 => 99999 ];
+		$result    = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
 	 * @test
 	 */
 	public function handles_large_ids(): void {
-		$content = '<!-- wp:image {"id":999999999} --><figure class="wp-block-image"><img src="test.jpg" class="wp-image-999999999"/></figure><!-- /wp:image -->';
+		$template               = '<!-- wp:image {"id":%d} --><figure class="wp-block-image"><img src="test.jpg" class="wp-image-%d"/></figure><!-- /wp:image -->';
+		$content_before         = sprintf( $template, 999999999, 999999999 );
+		$content_after_expected = sprintf( $template, 888888888, 888888888 );
 
 		$known_ids = [ 999999999 => 888888888 ];
-		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
+		$result    = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"id":888888888', $result );
-		$this->assertStringContainsString( 'wp-image-888888888', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
 	 * @test
 	 */
 	public function preserves_other_block_attributes(): void {
+		// Note: This block has no <img> element, so the ID won't be updated (logic requires img for src attribute).
+		// The test validates that other attributes remain intact when block is not updated.
 		$content = '<!-- wp:image {"id":111,"sizeSlug":"large","linkDestination":"media","align":"center"} --><figure></figure><!-- /wp:image -->';
 
 		$known_ids = [ 111 => 999 ];
 		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"sizeSlug":"large"', $result );
-		$this->assertStringContainsString( '"linkDestination":"media"', $result );
-		$this->assertStringContainsString( '"align":"center"', $result );
+		// Content should remain unchanged (no img element to update).
+		$this->assertEquals( $content, $result );
 	}
 
 	/**
@@ -1775,7 +1796,7 @@ HTML;
 		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
 
 		// Should return content unchanged (no mapping available).
-		$this->assertStringContainsString( '"id":111', $result );
+		$this->assertEquals( $content, $result );
 	}
 
 	// =========================================================================
@@ -1787,13 +1808,13 @@ HTML;
 	 * @covers BlockUpdater::update_patterns_wp_block_ids
 	 */
 	public function pattern_wp_block_updates_ref_attribute(): void {
-		$content = '<!-- wp:block {"ref":28} /-->';
+		$content_before         = '<!-- wp:block {"ref":28} /-->';
+		$content_after_expected = '<!-- wp:block {"ref":42} /-->';
 
 		$known_ids = [ 28 => 42 ];
-		$result    = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
+		$result    = $this->updater->update_patterns_wp_block_ids( $content_before, $known_ids );
 
-		$this->assertStringContainsString( '"ref":42', $result );
-		$this->assertStringNotContainsString( '"ref":28', $result );
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1801,7 +1822,7 @@ HTML;
 	 * @covers BlockUpdater::update_patterns_wp_block_ids
 	 */
 	public function pattern_wp_block_handles_multiple_patterns(): void {
-		$content = <<<'HTML'
+		$content_before = <<<'HTML'
 <!-- wp:block {"ref":10} /-->
 
 <p>Some content between patterns</p>
@@ -1811,19 +1832,21 @@ HTML;
 <!-- wp:block {"ref":30} /-->
 HTML;
 
+		$content_after_expected = str_replace(
+			[ '{"ref":10}', '{"ref":20}', '{"ref":30}' ],
+			[ '{"ref":100}', '{"ref":200}', '{"ref":300}' ],
+			$content_before
+		);
+
 		$known_ids = [
 			10 => 100,
 			20 => 200,
 			30 => 300,
 		];
-		$result    = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
 
-		$this->assertStringContainsString( '"ref":100', $result );
-		$this->assertStringContainsString( '"ref":200', $result );
-		$this->assertStringContainsString( '"ref":300', $result );
-		$this->assertStringNotContainsString( '"ref":10}', $result );
-		$this->assertStringNotContainsString( '"ref":20}', $result );
-		$this->assertStringNotContainsString( '"ref":30}', $result );
+		$result = $this->updater->update_patterns_wp_block_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
 	}
 
 	/**
@@ -1837,10 +1860,10 @@ HTML;
 			10 => 100,
 			20 => 200,
 		]; // No mapping for ID 99.
-		$result    = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
+
+		$result = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
 
 		// Should return content unchanged when no mapping exists.
 		$this->assertEquals( $content, $result );
-		$this->assertStringContainsString( '"ref":99', $result );
 	}
 }
