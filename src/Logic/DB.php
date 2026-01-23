@@ -304,7 +304,8 @@ class DB {
 				$limiter['start'] = $limiter['start'] + $limiter['limit'];
 			} else {
 				$db_error = ( '' != $this->wpdb->last_error ) ? 'DB error message: ' . $this->wpdb->last_error : 'No DB error message available -- check error and debug logs.';
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( "Got up to (not including) %s. Failed running SQL '%s'. %s", $limiter['start'], $insert_sql, $db_error ) );
+				// CRITICAL: Batch insert failed. Abort operation and keep backup table intact.
+				throw new \RuntimeException( sprintf( "Failed to copy data at offset %d. SQL: '%s'. %s. Backup table '%s' preserved for recovery.", $limiter['start'], $insert_sql, $db_error, $backup_table ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 			}
 
 			if ( $sleep_between_batches > 0 ) {
@@ -312,7 +313,19 @@ class DB {
 			}
 		}
 
-		// Delete backup table after successful copy.
+		// Verify row counts match before dropping backup.
+		// phpcs:ignore -- query fully sanitized.
+		$backup_count = (int) $this->wpdb->get_var( "SELECT COUNT(*) FROM $backup_table" );
+		// phpcs:ignore -- query fully sanitized.
+		$source_count = (int) $this->wpdb->get_var( "SELECT COUNT(*) FROM $source_table" );
+
+		if ( $backup_count !== $source_count ) {
+			throw new \RuntimeException( sprintf( "Row count mismatch after copy: backup has %d rows, source has %d rows. Backup table '%s' preserved for recovery.", $backup_count, $source_count, $backup_table ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		}
+
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Successfully copied %d rows from backup to source. Verified row counts match.', $source_count ) );
+
+		// Delete backup table only after successful copy and verification.
 		// phpcs:ignore -- query fully sanitized.
 		$drop_result = $this->wpdb->query( "DROP TABLE IF EXISTS $backup_table" );
 		if ( false === $drop_result ) {
