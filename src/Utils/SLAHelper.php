@@ -89,8 +89,15 @@ class SLAHelper {
 		];
 
 		$updated = update_user_meta( $user_id, self::AVATAR_META_KEY, $meta_value );
+		
+		// update_user_meta returns false if value is unchanged (not just on failure).
+		// Verify it's actually an error by checking if the stored value differs.
 		if ( false === $updated ) {
-			return new WP_Error( 'update_failed', sprintf( 'Failed to update avatar for user ID %d.', $user_id ) );
+			$current_value = get_user_meta( $user_id, self::AVATAR_META_KEY, true );
+			if ( $current_value !== $meta_value ) {
+				return new WP_Error( 'update_failed', sprintf( 'Failed to update avatar for user ID %d.', $user_id ) );
+			}
+			// Value is already set correctly - treat as success.
 		}
 
 		return true;
