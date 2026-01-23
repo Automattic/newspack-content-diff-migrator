@@ -142,6 +142,11 @@ class IntegrationTestCase extends WP_UnitTestCase {
 		];
 
 		foreach ( $tables as $suffix => $source_table ) {
+			// Skip if source table doesn't exist in this WordPress installation.
+			if ( ! $source_table ) {
+				continue;
+			}
+
 			$live_table = $this->live_table_prefix . $suffix;
 			$wpdb->query( "DROP TABLE IF EXISTS {$live_table}" ); // phpcs:ignore
 			$wpdb->query( "CREATE TABLE {$live_table} LIKE {$source_table}" ); // phpcs:ignore
