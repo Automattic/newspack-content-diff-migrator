@@ -118,15 +118,15 @@ class DB {
 		// phpcs:ignore -- query fully sanitized.
 		$live_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$live_table'" );
 
-		if ( is_null( $core_table_status ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Core table `%s` does not exist, skipping table.', $core_table ) );
-			continue;
-		}
+			if ( is_null( $core_table_status ) ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Core table `%s` does not exist, skipping table.', $core_table ) );
+				continue;
+			}
 
-		if ( is_null( $live_table_status ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Live table `%s` does not exist, skipping table.', $live_table ) );
-			continue;
-		}
+			if ( is_null( $live_table_status ) ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Live table `%s` does not exist, skipping table.', $live_table ) );
+				continue;
+			}
 
 		// phpcs:ignore -- ignore CamelCase param.
 		$match_test = $live_table_status->Collation === $core_table_status->Collation;
