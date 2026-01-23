@@ -63,9 +63,19 @@
     ]
   },
   "scripts": {
-    "release": [
-      "composer install --no-dev --optimize-autoloader",
-      "composer archive --format=zip --dir=release --file=newspack-content-diff-migrator"
+    "phpcs": "./vendor/bin/phpcs",
+    "phpcbf": "./vendor/bin/phpcbf",
+    "phpunit": "./vendor/bin/phpunit",
+    "code-coverage": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-clover build/logs/clover.xml",
+    "build-release": [
+        "rm -rf vendor",
+        "rm -rf release",
+        "composer install --no-dev --optimize-autoloader",
+        "composer archive --format=zip --dir=release --file=newspack-content-diff-migrator"
+    ],
+    "gh-release": [
+        "@build-release",
+        "./.github/scripts/gh-release.sh"
     ],
     "update-with-nmt-symlinked": [
       "rm -rf  vendor/automattic/newspack-migration-tools",
