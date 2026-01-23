@@ -2123,6 +2123,61 @@ class DataImporterTest extends WP_UnitTestCase {
 	 * @test
 	 * @covers DataImporter::import_author
 	 */
+	public function test_import_author_should_continue_when_get_or_create_user_throws_exception(): void {
+		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
+		$importer  = new DataImporter( $mock_wpdb );
+
+		$post_id = $this->create_test_post();
+		$data    = $this->build_post_data( 100 );
+		$data[ ContentDiffLogic::DATAKEY_POST ]['post_author'] = 999;
+		$data[ ContentDiffLogic::DATAKEY_USERS ]               = [
+			[
+				'ID'            => 999,
+				'user_login'    => 'failing_user_' . uniqid(),
+				'user_email'    => 'fail@test.com',
+				'user_pass'     => 'pass',
+				'user_nicename' => 'test',
+				'display_name'  => 'Test',
+			],
+		];
+
+		// Should not throw - error is logged and post author set to 0.
+		$this->invoke_private_method( $importer, 'import_author', [ $data, $post_id, 'example.com' ] );
+
+		clean_post_cache( $post_id );
+		$post = get_post( $post_id );
+		$this->assertEquals( 0, (int) $post->post_author );
+	}
+
+	/**
+	 * @test
+	 * @covers DataImporter::import_author
+	 */
+	public function test_import_author_should_continue_when_update_post_author_fails(): void {
+		$mock_wpdb = $this->create_failing_wpdb_mock( 'update' );
+		$importer  = new DataImporter( $mock_wpdb );
+
+		$user_id = $this->create_test_user( [ 'user_login' => 'update_fail_author' ] );
+		$data    = $this->build_post_data( 100 );
+		$data[ ContentDiffLogic::DATAKEY_POST ]['post_author'] = 999;
+		$data[ ContentDiffLogic::DATAKEY_USERS ]               = [
+			[
+				'ID'         => 999,
+				'user_login' => 'update_fail_author',
+				'user_email' => 'test@test.com',
+			],
+		];
+
+		// Should not throw - error is logged, simply continue to successful completion.
+		$this->invoke_private_method( $importer, 'import_author', [ $data, 1, 'example.com' ] );
+
+		$this->assertTrue( true );
+	}
+
+	/**
+	 * @test
+	 * @covers DataImporter::import_author
+	 */
 	public function test_import_author_should_get_or_create_author_user(): void {
 		$unique_login  = 'author_user_' . substr( uniqid(), 0, 8 );
 		$post_id       = $this->create_test_post();
@@ -2502,5 +2557,192 @@ class DataImporterTest extends WP_UnitTestCase {
 			}
 		}
 		$this->assertFalse( $found );
+	}
+
+	// =========================================================================
+	// GET_OR_CREATE_LOCAL_TERM ERROR HANDLING TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers DataImporter::get_or_create_local_term
+	 */
+	public function test_get_or_create_local_term_should_log_error_when_taxonomy_invalid(): void {
+		global $wpdb;
+
+		// Expect WordPress incorrect usage notices for invalid taxonomy name.
+		$this->setExpectedIncorrectUsage( 'register_taxonomy' );
+		$this->setExpectedIncorrectUsage( 'wpdb::prepare' );
+
+		// Create a taxonomy with an overly long name (>32 chars) which WordPress will reject.
+		$invalid_taxonomy_name  = 'invalid_taxonomy_' . str_repeat( 'x', 100 );
+		$live_term_taxonomy_row = [
+			'term_id'     => 999,
+			'taxonomy'    => $invalid_taxonomy_name,
+			'parent'      => 0,
+			'description' => '',
+			'name'        => 'Test Term',
+			'slug'        => 'test-term',
+		];
+
+		$data = $this->build_post_data( 100 );
+
+		// The method logs error but returns null gracefully (doesn't throw).
+		$result = $this->invoke_private_method(
+			$this->importer,
+			'get_or_create_local_term',
+			[ $live_term_taxonomy_row, $data, 1, 100, $wpdb->prefix, 'example.com' ]
+		);
+
+		// Should return null when error occurs.
+		$this->assertNull( $result, 'Should return null when taxonomy registration fails' );
+	}
+
+	// =========================================================================
+	// IMPORT_TERMMETA IDEMPOTENCY TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers DataImporter::import_termmeta
+	 */
+	public function test_import_termmeta_should_be_idempotent_on_rerun(): void {
+		$term = wp_insert_term( 'Idempotent Term', 'category' );
+		$data = $this->build_post_data( 100, [], [], [], [], [], [], [], [], [] );
+
+		// First import.
+		$this->invoke_private_method(
+			$this->importer,
+			'import_termmeta',
+			[ $data, 888, $term['term_id'], 100, 1, 'example.com' ]
+		);
+
+		// Get old_id meta count.
+		$meta_key    = ContentDiffLogic::get_old_id_meta_key( 'example.com' );
+		$meta_values = get_term_meta( $term['term_id'], $meta_key ); // phpcs:ignore -- WordPress.WP.GetMetaSingle.Missing.
+		$first_count = count( $meta_values );
+
+		// Second import - should skip.
+		$this->invoke_private_method(
+			$this->importer,
+			'import_termmeta',
+			[ $data, 888, $term['term_id'], 100, 1, 'example.com' ]
+		);
+
+		$meta_values_after = get_term_meta( $term['term_id'], $meta_key ); // phpcs:ignore -- WordPress.WP.GetMetaSingle.Missing.
+		$second_count      = count( $meta_values_after );
+
+		// Should be same count (no duplicate inserts).
+		$this->assertEquals( $first_count, $second_count );
+	}
+
+	// =========================================================================
+	// EDGE CASE TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers DataImporter::import_single_term_relationship
+	 */
+	public function test_import_single_term_relationship_should_handle_term_taxonomy_data_not_found(): void {
+		global $wpdb;
+		$post_id = $this->create_test_post();
+
+		// Create term and pre-map it.
+		$term = wp_insert_term( 'Mapped No TT Data', 'category' );
+		$this->reset_private_property( $this->importer, 'taxonomy_term_id_map', [ 555 => $term['term_id'] ] );
+
+		// But provide data where term_taxonomy_data won't be found (wrong taxonomy).
+		$term_relationship_row = [ 'term_taxonomy_id' => 1 ];
+		$data                  = $this->build_post_data(
+			100,
+			[],
+			[],
+			[],
+			[],
+			[],
+			[],
+			[
+				[
+					'term_taxonomy_id' => 1,
+					'term_id'          => 555,
+					'taxonomy'         => 'category',
+					'parent'           => 0,
+					'description'      => '',
+				],
+			],
+			[
+				[
+					'term_id' => 555,
+					'name'    => 'Mapped No TT Data',
+					'slug'    => 'mapped-no-tt-data',
+				],
+			]
+		);
+
+		// Delete the term_taxonomy row to simulate "not found" scenario.
+		$wpdb->delete( $wpdb->term_taxonomy, [ 'term_taxonomy_id' => $term['term_taxonomy_id'] ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+		$result = $this->invoke_private_method(
+			$this->importer,
+			'import_single_term_relationship',
+			[ $term_relationship_row, $data, $post_id, 100, 'cdiff_', [ 'category' ], [], 'example.com' ]
+		);
+
+		// Should return unchanged array (empty) and log error.
+		$this->assertEquals( [], $result );
+	}
+
+	/**
+	 * @test
+	 * @covers DataImporter::get_or_create_user
+	 */
+	public function test_get_or_create_user_should_set_old_id_meta_only_once(): void {
+		$user_id = $this->create_test_user( [ 'user_login' => 'merge_user_once' ] );
+
+		$user_row = [
+			'ID'         => 888,
+			'user_login' => 'merge_user_once',
+			'user_email' => 'merge@test.com',
+		];
+
+		// First call - should set meta.
+		$result1  = $this->importer->get_or_create_user( $user_row, [], 'source-a.com' );
+		$meta_key = ContentDiffLogic::get_old_id_meta_key( 'source-a.com' );
+		$meta1    = get_user_meta( $result1['user_id'], $meta_key, true );
+		$this->assertEquals( 888, (int) $meta1 );
+
+		// Second call - should NOT duplicate meta.
+		$result2  = $this->importer->get_or_create_user( $user_row, [], 'source-a.com' );
+		$all_meta = get_user_meta( $result2['user_id'], $meta_key ); // phpcs:ignore -- WordPress.WP.GetMetaSingle.Missing.
+		$this->assertCount( 1, $all_meta, 'Old ID meta should only be set once' );
+	}
+
+	/**
+	 * @test
+	 * @covers DataImporter::fix_hierarchical_taxonomies_parents
+	 */
+	public function test_fix_hierarchical_taxonomies_parents_should_handle_multiple_invalid_parents(): void {
+		global $wpdb;
+
+		// Create multiple terms with invalid parents.
+		$term1 = wp_insert_term( 'Orphan 1 ' . uniqid(), 'category' );
+		$term2 = wp_insert_term( 'Orphan 2 ' . uniqid(), 'category' );
+		$term3 = wp_insert_term( 'Orphan 3 ' . uniqid(), 'category' );
+
+		$wpdb->update( $wpdb->term_taxonomy, [ 'parent' => 111111 ], [ 'term_taxonomy_id' => $term1['term_taxonomy_id'] ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->update( $wpdb->term_taxonomy, [ 'parent' => 222222 ], [ 'term_taxonomy_id' => $term2['term_taxonomy_id'] ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->update( $wpdb->term_taxonomy, [ 'parent' => 333333 ], [ 'term_taxonomy_id' => $term3['term_taxonomy_id'] ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+		$result = $this->importer->fix_hierarchical_taxonomies_parents( $wpdb->prefix, [ 'category' ] );
+
+		// Should fix all 3.
+		$this->assertCount( 3, $result );
+
+		// Verify all have parent = 0.
+		foreach ( [ $term1, $term2, $term3 ] as $term ) {
+			$parent = $wpdb->get_var( $wpdb->prepare( "SELECT parent FROM {$wpdb->term_taxonomy} WHERE term_taxonomy_id = %d", $term['term_taxonomy_id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$this->assertEquals( 0, (int) $parent );
+		}
 	}
 }

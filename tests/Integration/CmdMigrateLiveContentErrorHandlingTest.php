@@ -9,6 +9,7 @@ namespace Newspack\ContentDiffMigrator\Tests\Integration;
 
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
 use Newspack\ContentDiffMigrator\Logic\RunState;
+use Newspack\ContentDiffMigrator\Utils\Logger;
 
 /**
  * Integration test class for command cmd_migrate_live_content, error handling.
@@ -219,5 +220,70 @@ class CmdMigrateLiveContentErrorHandlingTest extends IntegrationTestCase {
 		$new_post_id = $this->logic->get_current_post_id_by_old_id( 12006, $this->source_hostname );
 		$categories  = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
 		$this->assertContains( 'Minimal Term', $categories, 'Term should be imported.' );
+	}
+
+	/**
+	 * Tests that migration handles empty taxonomy list gracefully.
+	 *
+	 * @group error-handling
+	 */
+	public function test_should_warn_when_no_taxonomies_to_migrate(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 12007 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 12202, 'name' => 'Test Term', 'slug' => 'test-term', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 12202, 'term_id' => 12202, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 12007, 'term_taxonomy_id' => 12202 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+
+		// Migrate with empty taxonomy list - should complete without throwing.
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => '' ] );
+
+		// Verify post was migrated (even though no taxonomies were).
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 12007, $this->source_hostname );
+		$this->assertNotNull( $new_post_id, 'Post should be migrated.' );
+	}
+
+	/**
+	 * Tests that migration errors when manifest not found.
+	 *
+	 * @group error-handling
+	 */
+	public function test_should_handle_manifest_not_found_error(): void {
+		global $wpdb;
+
+		// Do NOT run search command (no manifest will be created).
+		$post = $this->create_post_fixture(
+			[
+				'ID'         => 12008,
+				'post_title' => 'Test Post',
+			] 
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'Can not find manifest file' );
+
+		$this->run_migrate_command();
+	}
+
+	/**
+	 * Tests that migration continues when no new posts are found.
+	 *
+	 * @group error-handling
+	 */
+	public function test_should_continue_migration_when_no_new_posts_found(): void {
+		$this->run_search_command(); // Search with empty live DB.
+
+		// Should not throw, migration should complete gracefully with no posts.
+		$this->run_migrate_command();
+
+		// Verify no posts were found to migrate (empty new_ids).
+		$new_ids = $this->run_state->get_new_ids();
+		$this->assertEmpty( $new_ids, 'New IDs should be empty when live DB has no posts.' );
 	}
 }

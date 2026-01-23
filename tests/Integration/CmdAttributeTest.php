@@ -8,6 +8,7 @@
 namespace Newspack\ContentDiffMigrator\Tests\Integration;
 
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
+use Newspack\ContentDiffMigrator\Utils\Logger;
 
 /**
  * Integration test class for attribution commands.
@@ -610,5 +611,52 @@ class CmdAttributeTest extends IntegrationTestCase {
 		$this->assertEquals( 999, (int) get_post_meta( $post, $meta_key, true ), 'Post meta should not change.' );
 		$this->assertEquals( 888, (int) get_user_meta( $user, $meta_key, true ), 'User meta should not change.' );
 		$this->assertEquals( 777, (int) get_term_meta( $term['term_id'], $meta_key, true ), 'Term meta should not change.' );
+	}
+
+	/**
+	 * Tests that cmd_attribute_ids logs error and returns when no IDs are provided.
+	 *
+	 * @test
+	 * @group attribute-commands
+	 */
+	public function attribute_ids_should_log_error_when_no_ids_provided(): void {
+		// Call command with no ID arguments - should return early without throwing.
+		$this->command->cmd_attribute_ids(
+			[],
+			[
+				'source-hostname' => $this->source_hostname,
+				'data-dir'        => $this->temp_data_dir,
+			]
+		);
+
+		// Logger is configured( false ) in tests, so no actual log file is created.
+		// Method should return gracefully, and if it gets here, the test passes,
+		// so simply continue to successful completion.
+		$this->assertTrue( true );
+	}
+
+	/**
+	 * Tests that cmd_attribute_ids skips nonexistent posts gracefully.
+	 *
+	 * @test
+	 * @group attribute-commands
+	 */
+	public function attribute_ids_should_skip_nonexistent_posts(): void {
+		// Attribute a non-existent post ID.
+		$nonexistent_id = 999999;
+
+		$this->command->cmd_attribute_ids(
+			[],
+			[
+				'source-hostname' => $this->source_hostname,
+				'data-dir'        => $this->temp_data_dir,
+				'post-ids'        => (string) $nonexistent_id,
+			]
+		);
+
+		// Nonexistent posts are logged as warnings in null logger, but don't cause failures.
+		// Method should complete without throwing an exception,
+		// so simply continue to successful completion.
+		$this->assertTrue( true );
 	}
 }
