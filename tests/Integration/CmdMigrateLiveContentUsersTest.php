@@ -104,7 +104,7 @@ class CmdMigrateLiveContentUsersTest extends IntegrationTestCase {
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
 		// First, run attribution to assign old_id meta to existing local content.
-		$this->run_attribute_command();
+		$this->run_attribute_match_local_to_live_tables();
 
 		// Verify old_id meta was set on existing user by attribution.
 		$meta_key = $this->get_old_id_meta_key();

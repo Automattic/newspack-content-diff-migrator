@@ -379,7 +379,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	 *
 	 * @param array $assoc_args Associative arguments for the command.
 	 */
-	protected function run_attribute_command( array $assoc_args = [] ): void {
+	protected function run_attribute_match_local_to_live_tables( array $assoc_args = [] ): void {
 		$default_args = [
 			'live-table-prefix' => $this->live_table_prefix,
 			'source-hostname'   => $this->source_hostname,
