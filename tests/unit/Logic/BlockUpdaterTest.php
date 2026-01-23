@@ -65,7 +65,7 @@ class BlockUpdaterTest extends TestCase {
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::set_attachment_url_resolver
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::__construct
 	 */
 	public function attachment_url_resolver_can_be_injected(): void {
 
@@ -99,7 +99,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_updates_id_in_header_and_class(): void {
 		$template = <<<'HTML'
@@ -119,7 +119,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_returns_unchanged_when_id_not_in_mapping(): void {
 		$content = <<<'HTML'
@@ -136,7 +136,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_blocks_nested_in_gallery_get_updated(): void {
 		$content_before = $this->load_fixture( 'image-blocks' );
@@ -165,7 +165,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_wrapped_in_group_gets_updated(): void {
 		$template = <<<'HTML'
@@ -187,7 +187,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_element_attribute
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_element_attribute
 	 */
 	public function update_image_element_attribute_updates_data_id(): void {
 		$content_before         = '<img src="test.jpg" data-id="11111" class="wp-image-11111"/>';
@@ -201,7 +201,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_element_class_attribute
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_updates_wp_image_class(): void {
 		$content_before         = '<img src="test.jpg" class="wp-image-11111"/>';
@@ -215,7 +215,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_element_class_attribute
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_preserves_other_classes(): void {
 		$content_before         = '<img src="test.jpg" class="aligncenter wp-image-11111 size-large"/>';
@@ -229,7 +229,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_element_class_attribute
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_handles_class_at_start(): void {
 		$content_before         = '<img src="test.jpg" class="wp-image-11111 otherclass"/>';
@@ -243,7 +243,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_element_class_attribute
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_element_class_attribute
 	 */
 	public function update_image_element_class_handles_class_at_end(): void {
 		$content_before         = '<img src="test.jpg" class="otherclass wp-image-11111"/>';
@@ -257,7 +257,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_with_mapping_to_different_value_updates(): void {
 		$template = <<<'HTML'
@@ -277,7 +277,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_with_mapping_to_same_value_skips_update(): void {
 		$content = <<<'HTML'
@@ -294,7 +294,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -311,7 +311,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_without_id_attribute_is_skipped(): void {
 		$content = <<<'HTML'
@@ -328,7 +328,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function image_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -392,7 +392,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_image_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
 	 */
 	public function core_gallery_block_updates_all_ids_using_update_image_blocks_ids(): void {
 		$content_before = $this->load_fixture( 'core-gallery-block' );
@@ -425,7 +425,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_updates_id(): void {
 		$content_before = $this->load_fixture( 'audio-block' );
@@ -443,7 +443,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_multiple_blocks_updated(): void {
 		$content_before = <<<'HTML'
@@ -473,7 +473,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_with_mapping_to_different_value_updates(): void {
 		$template = <<<'HTML'
@@ -493,7 +493,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_with_mapping_to_same_value_skips_update(): void {
 		$content = <<<'HTML'
@@ -510,7 +510,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -527,7 +527,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_audio_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_audio_blocks_ids
 	 */
 	public function audio_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -591,7 +591,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_updates_id(): void {
 		$content_before = $this->load_fixture( 'video-block' );
@@ -609,7 +609,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_does_not_update_other_block_types(): void {
 		$content_before = <<<'HTML'
@@ -636,7 +636,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_with_mapping_to_different_value_updates(): void {
 		$template = <<<'HTML'
@@ -656,7 +656,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_with_mapping_to_same_value_skips_update(): void {
 		$content = <<<'HTML'
@@ -673,7 +673,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -690,7 +690,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_video_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_video_blocks_ids
 	 */
 	public function video_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -754,7 +754,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_updates_id(): void {
 		$content_before = $this->load_fixture( 'file-block' );
@@ -772,7 +772,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_with_mapping_to_different_value_updates(): void {
 		$template = <<<'HTML'
@@ -792,7 +792,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_with_mapping_to_same_value_skips_update(): void {
 		$content = <<<'HTML'
@@ -809,7 +809,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -826,7 +826,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_file_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_file_blocks_ids
 	 */
 	public function file_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -890,7 +890,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_updates_id_in_header_and_class(): void {
 		$content_before = $this->load_fixture( 'cover-block' );
@@ -908,7 +908,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_with_mapping_to_different_value_updates(): void {
 		$template = <<<'HTML'
@@ -928,7 +928,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_with_mapping_to_same_value_skips_update(): void {
 		$content = <<<'HTML'
@@ -945,7 +945,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -962,7 +962,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_cover_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_cover_blocks_ids
 	 */
 	public function cover_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -1032,7 +1032,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_updates_media_id_and_class(): void {
 		$content_before = $this->load_fixture( 'media-text-block' );
@@ -1050,7 +1050,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_with_mapping_to_different_value_updates(): void {
 		$template = <<<'HTML'
@@ -1070,7 +1070,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_with_mapping_to_same_value_skips_update(): void {
 		$content = <<<'HTML'
@@ -1087,7 +1087,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -1104,7 +1104,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_mediatext_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_mediatext_blocks_ids
 	 */
 	public function media_text_block_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -1168,7 +1168,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_updates_all_ids(): void {
 		$content_before = $this->load_fixture( 'jetpack-tiled-gallery' );
@@ -1197,7 +1197,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_with_mapping_to_different_values_updates(): void {
 		$content_before = <<<'HTML'
@@ -1229,7 +1229,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_with_mapping_to_same_values_skips_update(): void {
 		$content = <<<'HTML'
@@ -1250,7 +1250,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -1268,7 +1268,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpacktiledgallery_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -1326,7 +1326,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_updates_all_ids(): void {
 		$content_before = $this->load_fixture( 'jetpack-slideshow' );
@@ -1355,7 +1355,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_with_mapping_to_different_values_updates(): void {
 		$content_before = <<<'HTML'
@@ -1387,7 +1387,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_with_mapping_to_same_values_skips_update(): void {
 		$content = <<<'HTML'
@@ -1408,7 +1408,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -1426,7 +1426,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackslideshow_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackslideshow_blocks_ids
 	 */
 	public function jetpack_slideshow_resolver_gets_used_when_no_known_id_is_found_and_known_ids_gets_updated(): void {
 
@@ -1484,7 +1484,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackimagecompare_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackimagecompare_blocks_ids
 	 */
 	public function jetpack_image_compare_updates_both_ids(): void {
 		$content_before = $this->load_fixture( 'jetpack-image-compare' );
@@ -1511,7 +1511,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackimagecompare_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackimagecompare_blocks_ids
 	 */
 	public function jetpack_image_compare_with_mapping_to_different_values_updates_both_images(): void {
 		$content_before = <<<'HTML'
@@ -1541,7 +1541,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackimagecompare_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackimagecompare_blocks_ids
 	 */
 	public function jetpack_image_compare_with_mapping_to_same_values_skips_update(): void {
 		$content = <<<'HTML'
@@ -1562,7 +1562,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_jetpackimagecompare_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpackimagecompare_blocks_ids
 	 */
 	public function jetpack_image_compare_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -1584,7 +1584,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_gutenberg_blocks_headers_single_id
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gutenberg_blocks_headers_single_id
 	 */
 	public function update_headers_single_id_updates_specific_block_type(): void {
 		$content_before = <<<'HTML'
@@ -1611,7 +1611,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_gutenberg_blocks_headers_multiple_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gutenberg_blocks_headers_multiple_ids
 	 */
 	public function update_headers_multiple_ids_updates_ids_array(): void {
 		$content_before         = '<!-- wp:jetpack/slideshow {"ids":[1111,2222,3333],"sizeSlug":"large"} -->';
@@ -1630,7 +1630,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_gutenberg_blocks_headers_multiple_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gutenberg_blocks_headers_multiple_ids
 	 */
 	public function update_headers_multiple_ids_partial_update(): void {
 		$content_before         = '<!-- wp:jetpack/tiled-gallery {"ids":[1111,2222,3333]} -->';
@@ -1654,7 +1654,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_all_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_all_blocks_ids
 	 */
 	public function update_all_blocks_ids_processes_all_block_types(): void {
 		$content_before = <<<'HTML'
@@ -1690,7 +1690,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_all_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_all_blocks_ids
 	 */
 	public function update_all_blocks_returns_unchanged_when_no_blocks(): void {
 		$content = '<p>Just some plain text without any blocks.</p>';
@@ -1703,7 +1703,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_all_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_all_blocks_ids
 	 */
 	public function update_all_blocks_returns_unchanged_with_empty_content(): void {
 		$content = '';
@@ -1805,7 +1805,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_patterns_wp_block_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_patterns_wp_block_ids
 	 */
 	public function pattern_wp_block_updates_ref_attribute(): void {
 		$content_before         = '<!-- wp:block {"ref":28} /-->';
@@ -1819,7 +1819,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_patterns_wp_block_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_patterns_wp_block_ids
 	 */
 	public function pattern_wp_block_handles_multiple_patterns(): void {
 		$content_before = <<<'HTML'
@@ -1851,7 +1851,7 @@ HTML;
 
 	/**
 	 * @test
-	 * @covers BlockUpdater::update_patterns_wp_block_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_patterns_wp_block_ids
 	 */
 	public function pattern_wp_block_preserves_content_when_no_mapping(): void {
 		$content = '<!-- wp:block {"ref":99} /-->';

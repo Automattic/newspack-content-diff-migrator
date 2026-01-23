@@ -106,7 +106,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::__construct
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::__construct
 	 */
 	public function test_constructor_should_create_directory_if_not_exists(): void {
 		$new_dir   = $this->temp_dir . '/new-run-state';
@@ -117,7 +117,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::__construct
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::__construct
 	 */
 	public function test_constructor_should_create_nested_directory_recursively(): void {
 		$nested_dir = $this->temp_dir . '/a/b/c/run-state';
@@ -128,7 +128,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::__construct
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::__construct
 	 */
 	public function test_constructor_should_trim_trailing_slash(): void {
 		$dir_with_slash = $this->temp_dir . '/trimmed/';
@@ -145,7 +145,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_file_path
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_file_path
 	 */
 	public function test_get_file_path_should_return_correct_full_path(): void {
 		$result = $this->invoke_private_method( $this->run_state, 'get_file_path', [ 'manifest.json' ] );
@@ -155,7 +155,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::read_json
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::read_json
 	 */
 	public function test_read_json_should_return_null_for_nonexistent_file(): void {
 		$result = $this->invoke_private_method( $this->run_state, 'read_json', [ 'nonexistent.json' ] );
@@ -165,7 +165,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::read_json
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::read_json
 	 */
 	public function test_read_json_should_return_null_for_invalid_json(): void {
 		$file_path = $this->temp_dir . '/run-state/invalid.json';
@@ -178,7 +178,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::read_json
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::read_json
 	 */
 	public function test_read_json_should_return_null_for_non_array_json(): void {
 		$file_path = $this->temp_dir . '/run-state/string.json';
@@ -191,7 +191,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::read_json
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::read_json
 	 */
 	public function test_read_json_should_return_array_for_valid_json(): void {
 		$data      = [
@@ -208,7 +208,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_json
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_json
 	 */
 	public function test_write_json_should_create_file_with_data(): void {
 		$data = [ 'test' => 'data' ];
@@ -224,7 +224,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_json
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_json
 	 */
 	public function test_write_json_should_overwrite_existing_file(): void {
 		$file_path = $this->temp_dir . '/run-state/overwrite.json';
@@ -239,7 +239,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::read_jsonl
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::read_jsonl
 	 */
 	public function test_read_jsonl_should_return_empty_array_for_nonexistent_file(): void {
 		$result = $this->invoke_private_method( $this->run_state, 'read_jsonl', [ 'nonexistent.jsonl' ] );
@@ -249,7 +249,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::read_jsonl
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::read_jsonl
 	 */
 	public function test_read_jsonl_should_skip_empty_and_invalid_lines(): void {
 		$file_path = $this->temp_dir . '/run-state/mixed.jsonl';
@@ -268,7 +268,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::append_jsonl
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::append_jsonl
 	 */
 	public function test_append_jsonl_should_append_line_with_newline(): void {
 		$file_path = $this->temp_dir . '/run-state/append.jsonl';
@@ -290,7 +290,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_new_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_new_ids
 	 */
 	public function test_write_new_ids_should_write_array_of_integers(): void {
 		$ids = [ 1, 2, 3, 4, 5 ];
@@ -303,7 +303,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_new_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_new_ids
 	 */
 	public function test_get_new_ids_should_return_null_if_file_not_exists(): void {
 		// Use a fresh RunState with no files.
@@ -318,7 +318,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_new_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_new_ids
 	 */
 	public function test_get_new_ids_should_return_empty_array_for_empty_json_array(): void {
 		$this->run_state->write_new_ids( [] );
@@ -330,7 +330,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_new_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_new_ids
 	 */
 	public function test_get_new_ids_should_convert_string_ids_to_integers(): void {
 		// Write file with string numbers (simulating JSON decode behavior).
@@ -344,8 +344,8 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_new_ids
-	 * @covers RunState::get_new_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_new_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_new_ids
 	 */
 	public function test_new_ids_roundtrip(): void {
 		$ids = [ 100, 200, 300 ];
@@ -362,7 +362,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_modified_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_modified_ids
 	 */
 	public function test_write_modified_ids_should_write_array_of_id_pairs(): void {
 		$modified_ids = [
@@ -384,7 +384,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_modified_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_modified_ids_map
 	 */
 	public function test_get_modified_ids_map_should_return_null_if_file_not_exists(): void {
 		$empty_dir = $this->temp_dir . '/empty3';
@@ -398,7 +398,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_modified_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_modified_ids_map
 	 */
 	public function test_get_modified_ids_map_should_return_empty_array_for_empty_data(): void {
 		$this->run_state->write_modified_ids( [] );
@@ -410,7 +410,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_modified_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_modified_ids_map
 	 */
 	public function test_get_modified_ids_map_should_return_live_to_local_map(): void {
 		$modified_ids = [
@@ -440,7 +440,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::append_deleted_modified_id
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::append_deleted_modified_id
 	 */
 	public function test_append_deleted_modified_id_should_append_to_file(): void {
 		$result1 = $this->run_state->append_deleted_modified_id(
@@ -463,7 +463,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_deleted_modified_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_deleted_modified_ids_map
 	 */
 	public function test_get_deleted_modified_ids_map_should_return_empty_array_if_no_file(): void {
 		$empty_dir = $this->temp_dir . '/empty5';
@@ -477,7 +477,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_deleted_modified_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_deleted_modified_ids_map
 	 */
 	public function test_get_deleted_modified_ids_map_should_return_correct_map(): void {
 		$this->run_state->append_deleted_modified_id(
@@ -504,7 +504,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_deleted_modified_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_deleted_modified_ids_map
 	 */
 	public function test_get_deleted_modified_ids_map_should_cast_to_integers(): void {
 		// Write with string IDs.
@@ -523,7 +523,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::append_imported_post
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::append_imported_post
 	 */
 	public function test_append_imported_post_should_append_to_file(): void {
 		$result = $this->run_state->append_imported_post(
@@ -540,7 +540,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_imported_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_imported_post_ids_map
 	 */
 	public function test_get_imported_post_ids_map_should_return_empty_array_if_no_file(): void {
 		$empty_dir = $this->temp_dir . '/empty7';
@@ -554,7 +554,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_imported_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_imported_post_ids_map
 	 */
 	public function test_get_imported_post_ids_map_should_return_old_to_new_map(): void {
 		$this->run_state->append_imported_post(
@@ -583,7 +583,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_imported_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_imported_post_ids_map
 	 */
 	public function test_get_imported_post_ids_map_should_cast_to_integers(): void {
 		$file_path = $this->temp_dir . '/run-state/' . RunState::FILE_IMPORTED_POSTS;
@@ -601,7 +601,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::append_updated_parent
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::append_updated_parent
 	 */
 	public function test_append_updated_parent_should_append_to_file(): void {
 		$result = $this->run_state->append_updated_parent(
@@ -619,7 +619,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_parents_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_parents_post_ids_map
 	 */
 	public function test_get_updated_parents_post_ids_map_should_return_empty_array_if_no_file(): void {
 		$empty_dir = $this->temp_dir . '/empty9';
@@ -633,7 +633,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_parents_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_parents_post_ids_map
 	 */
 	public function test_get_updated_parents_post_ids_map_should_return_correct_map(): void {
 		$this->run_state->append_updated_parent(
@@ -664,7 +664,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_parents_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_parents_post_ids_map
 	 */
 	public function test_get_updated_parents_post_ids_map_should_cast_to_integers(): void {
 		$file_path = $this->temp_dir . '/run-state/' . RunState::FILE_UPDATED_PARENTS;
@@ -682,7 +682,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::append_updated_featured_image_post
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::append_updated_featured_image_post
 	 */
 	public function test_append_updated_featured_image_post_should_append_to_file(): void {
 		$result = $this->run_state->append_updated_featured_image_post(
@@ -698,7 +698,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_featured_image_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_featured_image_post_ids_map
 	 */
 	public function test_get_updated_featured_image_post_ids_map_should_return_empty_array_if_no_file(): void {
 		$empty_dir = $this->temp_dir . '/empty11';
@@ -712,7 +712,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_featured_image_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_featured_image_post_ids_map
 	 */
 	public function test_get_updated_featured_image_post_ids_map_should_return_correct_map(): void {
 		$this->run_state->append_updated_featured_image_post(
@@ -739,7 +739,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_featured_image_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_featured_image_post_ids_map
 	 */
 	public function test_get_updated_featured_image_post_ids_map_should_skip_entries_missing_keys(): void {
 		$file_path = $this->temp_dir . '/run-state/' . RunState::FILE_UPDATED_FEATURED;
@@ -757,7 +757,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_featured_image_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_featured_image_post_ids_map
 	 */
 	public function test_get_updated_featured_image_post_ids_map_should_cast_to_integers(): void {
 		$file_path = $this->temp_dir . '/run-state/' . RunState::FILE_UPDATED_FEATURED;
@@ -775,7 +775,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::append_updated_block_post
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::append_updated_block_post
 	 */
 	public function test_append_updated_block_post_should_append_to_file(): void {
 		$result = $this->run_state->append_updated_block_post(
@@ -791,7 +791,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_block_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_block_post_ids_map
 	 */
 	public function test_get_updated_block_post_ids_map_should_return_empty_array_if_no_file(): void {
 		$empty_dir = $this->temp_dir . '/empty13';
@@ -805,7 +805,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_block_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_block_post_ids_map
 	 */
 	public function test_get_updated_block_post_ids_map_should_return_correct_map(): void {
 		$this->run_state->append_updated_block_post(
@@ -832,7 +832,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_block_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_block_post_ids_map
 	 */
 	public function test_get_updated_block_post_ids_map_should_skip_entries_missing_keys(): void {
 		$file_path = $this->temp_dir . '/run-state/' . RunState::FILE_UPDATED_BLOCKS;
@@ -850,7 +850,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::get_updated_block_post_ids_map
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_updated_block_post_ids_map
 	 */
 	public function test_get_updated_block_post_ids_map_should_cast_to_integers(): void {
 		$file_path = $this->temp_dir . '/run-state/' . RunState::FILE_UPDATED_BLOCKS;
@@ -868,7 +868,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_manifest
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_manifest
 	 */
 	public function test_write_manifest_should_write_data_to_file(): void {
 		$manifest = [
@@ -885,7 +885,7 @@ class RunStateTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers RunState::write_manifest
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::write_manifest
 	 */
 	public function test_write_manifest_roundtrip_via_read_json(): void {
 		$manifest = [

@@ -153,7 +153,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_create_posts_csv_with_correct_headers(): void {
 		$reports_dir = $this->temp_dir . '/reports';
@@ -166,7 +166,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_create_users_csv_with_correct_headers(): void {
 		$reports_dir = $this->temp_dir . '/reports';
@@ -179,7 +179,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_create_terms_csv_with_correct_headers(): void {
 		$reports_dir = $this->temp_dir . '/reports';
@@ -196,7 +196,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_imported_posts_to_csv(): void {
 		// Add imported posts to run-state.
@@ -231,7 +231,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_modified_posts_to_csv(): void {
 		// Add imported post first.
@@ -263,7 +263,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_deduplicate_posts_with_priority_modified_over_imported(): void {
 		// Add same post twice: first as imported, then as modified.
@@ -297,7 +297,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_include_attachment_posts_with_modified_status(): void {
 		// Add attachment with modified status (MDCS field update).
@@ -326,7 +326,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_imported_users_to_csv(): void {
 		$this->run_state->append_imported_user(
@@ -350,7 +350,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_merged_users_to_csv(): void {
 		$this->run_state->append_imported_user(
@@ -372,7 +372,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_modified_users_to_csv(): void {
 		$this->run_state->append_imported_user(
@@ -394,7 +394,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_deduplicate_users_with_priority_modified_over_merged_over_imported(): void {
 		// Same user appears with different statuses.
@@ -432,7 +432,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_deduplicate_users_merged_over_imported(): void {
 		// User imported first, then merged from another source.
@@ -467,7 +467,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_imported_terms_to_csv(): void {
 		$this->run_state->append_imported_term(
@@ -493,7 +493,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_merged_terms_to_csv(): void {
 		$this->run_state->append_imported_term(
@@ -516,7 +516,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_write_modified_terms_to_csv(): void {
 		$this->run_state->append_imported_term(
@@ -539,7 +539,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_deduplicate_terms_with_priority_modified_over_merged_over_imported(): void {
 		// Same term appears with different statuses.
@@ -584,7 +584,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_create_reports_directory_if_not_exists(): void {
 		$reports_dir = $this->temp_dir . '/new-reports-dir';
@@ -597,7 +597,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_generate_empty_csvs_with_headers_when_no_data(): void {
 		$reports_dir = $this->temp_dir . '/reports';
@@ -626,7 +626,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_handle_multiple_post_types_in_posts_csv(): void {
 		$this->run_state->append_imported_post(
@@ -678,7 +678,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_handle_multiple_taxonomies_in_terms_csv(): void {
 		$this->run_state->append_imported_term(
@@ -721,7 +721,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_use_default_status_imported_when_status_missing_in_post(): void {
 		// Manually write a JSONL entry without status field.
@@ -739,7 +739,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_use_default_status_imported_when_status_missing_in_user(): void {
 		// Manually write a JSONL entry without status field.
@@ -757,7 +757,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers ReportCreator::create_all_csvs
+	 * @covers \Newspack\ContentDiffMigrator\Utils\ReportCreator::create_all_csvs
 	 */
 	public function test_should_use_default_status_imported_when_status_missing_in_term(): void {
 		// Manually write a JSONL entry without status field.

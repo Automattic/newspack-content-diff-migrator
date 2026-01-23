@@ -216,7 +216,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::__construct
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::__construct
 	 */
 	public function test_constructor_should_set_wpdb_property(): void {
 		global $wpdb;
@@ -229,7 +229,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::__construct
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::__construct
 	 */
 	public function test_constructor_should_initialize_empty_maps(): void {
 		global $wpdb;
@@ -248,7 +248,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_element
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_element
 	 */
 	public function test_filter_array_element_should_return_matching_subarray(): void {
 		$data = [
@@ -279,7 +279,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_element
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_element
 	 */
 	public function test_filter_array_element_should_return_null_when_no_match(): void {
 		$data = [
@@ -300,7 +300,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_element
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_element
 	 */
 	public function test_filter_array_element_should_return_first_match_when_multiple_exist(): void {
 		$data = [
@@ -331,7 +331,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_element
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_element
 	 */
 	public function test_filter_array_element_should_handle_empty_array(): void {
 		$result = $this->invoke_private_method( $this->importer, 'filter_array_element', [ [], 'id', 1 ] );
@@ -345,7 +345,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_elements
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_elements
 	 */
 	public function test_filter_array_elements_should_return_all_matching_subarrays(): void {
 		$data = [
@@ -384,7 +384,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_elements
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_elements
 	 */
 	public function test_filter_array_elements_should_return_empty_array_when_no_match(): void {
 		$data = [
@@ -405,7 +405,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_elements
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_elements
 	 */
 	public function test_filter_array_elements_should_handle_empty_array(): void {
 		$result = $this->invoke_private_method( $this->importer, 'filter_array_elements', [ [], 'id', 1 ] );
@@ -415,7 +415,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::filter_array_elements
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::filter_array_elements
 	 */
 	public function test_filter_array_elements_should_return_multiple_matches(): void {
 		$data = [
@@ -448,7 +448,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_postmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_postmeta_row
 	 */
 	public function test_insert_postmeta_row_should_insert_and_return_meta_id(): void {
 		$post_id      = $this->create_test_post();
@@ -468,7 +468,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_postmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_postmeta_row
 	 */
 	public function test_insert_postmeta_row_should_replace_post_id_and_remove_meta_id(): void {
 		global $wpdb;
@@ -490,7 +490,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_postmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_postmeta_row
 	 */
 	public function test_insert_postmeta_row_should_throw_on_insert_failure(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -515,7 +515,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_usermeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_usermeta_row
 	 */
 	public function test_insert_usermeta_row_should_insert_and_return_umeta_id(): void {
 		$user_id      = $this->create_test_user();
@@ -535,7 +535,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_usermeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_usermeta_row
 	 */
 	public function test_insert_usermeta_row_should_replace_user_id_and_remove_umeta_id(): void {
 		global $wpdb;
@@ -556,7 +556,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_usermeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_usermeta_row
 	 */
 	public function test_insert_usermeta_row_should_throw_on_insert_failure(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -581,7 +581,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_user
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_user
 	 */
 	public function test_get_or_create_user_should_return_existing_user_id(): void {
 		$user_id  = $this->create_test_user( [ 'user_login' => 'existing_user_login' ] );
@@ -600,7 +600,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_user
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_user
 	 */
 	public function test_get_or_create_user_should_create_new_user_when_not_exists(): void {
 		$user_row = [
@@ -626,7 +626,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_user
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_user
 	 */
 	public function test_get_or_create_user_should_insert_usermeta_for_new_user(): void {
 		$user_row      = [
@@ -654,7 +654,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_user
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_user
 	 */
 	public function test_get_or_create_user_should_return_null_for_empty_user_row(): void {
 		$result = $this->importer->get_or_create_user( [], [], 'example.com' );
@@ -664,7 +664,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_user
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_user
 	 */
 	public function test_get_or_create_user_should_return_null_when_user_login_missing(): void {
 		$user_row = [
@@ -683,7 +683,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_comment
 	 */
 	public function test_insert_comment_should_insert_and_return_comment_id(): void {
 		$post_id     = $this->create_test_post();
@@ -709,7 +709,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_comment
 	 */
 	public function test_insert_comment_should_replace_post_id_user_id_and_remove_comment_id(): void {
 		global $wpdb;
@@ -735,7 +735,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_comment
 	 */
 	public function test_insert_comment_should_throw_on_insert_failure(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -763,7 +763,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_commentmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_commentmeta_row
 	 */
 	public function test_insert_commentmeta_row_should_insert_and_return_meta_id(): void {
 		$post_id         = $this->create_test_post();
@@ -784,7 +784,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_commentmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_commentmeta_row
 	 */
 	public function test_insert_commentmeta_row_should_replace_comment_id_and_remove_meta_id(): void {
 		global $wpdb;
@@ -806,7 +806,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_commentmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_commentmeta_row
 	 */
 	public function test_insert_commentmeta_row_should_throw_on_insert_failure(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -831,7 +831,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_termmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_termmeta_row
 	 */
 	public function test_insert_termmeta_row_should_insert_and_return_meta_id(): void {
 		$term         = wp_insert_term( 'Test Term', 'category' );
@@ -852,7 +852,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_termmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_termmeta_row
 	 */
 	public function test_insert_termmeta_row_should_replace_term_id_and_remove_meta_id(): void {
 		global $wpdb;
@@ -874,7 +874,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_termmeta_row
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_termmeta_row
 	 */
 	public function test_insert_termmeta_row_should_throw_on_insert_failure(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -899,7 +899,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_comment_parent
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_comment_parent
 	 */
 	public function test_update_comment_parent_should_update_and_return_rows_affected(): void {
 		global $wpdb;
@@ -926,7 +926,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_comment_parent
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_comment_parent
 	 */
 	public function test_update_comment_parent_should_throw_on_update_failure(): void {
 		$this->expectException( \RuntimeException::class );
@@ -941,7 +941,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_post_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_post_author
 	 */
 	public function test_update_post_author_should_update_and_return_rows_affected(): void {
 		$post_id    = $this->create_test_post();
@@ -960,7 +960,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_post_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_post_author
 	 */
 	public function test_update_post_author_should_throw_on_update_failure(): void {
 		$this->expectException( \RuntimeException::class );
@@ -975,7 +975,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_term_relationship
 	 */
 	public function test_insert_term_relationship_should_insert_and_return_id(): void {
 		global $wpdb;
@@ -998,7 +998,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::insert_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::insert_term_relationship
 	 */
 	public function test_insert_term_relationship_should_throw_on_insert_failure(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -1016,7 +1016,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_term_and_taxonomy_array
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_term_and_taxonomy_array
 	 */
 	public function test_get_term_and_taxonomy_array_should_return_data_by_term_id(): void {
 		global $wpdb;
@@ -1035,7 +1035,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_term_and_taxonomy_array
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_term_and_taxonomy_array
 	 */
 	public function test_get_term_and_taxonomy_array_should_return_data_by_term_name(): void {
 		global $wpdb;
@@ -1053,7 +1053,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_term_and_taxonomy_array
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_term_and_taxonomy_array
 	 */
 	public function test_get_term_and_taxonomy_array_should_return_null_when_not_found(): void {
 		global $wpdb;
@@ -1069,7 +1069,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_term_and_taxonomy_array
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_term_and_taxonomy_array
 	 */
 	public function test_get_term_and_taxonomy_array_should_return_null_when_where_clause_empty(): void {
 		global $wpdb;
@@ -1089,7 +1089,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_comment_user_id
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_comment_user_id
 	 */
 	public function test_get_comment_user_id_should_return_zero_when_user_id_is_zero(): void {
 		$comment_row = [
@@ -1109,7 +1109,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_comment_user_id
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_comment_user_id
 	 */
 	public function test_get_comment_user_id_should_return_existing_user_id(): void {
 		$existing_user = $this->create_test_user( [ 'user_login' => 'comment_user_existing' ] );
@@ -1142,7 +1142,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_comment_user_id
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_comment_user_id
 	 */
 	public function test_get_comment_user_id_should_create_user_when_not_exists(): void {
 		$unique_login = 'new_comment_user_' . uniqid();
@@ -1180,7 +1180,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_comment_user_id
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_comment_user_id
 	 */
 	public function test_get_comment_user_id_should_return_zero_when_user_not_in_data(): void {
 		$comment_row = [
@@ -1204,7 +1204,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_comment
 	 */
 	public function test_import_single_comment_should_insert_comment_and_return_id(): void {
 		$post_id     = $this->create_test_post();
@@ -1235,7 +1235,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_comment
 	 */
 	public function test_import_single_comment_should_insert_all_commentmeta(): void {
 		$post_id     = $this->create_test_post();
@@ -1281,7 +1281,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_comment
 	 */
 	public function test_import_single_comment_should_get_or_create_user(): void {
 		$post_id       = $this->create_test_post();
@@ -1322,7 +1322,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_comment
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_comment
 	 */
 	public function test_import_single_comment_should_return_null_on_error(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -1355,7 +1355,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_imported_comment_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_imported_comment_parents
 	 */
 	public function test_update_imported_comment_parents_should_update_parent_ids(): void {
 		$post_id = $this->create_test_post();
@@ -1396,7 +1396,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_imported_comment_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_imported_comment_parents
 	 */
 	public function test_update_imported_comment_parents_should_skip_when_parent_is_zero(): void {
 		$post_id = $this->create_test_post();
@@ -1428,7 +1428,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_imported_comment_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_imported_comment_parents
 	 */
 	public function test_update_imported_comment_parents_should_skip_when_parent_not_in_map(): void {
 		$post_id = $this->create_test_post();
@@ -1460,7 +1460,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::update_imported_comment_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::update_imported_comment_parents
 	 */
 	public function test_update_imported_comment_parents_should_continue_on_error(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'update' );
@@ -1504,7 +1504,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::ensure_taxonomy_registered
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::ensure_taxonomy_registered
 	 */
 	public function test_ensure_taxonomy_registered_should_skip_if_already_exists(): void {
 		// 'category' is always registered.
@@ -1521,7 +1521,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::ensure_taxonomy_registered
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::ensure_taxonomy_registered
 	 */
 	public function test_ensure_taxonomy_registered_should_register_new_taxonomy(): void {
 		// Use a short taxonomy name (max 32 chars for WP).
@@ -1539,7 +1539,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::ensure_taxonomy_registered
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::ensure_taxonomy_registered
 	 */
 	public function test_ensure_taxonomy_registered_should_detect_hierarchical_from_parent(): void {
 		// Use a short taxonomy name (max 32 chars for WP).
@@ -1562,7 +1562,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 */
 	public function test_import_single_term_relationship_should_return_unchanged_array_when_taxonomy_not_allowed(): void {
 		$term_relationship_row = [ 'term_taxonomy_id' => 1 ];
@@ -1602,7 +1602,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 */
 	public function test_import_single_term_relationship_should_return_unchanged_array_when_term_row_invalid(): void {
 		$term_relationship_row = [ 'term_taxonomy_id' => 1 ];
@@ -1636,7 +1636,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 */
 	public function test_import_single_term_relationship_should_skip_duplicate_term_taxonomy_ids(): void {
 		global $wpdb;
@@ -1689,7 +1689,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 *
 	 * This test verifies the method works when a term is already mapped.
 	 * Full term creation is tested via integration in import_taxonomies tests.
@@ -1754,7 +1754,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 */
 	public function test_import_single_term_relationship_should_reuse_cached_term_from_map(): void {
 		global $wpdb;
@@ -1804,7 +1804,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 */
 	public function test_import_single_term_relationship_should_increment_count_and_update_description(): void {
 		global $wpdb;
@@ -1882,7 +1882,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_termmeta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_termmeta
 	 */
 	public function test_import_termmeta_should_insert_termmeta_rows(): void {
 		$term = wp_insert_term( 'Termmeta Test', 'category' );
@@ -1924,7 +1924,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_termmeta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_termmeta
 	 */
 	public function test_import_termmeta_should_skip_if_already_imported(): void {
 		global $wpdb;
@@ -1965,7 +1965,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_termmeta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_termmeta
 	 */
 	public function test_import_termmeta_should_mark_term_as_imported(): void {
 		$term = wp_insert_term( 'Mark Imported Test', 'category' );
@@ -1984,7 +1984,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_termmeta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_termmeta
 	 */
 	public function test_import_termmeta_should_continue_on_insert_error(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -2034,7 +2034,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_post_meta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_post_meta
 	 */
 	public function test_import_post_meta_should_insert_all_postmeta_rows(): void {
 		$post_id = $this->create_test_post();
@@ -2064,7 +2064,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_post_meta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_post_meta
 	 */
 	public function test_import_post_meta_should_continue_on_individual_insert_error(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -2103,7 +2103,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_post_meta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_post_meta
 	 */
 	public function test_import_post_meta_should_handle_empty_postmeta_array(): void {
 		$post_id = $this->create_test_post();
@@ -2121,7 +2121,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_author
 	 */
 	public function test_import_author_should_continue_when_get_or_create_user_throws_exception(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'insert' );
@@ -2151,7 +2151,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_author
 	 */
 	public function test_import_author_should_continue_when_update_post_author_fails(): void {
 		$mock_wpdb = $this->create_failing_wpdb_mock( 'update' );
@@ -2176,7 +2176,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_author
 	 */
 	public function test_import_author_should_get_or_create_author_user(): void {
 		$unique_login  = 'author_user_' . substr( uniqid(), 0, 8 );
@@ -2201,7 +2201,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_author
 	 */
 	public function test_import_author_should_update_post_author_when_changed(): void {
 		$unique_original = 'orig_author_' . substr( uniqid(), 0, 8 );
@@ -2229,7 +2229,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_author
 	 */
 	public function test_import_author_should_not_update_when_author_unchanged(): void {
 		$author  = $this->create_test_user( [ 'user_login' => 'same_author_user' ] );
@@ -2254,7 +2254,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_author
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_author
 	 */
 	public function test_import_author_should_handle_null_author(): void {
 		$post_id = $this->create_test_post();
@@ -2273,7 +2273,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_comments
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_comments
 	 */
 	public function test_import_comments_should_process_all_comments(): void {
 		$post_id = $this->create_test_post();
@@ -2312,7 +2312,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_comments
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_comments
 	 */
 	public function test_import_comments_should_call_update_parents_with_id_map(): void {
 		$post_id = $this->create_test_post();
@@ -2368,7 +2368,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_comments
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_comments
 	 */
 	public function test_import_comments_should_handle_empty_comments_array(): void {
 		$post_id = $this->create_test_post();
@@ -2386,7 +2386,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_post_data
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_post_data
 	 */
 	public function test_import_post_data_should_call_all_import_methods(): void {
 		$post_id = $this->create_test_post();
@@ -2400,7 +2400,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_post_data
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_post_data
 	 */
 	public function test_import_post_data_full_integration_with_real_data(): void {
 		global $wpdb;
@@ -2439,7 +2439,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_post_data
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_post_data
 	 */
 	public function test_import_post_data_should_handle_minimal_data(): void {
 		$post_id = $this->create_test_post();
@@ -2456,7 +2456,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::fix_hierarchical_taxonomies_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::fix_hierarchical_taxonomies_parents
 	 */
 	public function test_fix_hierarchical_taxonomies_parents_should_return_empty_when_all_valid(): void {
 		global $wpdb;
@@ -2472,7 +2472,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::fix_hierarchical_taxonomies_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::fix_hierarchical_taxonomies_parents
 	 */
 	public function test_fix_hierarchical_taxonomies_parents_should_reset_invalid_parents_to_zero(): void {
 		global $wpdb;
@@ -2503,7 +2503,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::fix_hierarchical_taxonomies_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::fix_hierarchical_taxonomies_parents
 	 */
 	public function test_fix_hierarchical_taxonomies_parents_should_return_fixed_term_taxonomy_rows(): void {
 		global $wpdb;
@@ -2531,7 +2531,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::fix_hierarchical_taxonomies_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::fix_hierarchical_taxonomies_parents
 	 */
 	public function test_fix_hierarchical_taxonomies_parents_should_only_check_specified_taxonomies(): void {
 		global $wpdb;
@@ -2565,7 +2565,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_local_term
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_local_term
 	 */
 	public function test_get_or_create_local_term_should_log_error_when_taxonomy_invalid(): void {
 		global $wpdb;
@@ -2604,7 +2604,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_termmeta
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_termmeta
 	 */
 	public function test_import_termmeta_should_be_idempotent_on_rerun(): void {
 		$term = wp_insert_term( 'Idempotent Term', 'category' );
@@ -2642,7 +2642,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::import_single_term_relationship
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::import_single_term_relationship
 	 */
 	public function test_import_single_term_relationship_should_handle_term_taxonomy_data_not_found(): void {
 		global $wpdb;
@@ -2695,7 +2695,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::get_or_create_user
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::get_or_create_user
 	 */
 	public function test_get_or_create_user_should_set_old_id_meta_only_once(): void {
 		$user_id = $this->create_test_user( [ 'user_login' => 'merge_user_once' ] );
@@ -2720,7 +2720,7 @@ class DataImporterTest extends WP_UnitTestCase {
 
 	/**
 	 * @test
-	 * @covers DataImporter::fix_hierarchical_taxonomies_parents
+	 * @covers \Newspack\ContentDiffMigrator\Logic\DataImporter::fix_hierarchical_taxonomies_parents
 	 */
 	public function test_fix_hierarchical_taxonomies_parents_should_handle_multiple_invalid_parents(): void {
 		global $wpdb;
