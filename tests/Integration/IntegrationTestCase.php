@@ -127,18 +127,18 @@ class IntegrationTestCase extends WP_UnitTestCase {
 		global $wpdb;
 
 		$tables = [
+			'comments'           => $wpdb->comments,
+			'commentmeta'        => $wpdb->commentmeta,
+			'links'              => $wpdb->links,
+			'options'            => $wpdb->options,
 			'posts'              => $wpdb->posts,
 			'postmeta'           => $wpdb->postmeta,
 			'users'              => $wpdb->users, // phpcs:ignore -- WordPressVIPMinimum.Variables.RestrictedVariables.user_meta__wpdb__users.
 			'usermeta'           => $wpdb->usermeta,
-			'comments'           => $wpdb->comments,
-			'commentmeta'        => $wpdb->commentmeta,
 			'terms'              => $wpdb->terms,
 			'termmeta'           => $wpdb->termmeta,
 			'term_taxonomy'      => $wpdb->term_taxonomy,
 			'term_relationships' => $wpdb->term_relationships,
-			'links'              => $wpdb->links,
-			'options'            => $wpdb->options,
 		];
 
 		foreach ( $tables as $suffix => $source_table ) {
@@ -154,7 +154,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	protected function drop_live_tables(): void {
 		global $wpdb;
 
-		$tables = [ 'posts', 'postmeta', 'users', 'usermeta', 'comments', 'commentmeta', 'links', 'options', 'terms', 'termmeta', 'term_taxonomy', 'term_relationships' ];
+		$tables = [ 'commentmeta', 'comments', 'options', 'postmeta', 'posts', 'term_relationships', 'term_taxonomy', 'termmeta', 'terms', 'usermeta', 'users' ];
 
 		foreach ( $tables as $suffix ) {
 			$live_table = $this->live_table_prefix . $suffix;
