@@ -142,8 +142,9 @@ class IntegrationTestCase extends WP_UnitTestCase {
 		];
 
 		foreach ( $tables as $suffix => $source_table ) {
-			// Skip if source table doesn't exist in this WordPress installation.
-			if ( ! $source_table ) {
+			// Check if the source table actually exists in the database.
+			$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $source_table ) ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching.
+			if ( ! $table_exists ) {
 				continue;
 			}
 
