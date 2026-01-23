@@ -16,10 +16,6 @@ use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
  */
 class CmdListSourceHostnamesTest extends IntegrationTestCase {
 
-	public function test_mock_failing_test__CmdListSourceHostnamesTest(): void {
-		$this->assertTrue( false );
-	}
-
 	/**
 	 * Tests that no hostnames are returned when no content has been imported.
 	 *
