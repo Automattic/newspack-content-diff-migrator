@@ -185,7 +185,7 @@ class Logger {
 	/**
 	 * Log to CLI, FILE, or both.
 	 *
-	 * @param string $output  One of the self::OUTOUT_* constants: OUTPUT_CLI, OUTPUT_FILE, or OUTPUT_BOTH.
+	 * @param string $output  One of the self::OUTPUT_* constants: OUTPUT_CLI, OUTPUT_FILE, or OUTPUT_BOTH.
 	 * @param string $level   PSR-3 log level (debug, info, warning, error, etc).
 	 * @param string $message Log message.
 	 * @param array  $context Log context.
