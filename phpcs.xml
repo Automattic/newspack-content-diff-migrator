@@ -24,7 +24,7 @@
 		<exclude name="WordPressVIPMinimum.JS.HTMLExecutingFunctions" />
 		<exclude name="WordPressVIPMinimum.JS.Window" />
 
-		<!-- Only comment when neccessary -->
+		<!-- Only comment when necessary -->
 		<exclude name="Squiz.Commenting.FileComment.Missing" />
 		<exclude name="Squiz.Commenting.FileComment.MissingPackageTag" />
 		<exclude name="Squiz.Commenting.ClassComment.Missing" />
