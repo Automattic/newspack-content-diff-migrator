@@ -1120,15 +1120,17 @@ class DataImporter {
 		$term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
 		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
 		$taxonomy_placeholders   = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
+		
+		// Use NOT EXISTS subquery to avoid self-join on temporary tables (GitHub CI MySQL compatibility).
 		$hierarchical_taxonomies = $this->wpdb->get_results(
 			$this->wpdb->prepare(
 				"SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
 				FROM {$terms} t
 				JOIN {$term_taxonomy} tt
-					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_placeholders) AND parent <> 0
-				LEFT JOIN {$terms} ttparent
-					ON ttparent.term_id = tt.parent
-				WHERE ttparent.term_id IS NULL;",
+					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_placeholders) AND tt.parent <> 0
+				WHERE NOT EXISTS (
+					SELECT 1 FROM {$terms} tparent WHERE tparent.term_id = tt.parent
+				);",
 				...$taxonomies_to_check
 			),
 			ARRAY_A
