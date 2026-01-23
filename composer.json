@@ -67,7 +67,7 @@
     "phpcbf": "./vendor/bin/phpcbf",
     "phpunit": "./vendor/bin/phpunit",
     "code-coverage-clover": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-clover build/coverage_clover/clover.xml",
-    "code-coverage-html": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-clover build/coverage_html",
+    "code-coverage-html": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-html build/coverage_html",
     "build-release": [
         "rm -rf vendor",
         "rm -rf release",
