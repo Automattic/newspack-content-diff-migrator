@@ -137,6 +137,8 @@ class IntegrationTestCase extends WP_UnitTestCase {
 			'termmeta'           => $wpdb->termmeta,
 			'term_taxonomy'      => $wpdb->term_taxonomy,
 			'term_relationships' => $wpdb->term_relationships,
+			'links'              => $wpdb->links,
+			'options'            => $wpdb->options,
 		];
 
 		foreach ( $tables as $suffix => $source_table ) {
@@ -152,7 +154,7 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	protected function drop_live_tables(): void {
 		global $wpdb;
 
-		$tables = [ 'posts', 'postmeta', 'users', 'usermeta', 'comments', 'commentmeta', 'terms', 'termmeta', 'term_taxonomy', 'term_relationships' ];
+		$tables = [ 'posts', 'postmeta', 'users', 'usermeta', 'comments', 'commentmeta', 'links', 'options', 'terms', 'termmeta', 'term_taxonomy', 'term_relationships' ];
 
 		foreach ( $tables as $suffix ) {
 			$live_table = $this->live_table_prefix . $suffix;
