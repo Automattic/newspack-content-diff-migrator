@@ -63,6 +63,10 @@ class BlockUpdaterTest extends TestCase {
 	// ATTACHMENT URL RESOLVER TESTS
 	// =========================================================================
 
+	public function test_mock_failing_test__BlockUpdaterTest(): void {
+		$this->assertTrue( false );
+	}
+
 	/**
 	 * @test
 	 * @covers BlockUpdater::set_attachment_url_resolver
