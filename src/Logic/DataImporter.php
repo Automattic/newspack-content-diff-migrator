@@ -1122,6 +1122,29 @@ class DataImporter {
 		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
 		$taxonomy_placeholders = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
 		
+		/**
+		 * Two-step approach to find hierarchical taxonomy terms with invalid parents.
+		 *
+		 * Originally this method used a simpler LEFT JOIN to find orphaned terms:
+		 *
+		 *   SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
+		 *   FROM {$terms} t
+		 *   JOIN {$term_taxonomy} tt
+		 *     ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_placeholders) AND parent <> 0
+		 *   LEFT JOIN {$terms} ttparent
+		 *     ON ttparent.term_id = tt.parent
+		 *   WHERE ttparent.term_id IS NULL
+		 * 
+		 * This was failing on GitHub CI with MySQL error: "Can't reopen table: 't'".
+		 * This occured because the integration tests use CREATE TABLE ... LIKE to create cdiff_* tables
+		 * which may be treated as temporary tables in GitHub CI's MySQL environment -- they probably use in-memory
+		 * tables -- where MySQL restricts referencing the same temporary table multiple times in a single query
+		 * (even in subqueries). This is a known issue with MySQL.
+		 * 
+		 * Current solution: We have split the query into two separate queries and filtered in PHP. This avoids
+		 * any self-referencing tables in queries and works reliably across all MySQL configurations.
+		 */
+		
 		// Step 1: Get all valid term IDs.
 		$valid_term_ids = $this->wpdb->get_col( "SELECT term_id FROM {$terms}" );
 		if ( empty( $valid_term_ids ) ) {
@@ -1140,7 +1163,6 @@ class DataImporter {
 			ARRAY_A
 		);
 		// phpcs:enable
-		
 		if ( empty( $hierarchical_taxonomies ) ) {
 			return [];
 		}
@@ -1152,7 +1174,6 @@ class DataImporter {
 				return ! in_array( $term['parent'], $valid_term_ids, true );
 			}
 		);
-		
 		if ( empty( $hierarchical_taxonomies ) ) {
 			return [];
 		}
