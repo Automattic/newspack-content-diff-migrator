@@ -76,16 +76,34 @@ class DB {
 	 * @throws \RuntimeException In case tables don't exist or collations don't match.
 	 */
 	public function validate_db_tables( string $live_table_prefix, array $skip_tables = [] ): void {
-		// Check whether all core WP DB tables are present in used DB.
-		$all_tables = $this->get_all_db_tables();
+		// Check whether core WP DB tables that exist in the installation are present in used DB.
+		$all_tables       = $this->get_all_db_tables();
+		$tables_checked   = 0;
+		$tables_validated = 0;
+		
 		foreach ( self::CORE_WP_TABLES as $table ) {
 			if ( in_array( $table, $skip_tables ) ) {
 				continue;
 			}
-			$tablename = $live_table_prefix . $table;
-			if ( ! in_array( $tablename, $all_tables ) ) {
-				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $tablename ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			
+			// Check if this core table exists in this WordPress installation.
+			$core_tablename = $this->wpdb->prefix . $table;
+			$core_exists    = in_array( $core_tablename, $all_tables );
+			if ( ! $core_exists ) {
+				// Core table doesn't exist in this WP installation (e.g., wp_links in newer WP), skip it.
+				continue;
 			}
+			
+			$tables_checked++;
+			$live_tablename = $live_table_prefix . $table;
+			if ( ! in_array( $live_tablename, $all_tables ) ) {
+				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $live_tablename ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			}
+			$tables_validated++;
+		}
+		
+		if ( 0 === $tables_validated ) {
+			throw new \RuntimeException( 'No core WP DB tables found to validate.' );
 		}
 
 		if ( ! $this->are_table_collations_matching( $live_table_prefix, $skip_tables ) ) {
@@ -144,10 +162,8 @@ class DB {
 			];
 		}
 
-		if ( empty( $validated_tables ) ) {
-			throw new \RuntimeException( 'Unable to validate collation on content diff tables. Please verify live table prefix.' );
-		}
-
+		// It's OK if validated_tables is empty due to tables not existing in this WP installation.
+		// The validate_db_tables() method will catch if NO tables could be validated.
 		return $validated_tables;
 	}
 
