@@ -156,7 +156,7 @@ class ContentDiffMigrator {
 			],
 			'attribute-all-unattributed'                => [
 				'method'    => 'cmd_attribute_all_unattributed',
-				'shortdesc' => 'Attributes ALL unattributed local content to a source hostname.',
+				'shortdesc' => 'Attributes ALL unattributed local content to a source hostname. **Use case**: perfect to run immediately after cloning a site and it will assign the metas to all the existing content, and it does not need the live tables.',
 				'longdesc'  => "Finds all unattributed posts, attachments, users, and terms and attributes them to the source hostname WITHOUT matching to live tables. Use when you know all existing content came from one source.\n"
 								. "Data types attributed:\n"
 								. "- Posts/Pages/CPTs (wp_postmeta)\n"
@@ -187,7 +187,7 @@ class ContentDiffMigrator {
 			],
 			'attribute-match-local-to-live-tables'      => [
 				'method'    => 'cmd_attribute_match_local_to_live_tables',
-				'shortdesc' => 'Automatically attributes all existing local content to source hostname, by looking it up directly in the live DB tables. Just give this command the live DB table prefix and the source hostname, and it will do the rest.',
+				'shortdesc' => 'Automatically compares the unattributed local content to the live DB tables, finds matches and attributes it to the source hostname. Just give this command the live DB table prefix and the source hostname, and it will do the rest. **Use case**: You cloned the live DB to your local site, but also some custom content was created there too (e.g. Newspackification stuff). And you need to attribute just the original cloned content to the source hostname, not all of it.',
 				'longdesc'  => "Compares existing unattributed content from local with live tables, matches it, and adds attribution metas for matches.\n"
 								. "Data types attributed:\n"
 								. "- Posts/Pages/CPTs\n"
@@ -230,7 +230,7 @@ class ContentDiffMigrator {
 			],
 			'attribute-ids'                             => [
 				'method'    => 'cmd_attribute_ids',
-				'shortdesc' => 'Attribute specific content by ID to source hostname.',
+				'shortdesc' => 'Attribute specific content by ID to source hostname. Takes specific IDs of `posts` (and all CPTs), `users`, and/or `terms` and attributes just those objects to a source hostname. **Use case**: Some different custom migration was done in parallel for some reason, and then you wish to also run CDiff on that content. So you first assign the custom-migrated IDs metas, so that CDiff knows how to do the content refresh. This is very much an edge case, made for "just in case".',
 				'longdesc'  => "Attributes specific posts, attachments, users, or terms (by ID) to the source hostname. Provide IDs via comma-separated values or files (one ID per line).\n"
 								. "DATA TYPES WHICH CAN BE ATTRIBUTED:\n"
 								. "- Posts/Pages/CPTs (wp_postmeta)\n"
