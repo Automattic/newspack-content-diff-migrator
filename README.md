@@ -74,7 +74,7 @@ wp newspack-content-diff-migrator search-new-content-on-live \
     --live-table-prefix=<prefix> \          // Prefix of the imported live site tables (e.g., `cdiff_`)
     --source-hostname=<hostname> \          // e.g. www.example-1.com
     --data-dir=<path> \                     // Directory to store migration run-state data and logs
-    [--post-types-csv=post,page,attachment] // Defaults: `post,page,attachment`. Optionally include `guest-author` for CAP's Guest Authors.
+    [--post-types-csv]                      // Optionally include `guest-author` for CAP's Guest Authors.
 ```
 
 #### `migrate-live-content`
@@ -86,7 +86,7 @@ wp newspack-content-diff-migrator migrate-live-content \
     --live-table-prefix=<prefix> \    // Prefix of the imported live site tables (e.g., `cdiff_`)
     --source-hostname=<hostname> \    // e.g. www.example-1.com
     --data-dir=<path> \               // Same directory used in the search command
-    [--custom-taxonomies-csv=]        // Defaults: `category,post_tag,author`.
+    [--custom-taxonomies-csv]         // List of optional custom taxonomies to migrate.
 ```
 > **⚠️ Important:**
 
