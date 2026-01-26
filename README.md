@@ -128,7 +128,7 @@ These three commands all do the very same thing (assign metas), but in slightly 
 
 Will attribute **ALL** unattributed local content to a source hostname.
 
-**Use case**: perfect to run **immediately** after cloning a site and it will assign the metas to all the existing content.
+**Use case**: perfect to run **immediately** after cloning a site and it will assign the metas to all the existing content, and it doesn't need the live tables.
 
 **Arguments**:
 - `--source-hostname` (required): Source hostname (e.g., www.example.com)
@@ -179,7 +179,7 @@ wp newspack-content-diff-migrator attribute-match-local-to-live-tables \
 
 Takes specific IDs of `posts` (and all CPTs), `users`, and/or `terms` and attributes just those objects to a source hostname.
 
-**Use case**: some different custom migration was done in parallel for some reason, and you wish to also run CDiff, so you first provide the IDs and set metas to them, so that CDiff can properly compare your custom-migrated content with the live tables and run a content refresh.
+**Use case**: Some different custom migration was done in parallel for some reason, and then you wish to also run CDiff on that content. So you first assign the custom-migrated IDs metas, so that CDiff knows how to do the content refresh. This is very much an edge case, made for "just in case".
 
 **Arguments**:
 - `--source-hostname` (required): Source hostname (e.g., www.example.com)
