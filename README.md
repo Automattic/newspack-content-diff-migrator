@@ -108,19 +108,16 @@ wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 
 ### Attribution Commands
 
-To **"attribute some content to a source hostname"** means just to assign "old ID and hostname metas" to local content, so that CDiff plugin can track it to the original source hostname, e.g. `example.com`. These metas are what makes multi-source work.
-
-The following WP data objects can have the "old ID and hostname meta" assigned to them, in the corresponding WP metas tables:
+When you run a CDiff migration, the imported content gets the "old ID and hostname meta" assigned to it. The following WP data objects can have this meta assigned to them, stored in the corresponding WP metas tables:
 - Posts/Pages/Attachmewnts/CPTs (stored in `wp_postmeta`)
 - Users (stored in `wp_usermeta`)
 - Terms (stored in `wp_termmeta`)
 
-If there is some existing content on the local site which was migrated from the source hostname/site but doesn't have those metas (e.g. the site was cloned), there are three different and convenient ways (sub-commands) how you can "attribute" (assign) the "old ID and source hostname" metas to it.
+But what happens if you clone a site, or have performed some independent custom migration with the site's content, and you need to run a content diff _**including**_ that content?
 
-All three following commands create simple **attribution reports** -- timestamped CSVs in `{data-dir}/reports/` directory:
-- `attributed_posts_{timestamp}.csv` - Posts and attachments attributed
-- `attributed_users_{timestamp}.csv` - Users attributed  
-- `attributed_terms_{timestamp}.csv` - Terms attributed
+There are three easy and conveniently different ways (sub-commands) how you can "attribute" (assign) the "old ID and source hostname" metas to it.
+
+And just to clarify, to **"attribute some content to a source hostname"** simply means to assign "old ID and hostname metas" to that content, nothing more -- so that the CDiff plugin can track that content to the original source hostname, properly compare it to live tables, and do content refreshes. These metas are what makes the multi-source work.
 
 These three commands all do the very same thing (assign metas), but in slightly different ways, for your convenience.
 
@@ -212,6 +209,13 @@ wp newspack-content-diff-migrator attribute-ids \
 456
 789
 ```
+
+#### Attribution Reports
+
+All three attribute commands automatically create **attribution reports** -- simple timestamped CSVs in `{data-dir}/reports/` directory:
+- `attributed_posts_{timestamp}.csv` - Posts and attachments which were attributed
+- `attributed_users_{timestamp}.csv` - Users attributed  
+- `attributed_terms_{timestamp}.csv` - Terms attributed
 
 ---
 
