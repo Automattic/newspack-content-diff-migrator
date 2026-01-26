@@ -212,7 +212,7 @@ wp newspack-content-diff-migrator attribute-ids \
 
 #### Attribution Reports
 
-All three attribute commands automatically create **attribution reports** -- simple timestamped CSVs in `{data-dir}/reports/` directory:
+All three attribute commands automatically create **attribution reports** -- simple timestamped CSVs in `{--data-dir}/reports/` directory:
 - `attributed_posts_{timestamp}.csv` - Posts and attachments which were attributed
 - `attributed_users_{timestamp}.csv` - Users attributed  
 - `attributed_terms_{timestamp}.csv` - Terms attributed
