@@ -122,6 +122,8 @@ All three following commands create simple **attribution reports** -- timestampe
 - `attributed_users_{timestamp}.csv` - Users attributed  
 - `attributed_terms_{timestamp}.csv` - Terms attributed
 
+These three commands all do the very same thing (assign metas), but in slightly different ways, for your convenience.
+
 #### 1/3: `attribute-all-unattributed`
 
 Will attribute **ALL** unattributed local content to a source hostname.
