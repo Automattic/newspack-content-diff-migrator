@@ -5,10 +5,9 @@
  * @package Newspack_Content_Diff_Migrator
  */
 
-namespace Newspack\ContentDiffMigrator\Logic;
+namespace Newspack\ContentDiffMigrator\Utils;
 
 use wpdb;
-use Newspack\ContentDiffMigrator\Utils\Logger;
 use Psr\Log\LogLevel;
 
 /**

@@ -8,7 +8,6 @@
 namespace Newspack\ContentDiffMigrator\Tests\Integration;
 
 use Newspack\ContentDiffMigrator\Tests\Integration\IntegrationTestCase;
-use Newspack\ContentDiffMigrator\Utils\Logger;
 
 /**
  * Integration test class for attribution commands.

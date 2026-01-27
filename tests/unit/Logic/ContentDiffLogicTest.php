@@ -10,7 +10,7 @@ namespace Newspack\ContentDiffMigrator\Tests\Unit\Logic;
 use Newspack\ContentDiffMigrator\Logic\BlockUpdater;
 use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
 use Newspack\ContentDiffMigrator\Logic\DataImporter;
-use Newspack\ContentDiffMigrator\Logic\DB;
+use Newspack\ContentDiffMigrator\Utils\DB;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use ReflectionMethod;
 use WP_UnitTestCase;

@@ -10,8 +10,8 @@ namespace Newspack\ContentDiffMigrator\Command;
 
 use Newspack\ContentDiffMigrator\Logic\ContentDiffLogic;
 use Newspack\ContentDiffMigrator\Logic\DataImporter;
-use Newspack\ContentDiffMigrator\Logic\DB;
 use Newspack\ContentDiffMigrator\Logic\RunState;
+use Newspack\ContentDiffMigrator\Utils\DB;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
 use Newspack\ContentDiffMigrator\Utils\ReportCreator;

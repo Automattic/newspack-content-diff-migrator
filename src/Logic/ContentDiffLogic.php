@@ -8,6 +8,7 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\ContentDiffMigrator\Utils\DB;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
 use Newspack\ContentDiffMigrator\Utils\SLAHelper;
