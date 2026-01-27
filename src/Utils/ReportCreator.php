@@ -77,6 +77,8 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_posts_csv( string $file_path ): int {
+		global $wpdb;
+
 		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
@@ -119,15 +121,11 @@ class ReportCreator {
 		foreach ( $modified_posts as $post ) {
 			$id_new = (int) $post['local_id'];
 			// Get post_type from the existing record or from the post itself.
-			$post_type = 'post';
 			if ( isset( $posts_by_id_new[ $id_new ]['post_type'] ) ) {
 				$post_type = $posts_by_id_new[ $id_new ]['post_type'];
 			} else {
-				// Try to get post type from database.
-				$wp_post = get_post( $id_new );
-				if ( $wp_post ) {
-					$post_type = $wp_post->post_type;
-				}
+				// Get post type from database.
+				$post_type = $wpdb->get_var( $wpdb->prepare( "SELECT post_type FROM {$wpdb->posts} WHERE ID = %d", $id_new ) ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching.
 			}
 			$posts_by_id_new[ $id_new ] = [
 				'status'    => 'modified',
