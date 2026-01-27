@@ -23,7 +23,7 @@ class ContentDiffMigratorIndex {
 	public static function register_command(): void {
 		WP_CLI::add_command(
 			'newspack-content-diff-migrator index',
-			[ __CLASS__, 'cmd_index' ],
+			[ new self(), 'cmd_index' ],
 			[
 				'shortdesc' => 'Interactive command selector with guided argument input.',
 				'longdesc'  => 'Displays an interactive menu to select and execute any newspack-content-diff-migrator command with step-by-step prompts for all required and optional arguments.',
