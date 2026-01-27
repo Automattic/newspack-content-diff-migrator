@@ -316,7 +316,8 @@ class ContentDiffMigratorIndex {
 	 */
 	private function confirm_execution( string $full_command ): bool {
 		WP_CLI::line( str_repeat( '─', 60 ) );
-		WP_CLI::line( $full_command );
+		WP_CLI::line( '' );
+		WP_CLI::line( WP_CLI::colorize( '%R' . $full_command . '%n' ) );
 		WP_CLI::line( '' );
 		$response = \cli\prompt(
 			'Execute this command? [y/n]'
