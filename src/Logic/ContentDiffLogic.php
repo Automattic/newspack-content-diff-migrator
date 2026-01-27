@@ -178,6 +178,9 @@ class ContentDiffLogic {
 	 * @return array Associative array with columns specified in used query.
 	 */
 	public function get_posts_rows_for_content_diff( string $posts_table, array $post_types, array $post_statuses ): array {
+		// Validate table name.
+		DB::validate_table_name( $posts_table );
+		
 		// Get post types and statuses placeholders for $wpdb::prepare.
 		$post_types_placeholders        = array_fill( 0, count( $post_types ), '%s' );
 		$post_types_placeholders_csv    = implode( ',', $post_types_placeholders );
@@ -193,8 +196,8 @@ class ContentDiffLogic {
 				AND post_status IN ( $post_statuses_placeholders_csv );",
 			array_merge( $post_types, $post_statuses )
 		);
-		$posts_table_escaped = esc_sql( $posts_table );
-		$results             = $this->wpdb->get_results(  str_replace( '{TABLE}', $posts_table_escaped, $sql_replace_table), ARRAY_A );
+		$results = $this->wpdb->get_results( str_replace( '{TABLE}', $posts_table, $sql_replace_table ), ARRAY_A );
+		// phpcs:enable
 
 		// Return empty array instead of null.
 		$results = is_null( $results ) ? [] : $results;
@@ -215,7 +218,7 @@ class ContentDiffLogic {
 		$ids_map  = [];
 		$meta_key = $this->get_old_id_meta_key( $source_hostname );
 
-		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared -- placeholders generated dynamically.
+		// phpcs:disable -- placeholders generated dynamically WordPress.DB.PreparedSQL.NotPrepared.
 		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
 		$results                 = $this->wpdb->get_results(
 			$this->wpdb->prepare(
@@ -425,10 +428,13 @@ class ContentDiffLogic {
 	 * @return array Associative array with term_id, slug, name, and taxonomy.
 	 */
 	public function get_terms_rows_for_attribution( string $table_prefix ): array {
-		$terms_table         = esc_sql( $table_prefix . 'terms' );
-		$term_taxonomy_table = esc_sql( $table_prefix . 'term_taxonomy' );
+		// Prepare and validate table names.
+		$terms_table         = $table_prefix . 'terms';
+		$term_taxonomy_table = $table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $terms_table );
+		DB::validate_table_name( $term_taxonomy_table );
 
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table prefix string value was escaped.
+		// phpcs:disable -- table names were properly validated WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
 		$results = $this->wpdb->get_results(
 			"SELECT t.term_id, t.slug, t.name, tt.taxonomy
 			FROM {$terms_table} t
@@ -1337,11 +1343,14 @@ class ContentDiffLogic {
 			];
 		}
 
+		// Prepare and validate table names.
+		$live_terms_table    = $live_table_prefix . 'terms';
+		$live_taxonomy_table = $live_table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $live_terms_table );
+		DB::validate_table_name( $live_taxonomy_table );
+		
 		// Get all live terms with their taxonomy info.
-		$live_terms_table    = esc_sql( $live_table_prefix . 'terms' );
-		$live_taxonomy_table = esc_sql( $live_table_prefix . 'term_taxonomy' );
-
-		// phpcs:disable -- table prefix string value was escaped WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		// phpcs:disable -- table names were properly validated WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
 		$taxonomies_placeholders = implode( ',', array_fill( 0, count( $taxonomies ), '%s' ) );
 		$live_terms              = $this->wpdb->get_results(
 			$this->wpdb->prepare(
@@ -1475,7 +1484,9 @@ class ContentDiffLogic {
 	 * @return array Associative array with ID and user_login.
 	 */
 	public function get_users_rows_for_attribution( string $table_prefix ): array {
-		$users_table = esc_sql( $table_prefix . 'users' );
+		// Prepare and validate table name.
+		$users_table = $table_prefix . 'users';
+		DB::validate_table_name( $users_table );
 
 		// phpcs:disable -- WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
 		$results = $this->wpdb->get_results(
@@ -1574,7 +1585,7 @@ class ContentDiffLogic {
 				'meta_key' => $meta_key,
 			];
 			Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to save old_id postmeta for imported post %d which may cause duplicate imports on resume. DB error: %s', $post_id_new, $this->wpdb->last_error ), $context );
-			throw new \RuntimeException( sprintf( 'Critical: Failed to save old_id postmeta for post %d', esc_html( $post_id_new ) ) );
+			throw new \RuntimeException( sprintf( 'Critical: Failed to save old_id postmeta for post %d', $post_id_new ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return [
@@ -1925,7 +1936,10 @@ class ContentDiffLogic {
 	 *                    Otherwise, the result is an array with subarray rows, or an empty array.
 	 */
 	private function select( string $table_name, array $where_conditions, bool $select_just_one_row = false ): ?array {
-		$sql = 'SELECT * FROM ' . esc_sql( $table_name );
+		// Validate table name.
+		DB::validate_table_name( $table_name );
+		
+		$sql = 'SELECT * FROM ' . $table_name;
 
 		if ( ! empty( $where_conditions ) ) {
 			$where_sprintf = '';
@@ -1974,7 +1988,7 @@ class ContentDiffLogic {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->posts, $insert_post_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting post, ID %d, post row %s', $orig_id, wp_json_encode( $post_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting post, ID %d, post row %s', $orig_id, wp_json_encode( $post_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $preserve_id ?? $this->wpdb->insert_id;
@@ -2037,9 +2051,11 @@ class ContentDiffLogic {
 	 * @return int|null Current Post ID.
 	 */
 	public function get_current_post_id_by_comparing_with_live_db( int $id_live, string $live_table_prefix ): ?string {
-
+		// Prepare and validate table name.
 		$live_posts_table = $live_table_prefix . 'posts';
 		$posts_table      = $this->wpdb->posts;
+		DB::validate_table_name( $live_posts_table );
+		DB::validate_table_name( $posts_table );
 
 		// phpcs:disable -- wpdb::prepare is used correctly.
 		$post_id_new = $this->wpdb->get_var(

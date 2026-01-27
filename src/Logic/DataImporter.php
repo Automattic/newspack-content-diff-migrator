@@ -7,6 +7,7 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\ContentDiffMigrator\Utils\DB;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Psr\Log\LogLevel;
 use WP_User;
@@ -719,7 +720,7 @@ class DataImporter {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->postmeta, $insert_postmeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error in insert_postmeta_row, post_id %s, postmeta_row %s', $post_id, wp_json_encode( $postmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error in insert_postmeta_row, post_id %s, postmeta_row %s', $post_id, wp_json_encode( $postmeta_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $this->wpdb->insert_id;
@@ -810,7 +811,7 @@ class DataImporter {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->users, $insert_user_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting user, ID %d, user_row %s', $user_row['ID'], wp_json_encode( $user_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting user, ID %d, user_row %s', $user_row['ID'], wp_json_encode( $user_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		// Last inserted ID.
@@ -858,7 +859,7 @@ class DataImporter {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->usermeta, $insert_usermeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting user meta, user_id %d, $usermeta_row %s', $user_id, wp_json_encode( $usermeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting user meta, user_id %d, $usermeta_row %s', $user_id, wp_json_encode( $usermeta_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $this->wpdb->insert_id;
@@ -883,7 +884,7 @@ class DataImporter {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->comments, $insert_comment_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting comment, $new_post_id %d, $new_user_id %d, $comment_row %s', $new_post_id, $new_user_id, wp_json_encode( $comment_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting comment, $new_post_id %d, $new_user_id %d, $comment_row %s', $new_post_id, $new_user_id, wp_json_encode( $comment_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $this->wpdb->insert_id;
@@ -906,7 +907,7 @@ class DataImporter {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->commentmeta, $insert_commentmeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, wp_json_encode( $commentmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting comment meta, $new_comment_id %d, $commentmeta_row %s', $new_comment_id, wp_json_encode( $commentmeta_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $this->wpdb->insert_id;
@@ -929,7 +930,7 @@ class DataImporter {
 
 		$inserted = $this->wpdb->insert( $this->wpdb->termmeta, $insert_termmeta_row );
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term meta, $new_term_id %d, $termmeta_row %s', $new_term_id, wp_json_encode( $termmeta_row ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting term meta, $new_term_id %d, $termmeta_row %s', $new_term_id, wp_json_encode( $termmeta_row ) ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $this->wpdb->insert_id;
@@ -948,7 +949,7 @@ class DataImporter {
 	private function update_comment_parent( int $comment_id, int $comment_parent_new ): int|false {
 		$updated = $this->wpdb->update( $this->wpdb->comments, [ 'comment_parent' => $comment_parent_new ], [ 'comment_ID' => $comment_id ] );
 		if ( 1 != $updated ) {
-			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error updating comment parent, $comment_id %d, $comment_parent_new %d', $comment_id, $comment_parent_new ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $updated;
@@ -999,7 +1000,7 @@ class DataImporter {
 			]
 		);
 		if ( 1 != $inserted ) {
-			throw new \RuntimeException( sprintf( 'Error inserting term relationship, $object_id %d, $term_taxonomy_id %d', $object_id, $term_taxonomy_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error inserting term relationship, $object_id %d, $term_taxonomy_id %d', $object_id, $term_taxonomy_id ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $this->wpdb->insert_id;
@@ -1018,7 +1019,7 @@ class DataImporter {
 	private function update_post_author( int $post_id, int $new_author_id ): int|false {
 		$updated = $this->wpdb->update( $this->wpdb->posts, [ 'post_author' => $new_author_id ], [ 'ID' => $post_id ] );
 		if ( 1 != $updated ) {
-			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( 'Error updating post author, $post_id %d, $new_author_id %d', $post_id, $new_author_id ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		return $updated;
@@ -1034,9 +1035,11 @@ class DataImporter {
 	 * @return array|null Term and taxonomy data, or null if not found.
 	 */
 	private function get_term_and_taxonomy_array( string $table_prefix, array $where, string $taxonomy ): ?array {
-
-		$table_terms         = esc_sql( $table_prefix . 'terms' );
-		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+		// Prepare and validate table names.
+		$table_terms         = $table_prefix . 'terms';
+		$table_term_taxonomy = $table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $table_terms );
+		DB::validate_table_name( $table_term_taxonomy );
 
 		$query_and_clause    = '';
 		$query_and_parameter = null;
@@ -1115,12 +1118,6 @@ class DataImporter {
 	 * @return array List of term_taxonomy_ids that were fixed, empty if none.
 	 */
 	public function fix_hierarchical_taxonomies_parents( string $table_prefix, array $taxonomies_to_check ): array {
-		// Get taxonomies with invlid/nonexistent parents.
-		$terms         = esc_sql( $table_prefix . 'terms' );
-		$term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
-		
-		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
-		$taxonomy_placeholders = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
 		
 		/**
 		 * Two-step approach to find hierarchical taxonomy terms with invalid parents.
@@ -1128,10 +1125,10 @@ class DataImporter {
 		 * Originally this method used a simpler LEFT JOIN to find orphaned terms:
 		 *
 		 *   SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
-		 *   FROM {$terms} t
-		 *   JOIN {$term_taxonomy} tt
+		 *   FROM {$table_terms} t
+		 *   JOIN {$table_term_taxonomy} tt
 		 *     ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_placeholders) AND parent <> 0
-		 *   LEFT JOIN {$terms} ttparent
+		 *   LEFT JOIN {$table_terms} ttparent
 		 *     ON ttparent.term_id = tt.parent
 		 *   WHERE ttparent.term_id IS NULL
 		 * 
@@ -1145,18 +1142,26 @@ class DataImporter {
 		 * any self-referencing tables in queries and works reliably across all MySQL configurations.
 		 */
 		
+		// Prepare and validate table names.
+		$table_terms         = $table_prefix . 'terms';
+		$table_term_taxonomy = $table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $table_terms );
+		DB::validate_table_name( $table_term_taxonomy );
+
 		// Step 1: Get all valid term IDs.
-		$valid_term_ids = $this->wpdb->get_col( "SELECT term_id FROM {$terms}" );
+		$valid_term_ids = $this->wpdb->get_col( "SELECT term_id FROM {$table_terms}" ); // phpcs:ignore -- table name was properly validated WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
 		if ( empty( $valid_term_ids ) ) {
 			return [];
 		}
 		
 		// Step 2: Find terms with parents that don't exist in the valid IDs list.
+		$taxonomy_placeholders = implode( ', ', array_fill( 0, count( $taxonomies_to_check ), '%s' ) );
+		// phpcs:disable -- wpdb::prepare used and query fully sanitized, and table name was properly validated.
 		$hierarchical_taxonomies = $this->wpdb->get_results(
 			$this->wpdb->prepare(
 				"SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.term_id, tt.taxonomy, tt.parent
-				FROM {$terms} t
-				JOIN {$term_taxonomy} tt
+				FROM {$table_terms} t
+				JOIN {$table_term_taxonomy} tt
 					ON t.term_id = tt.term_id AND tt.taxonomy IN ($taxonomy_placeholders) AND tt.parent <> 0",
 				...$taxonomies_to_check
 			),
@@ -1184,11 +1189,10 @@ class DataImporter {
 			return [];
 		}
 		$term_taxonomy_ids_placeholders = implode( ',', array_fill( 0, count( $term_taxonomy_ids ), '%d' ) );
-		$term_taxonomy                  = esc_sql( $table_prefix . 'term_taxonomy' );
 		// phpcs:disable -- wpdb::prepare used and query fully sanitized.
 		$this->wpdb->query(
 			$this->wpdb->prepare(
-				"UPDATE {$term_taxonomy} SET parent = 0 WHERE term_taxonomy_ID IN ( {$term_taxonomy_ids_placeholders} );",
+				"UPDATE {$table_term_taxonomy} SET parent = 0 WHERE term_taxonomy_ID IN ( {$term_taxonomy_ids_placeholders} );",
 				...$term_taxonomy_ids
 			)
 		);
@@ -1209,8 +1213,11 @@ class DataImporter {
 		// Start building the taxonomy tree with this taxonomy array, and keep adding parents until reaching the top 'parent' key.
 		$taxonomy_tree = $taxonomy_array;
 
-		$table_terms         = esc_sql( $table_prefix . 'terms' );
-		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+		// Prepare and validate table names.
+		$table_terms         = $table_prefix . 'terms';
+		$table_term_taxonomy = $table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $table_terms );
+		DB::validate_table_name( $table_term_taxonomy );
 
 		$parent_term_id = $taxonomy_array['parent'];
 		if ( 0 != $parent_term_id ) {
@@ -1329,8 +1336,11 @@ class DataImporter {
 	 * @return array|null Taxonomy data or null.
 	 */
 	private function get_taxonomy_array_by_name_and_parent( string $table_prefix, string $term_name, string $taxonomy_name, $taxonomy_parent ): ?array {
-		$table_terms         = esc_sql( $table_prefix . 'terms' );
-		$table_term_taxonomy = esc_sql( $table_prefix . 'term_taxonomy' );
+		// Prepare and validate table names.
+		$table_terms         = $table_prefix . 'terms';
+		$table_term_taxonomy = $table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $table_terms );
+		DB::validate_table_name( $table_term_taxonomy );
 
 		// phpcs:disable -- wpdb::prepare used.
 		$taxonomy_data = $this->wpdb->get_row(

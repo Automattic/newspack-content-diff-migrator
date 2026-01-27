@@ -464,8 +464,10 @@ class ContentDiffMigrator {
 		$this->warn_if_similar_hostname_exists( $source_hostname );
 
 		// Search distinct Post types in live DB.
-		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
-		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$live_table_prefix_escaped}posts ;" ); // phpcs:ignore -- table prefix string value was escaped.
+		// Prepare and validate table name.
+		$table_live_posts = $live_table_prefix . 'posts';
+		DB::validate_table_name( $table_live_posts );
+		$cpts_live = $wpdb->get_col( "SELECT DISTINCT( post_type ) FROM {$table_live_posts} ;" ); // phpcs:ignore -- table name was properly validated.
 
 		// Validate selected CPTs and remove invalid ones.
 		$post_types = array_values(
@@ -701,12 +703,14 @@ class ContentDiffMigrator {
 		// Read post_types from manifest (saved by search command).
 		$manifest = $this->run_state->get_manifest();
 		if ( is_null( $manifest ) ) {
-			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', esc_html( RunState::FILE_MANIFEST ) ) );
+			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', RunState::FILE_MANIFEST ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		// Get all taxonomies which exist in Live DB.
-		$live_table_prefix_escaped = esc_sql( $live_table_prefix );
-		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$live_table_prefix_escaped}term_taxonomy ;" ); // phpcs:ignore -- table prefix string value was escaped.
+		// Prepare and validate table name.
+		$table_live_term_taxonomy = $live_table_prefix . 'term_taxonomy';
+		DB::validate_table_name( $table_live_term_taxonomy );
+		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$table_live_term_taxonomy} ;" ); // phpcs:ignore -- table name was properly validated.
 
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
@@ -733,7 +737,7 @@ class ContentDiffMigrator {
 		if ( null === $new_live_ids ) {
 			$message = sprintf( 'Run-state file %s not found or empty.', RunState::FILE_NEW_IDS );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $message );
-			throw new \RuntimeException( esc_html( $message ) );
+			throw new \RuntimeException( $message ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		} elseif ( empty( $new_live_ids ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, 'No new posts to migrate.' );
 			// Continue to allow even without new IDs, to allow other data to be migrated (users, modified IDs, etc.).

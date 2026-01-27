@@ -9,6 +9,7 @@ namespace Newspack\ContentDiffMigrator\Utils;
 
 use wpdb;
 use Psr\Log\LogLevel;
+use InvalidArgumentException;
 
 /**
  * Database utility handling collation comparison and equalization.
@@ -94,7 +95,7 @@ class DB {
 			
 			$live_tablename = $live_table_prefix . $table;
 			if ( ! in_array( $live_tablename, $all_tables ) ) {
-				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $live_tablename ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $live_tablename ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 			}
 			$tables_validated++;
 		}
@@ -125,13 +126,14 @@ class DB {
 
 		$core_tables = array_diff( self::CORE_WP_TABLES, $skip_tables );
 		foreach ( $core_tables as $table ) {
-			$core_table = esc_sql( $this->wpdb->prefix . $table );
-			$live_table = esc_sql( $table_prefix . $table );
+			// Prepare and validate table names.
+			$core_table = $this->wpdb->prefix . $table;
+			$live_table = $table_prefix . $table;
+			self::validate_table_name( $core_table );
+			self::validate_table_name( $live_table );
 
-		// phpcs:ignore -- query fully sanitized.
-		$core_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$core_table'" );
-		// phpcs:ignore -- query fully sanitized.
-		$live_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$live_table'" );
+			$core_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$core_table'" ); // phpcs:ignore -- query fully sanitized.
+			$live_table_status = $this->wpdb->get_row( "SHOW TABLE STATUS WHERE name LIKE '$live_table'" ); // phpcs:ignore -- query fully sanitized.
 
 			if ( is_null( $core_table_status ) ) {
 				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Core table `%s` does not exist, skipping table.', $core_table ) );
@@ -250,25 +252,27 @@ class DB {
 		$sleep_between_batches   = $is_small_dataset ? 0 : 5;
 		$sleep_after_table       = 10;
 
+		// Prepare and validate all table names.
 		$backup_prefix             = 'collationbak_';
-		$backup_table              = esc_sql( $backup_prefix . $prefix . $table );
-		$source_table              = esc_sql( $prefix . $table );
-		$match_collation_for_table = esc_sql( $this->wpdb->prefix . $table );
-
-		$rename_sql = "RENAME TABLE $source_table TO $backup_table";
-		// phpcs:ignore -- query fully sanitized.
-		$rename_result = $this->wpdb->query( $rename_sql );
-		if ( is_wp_error( $rename_result ) ) {
-			throw new \RuntimeException( "Unable to rename table: '$rename_sql'\n" . $rename_result->get_error_message() ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		$backup_table              = $backup_prefix . $prefix . $table;
+		$source_table              = $prefix . $table;
+		$match_collation_for_table = $this->wpdb->prefix . $table;
+		self::validate_table_name( $backup_table );
+		self::validate_table_name( $source_table );
+		self::validate_table_name( $match_collation_for_table );
+		
+		$rename_sql    = "RENAME TABLE $source_table TO $backup_table";
+		$rename_result = $this->wpdb->query( $rename_sql ); // phpcs:ignore -- table names were properly validated.
+		if ( false === $rename_result ) {
+			throw new \RuntimeException( sprintf( "Unable to rename table: '%s', DB error: %s", $rename_sql, ( '' != $this->wpdb->last_error ) ? $this->wpdb->last_error : 'unknown error' ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		$create_like_table_sql = "CREATE TABLE {$source_table} LIKE $match_collation_for_table";
 		// phpcs:ignore -- query fully sanitized.
-		$create_result = $this->wpdb->query( $create_like_table_sql );
+	$create_result = $this->wpdb->query( $create_like_table_sql );
 
 		if ( false === $create_result ) {
-			$db_error = ( '' != $this->wpdb->last_error ) ? $this->wpdb->last_error : 'unknown error';
-			throw new \RuntimeException( "Unable to create table: '$create_like_table_sql'\nDB error: $db_error" ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( "Unable to create table: '%s', DB error: %s", $create_like_table_sql, ( '' != $this->wpdb->last_error ) ? $this->wpdb->last_error : 'unknown error' ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		$limiter = [
@@ -302,7 +306,7 @@ class DB {
 			} else {
 				$db_error = ( '' != $this->wpdb->last_error ) ? 'DB error message: ' . $this->wpdb->last_error : 'No DB error message available -- check error and debug logs.';
 				// CRITICAL: Batch insert failed. Abort operation and keep backup table intact.
-				throw new \RuntimeException( sprintf( "Failed to copy data at offset %d. SQL: '%s'. %s. Backup table '%s' preserved for recovery.", $limiter['start'], $insert_sql, $db_error, $backup_table ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+				throw new \RuntimeException( sprintf( "Failed to copy data at offset %d. SQL: '%s'. %s. Backup table '%s' preserved for recovery.", $limiter['start'], $insert_sql, $db_error, $backup_table ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 			}
 
 			if ( $sleep_between_batches > 0 ) {
@@ -311,13 +315,10 @@ class DB {
 		}
 
 		// Verify row counts match before dropping backup.
-		// phpcs:ignore -- query fully sanitized.
-		$backup_count = (int) $this->wpdb->get_var( "SELECT COUNT(*) FROM $backup_table" );
-		// phpcs:ignore -- query fully sanitized.
-		$source_count = (int) $this->wpdb->get_var( "SELECT COUNT(*) FROM $source_table" );
-
+		$backup_count = (int) $this->wpdb->get_var( "SELECT COUNT(*) FROM $backup_table" ); // phpcs:ignore -- table name was properly validated.
+		$source_count = (int) $this->wpdb->get_var( "SELECT COUNT(*) FROM $source_table" ); // phpcs:ignore -- table name was properly validated.
 		if ( $backup_count !== $source_count ) {
-			throw new \RuntimeException( sprintf( "Row count mismatch after copy: backup has %d rows, source has %d rows. Backup table '%s' preserved for recovery.", $backup_count, $source_count, $backup_table ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new \RuntimeException( sprintf( "Row count mismatch after copy: backup has %d rows, source has %d rows. Backup table '%s' preserved for recovery.", $backup_count, $source_count, $backup_table ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
 		}
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Successfully copied %d rows from backup to source. Verified row counts match.', $source_count ) );
@@ -334,6 +335,26 @@ class DB {
 		// Sleep after table is complete (for small datasets).
 		if ( $sleep_after_table > 0 ) {
 			sleep( $sleep_after_table );
+		}
+	}
+
+	/**
+	 * Utility to validate table names silently, or throws an exception if invalid.
+	 * Used for sanitizing table names before use in SQL queries.
+	 * 
+	 * @param string $table_name The table name to validate.
+	 * @return void
+	 * @throws InvalidArgumentException If table name is invalid.
+	 */
+	public static function validate_table_name( string $table_name ): void {
+		if ( empty( $table_name ) ) {
+			throw new InvalidArgumentException( 'Table name cannot be empty.' );
+		}
+		if ( strlen( $table_name ) > 64 ) {
+			throw new InvalidArgumentException( 'Table name exceeds maximum length of 64 characters for MySQL.' );
+		}
+		if ( ! preg_match( '/^[a-zA-Z0-9_]+$/', $table_name ) ) {
+			throw new InvalidArgumentException( 'Table name contains invalid characters. Only alphanumeric and underscore allowed' );
 		}
 	}
 }

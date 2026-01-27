@@ -37,11 +37,14 @@ class SLAHelper {
 	 * @return array Map of user_id => unserialized avatar meta array.
 	 */
 	public function get_avatar_meta_by_user_id( string $table_prefix ): array {
+		// Prepare and validate table name.
+		$usermeta_table = $table_prefix . 'usermeta';
+		DB::validate_table_name( $usermeta_table );
+		
 		// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery WordPress.DB.DirectDatabaseQuery.NoCaching WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
-		$table_prefix_escaped = esc_sql( $table_prefix );
-		$results              = $this->wpdb->get_results(
+		$results = $this->wpdb->get_results(
 			$this->wpdb->prepare(
-				"SELECT user_id, meta_value FROM {$table_prefix_escaped}usermeta WHERE meta_key = %s",
+				"SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key = %s",
 				self::AVATAR_META_KEY 
 			),
 			ARRAY_A
