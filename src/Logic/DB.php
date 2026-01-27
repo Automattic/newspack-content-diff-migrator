@@ -78,7 +78,6 @@ class DB {
 	public function validate_db_tables( string $live_table_prefix, array $skip_tables = [] ): void {
 		// Check whether core WP DB tables that exist in the installation are present in used DB.
 		$all_tables       = $this->get_all_db_tables();
-		$tables_checked   = 0;
 		$tables_validated = 0;
 		
 		foreach ( self::CORE_WP_TABLES as $table ) {
@@ -94,7 +93,6 @@ class DB {
 				continue;
 			}
 			
-			$tables_checked++;
 			$live_tablename = $live_table_prefix . $table;
 			if ( ! in_array( $live_tablename, $all_tables ) ) {
 				throw new \RuntimeException( sprintf( 'Core WP DB table %s not found.', $live_tablename ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
