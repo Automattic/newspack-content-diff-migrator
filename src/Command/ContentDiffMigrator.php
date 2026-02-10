@@ -737,7 +737,7 @@ class ContentDiffMigrator {
 			);
 
 			// Save some metas.
-			update_post_meta( $post_id_new, ContentDiffMigratorLogic::SAVED_META_LIVE_POST_ID, $post_id_live );
+			update_post_meta( $post_id_new, ContentDiffLogic::SAVED_META_LIVE_POST_ID, $post_id_live );
 		}
 
 		// Flush the cache for `$wpdb::update`s to sink in.
