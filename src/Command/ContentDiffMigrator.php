@@ -834,7 +834,7 @@ class ContentDiffMigrator {
 			// it won't be present in the list of the posts we imported. Let's try and search for the new ID directly in DB.
 			// First try searching by postmeta ContentDiffMigratorLogic::SAVED_META_LIVE_POST_ID -- in case a previous content diff imported it.
 			if ( is_null( $parent_id_new ) ) {
-				$parent_id_new = $this->logic->get_current_post_id_by_custom_meta( $parent_id_old, ContentDiffMigratorLogic::SAVED_META_LIVE_POST_ID );
+				$parent_id_new = $this->logic->get_current_post_id_by_custom_meta( $parent_id_old, ContentDiffLogic::SAVED_META_LIVE_POST_ID );
 			}
 			// Next try searching for the new parent_id by joining local and live DB tables.
 			if ( is_null( $parent_id_new ) ) {
