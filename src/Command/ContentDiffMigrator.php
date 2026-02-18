@@ -790,7 +790,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Recalculate counts for all migrated taxonomies.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Recalculating term counts...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating term counts...' );
 		$this->recalculate_term_counts( $taxonomies_to_migrate );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
