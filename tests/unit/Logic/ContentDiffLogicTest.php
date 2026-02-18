@@ -2027,8 +2027,10 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 		$this->assertIsArray( $result );
 		$this->assertGreaterThanOrEqual( 1, count( $result ) );
-		$this->assertContains( $post2, $result );
-		$this->assertNotContains( $post1, $result );
+		// Result is now an array of ['ID' => ..., 'post_type' => ...] arrays.
+		$result_ids = array_column( $result, 'ID' );
+		$this->assertContains( (string) $post2, $result_ids );
+		$this->assertNotContains( (string) $post1, $result_ids );
 	}
 
 	public function test_get_unattributed_post_ids_should_return_empty_for_empty_post_types(): void {
@@ -2095,8 +2097,10 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$result = $this->logic->get_unattributed_post_ids( [ 'post' ] );
 
 		$this->assertIsArray( $result );
-		$this->assertContains( $post_unattributed, $result );
-		$this->assertNotContains( $post_attributed, $result );
+		// Result is now an array of ['ID' => ..., 'post_type' => ...] arrays.
+		$result_ids = array_column( $result, 'ID' );
+		$this->assertContains( (string) $post_unattributed, $result_ids );
+		$this->assertNotContains( (string) $post_attributed, $result_ids );
 	}
 
 	/**

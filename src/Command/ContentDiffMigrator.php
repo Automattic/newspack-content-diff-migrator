@@ -943,35 +943,22 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing all unattributed content to %s...', $source_hostname ) );
 
 		// Attribute all post types (including attachments).
-		$post_ids = $this->logic->get_unattributed_post_ids( $post_types );
-		// Fetch post types.
-		$post_types_map = [];
-		if ( ! empty( $post_ids ) ) {
-			$ids_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
-			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
-			$post_types_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $post_ids ), ARRAY_A );
-			// phpcs:enable
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			$post_types_map = array_column( $post_types_results, 'post_type', 'ID' );
-		}
-		foreach ( $post_ids as $key_post_id => $post_id ) {
-			// Skip if post doesn't exist in DB.
-			if ( ! isset( $post_types_map[ $post_id ] ) ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $post_id ) );
-				continue;
-			}
+		$posts = $this->logic->get_unattributed_post_ids( $post_types );
+		foreach ( $posts as $key_post => $post ) {
+			$post_id   = (int) $post['ID'];
+			$post_type = $post['post_type'];
 			
 			update_post_meta( $post_id, $meta_key, $post_id );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 1000 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post, 1000 );
 			
 			$attributed_data['posts'][] = [
 				'local_id'  => $post_id,
 				'live_id'   => $post_id,
-				'post_type' => $post_types_map[ $post_id ],
+				'post_type' => $post_type,
 			];
 		}
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts/pages/attachments attributed.', count( $post_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d post_type-s attributed.', count( $posts ) ) );
 
 		// Attribute users.
 		$user_ids = $this->logic->get_unattributed_user_ids();
@@ -1700,7 +1687,7 @@ class ContentDiffMigrator {
 	 */
 	private function check_and_warn_if_there_is_unattributed_content( array $post_types ): int {
 		$post_types_without_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
-		$post_ids                       = $this->logic->get_unattributed_post_ids( $post_types_without_attachments );
+		$posts                          = $this->logic->get_unattributed_post_ids( $post_types_without_attachments );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		$attachment_ids = in_array( 'attachment', $post_types, true )
 			? $this->logic->get_unattributed_attachment_ids()
@@ -1710,15 +1697,17 @@ class ContentDiffMigrator {
 		$term_ids = $this->logic->get_unattributed_term_ids();
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		$total = count( $post_ids ) + count( $attachment_ids ) + count( $user_ids ) + count( $term_ids );
+		$total = count( $posts ) + count( $attachment_ids ) + count( $user_ids ) + count( $term_ids );
 		if ( $total > 0 ) {
 			// Save all unattributed IDs to a JSONL file.
 			$file_path = $this->run_state->write_unattributed_content(
-				$post_ids,
+				$posts,
 				$attachment_ids,
 				$user_ids,
 				$term_ids
 			);
+			// Extract IDs for log sample message.
+			$post_ids_flat = array_column( $posts, 'ID' );
 			Logger::instance()->log(
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
@@ -1727,7 +1716,7 @@ class ContentDiffMigrator {
 					$total,
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$file_path,
-					$this->format_log_message_count_with_sample_ids( $post_ids ),
+					$this->format_log_message_count_with_sample_ids( $post_ids_flat ),
 					$this->format_log_message_count_with_sample_ids( $attachment_ids ),
 					$this->format_log_message_count_with_sample_ids( $user_ids ),
 					$this->format_log_message_count_with_sample_ids( $term_ids )

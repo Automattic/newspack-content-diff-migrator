@@ -486,11 +486,11 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Gets IDs of posts that don't have old_id attribution from any source.
+	 * Gets IDs and post_types of posts that don't have old_id attribution from any source.
 	 *
 	 * @param array $post_types Post types to check.
 	 *
-	 * @return int[] Array of unattributed post IDs.
+	 * @return array[] Array of ['ID' => int, 'post_type' => string] arrays.
 	 */
 	public function get_unattributed_post_ids( array $post_types ): array {
 		if ( empty( $post_types ) ) {
@@ -500,20 +500,21 @@ class ContentDiffLogic {
 		// phpcs:disable -- WordPress.DB.PreparedSQL.NotPrepared.
 		$post_types_placeholders = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
 		$params                  = array_merge( [ self::SAVED_META_LIVE_ID_PREFIX . '%' ], array_values( $post_types ) );
-		$results                 = $this->wpdb->get_col(
+		$results                 = $this->wpdb->get_results(
 			$this->wpdb->prepare(
-				"SELECT p.ID
+				"SELECT p.ID, p.post_type
 				FROM {$this->wpdb->posts} p
 				LEFT JOIN {$this->wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key LIKE %s
 				WHERE p.post_type IN ( {$post_types_placeholders} )
 				AND p.post_status IN ('publish', 'future', 'draft', 'pending', 'private')
 				AND pm.meta_id IS NULL",
 				$params
-			)
+			),
+			ARRAY_A
 		);
 		// phpcs:enable
 
-		return array_map( 'intval', $results );
+		return $results;
 	}
 
 	/**

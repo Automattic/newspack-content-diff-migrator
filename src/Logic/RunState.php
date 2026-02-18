@@ -269,14 +269,14 @@ class RunState {
 	 *
 	 * Overwrites any existing file with newly scanned data.
 	 *
-	 * @param array $post_ids       Array of unattributed post IDs.
+	 * @param array $posts          Array of unattributed posts, expected keys: 'post_type', 'ID'.
 	 * @param array $attachment_ids Array of unattributed attachment IDs.
 	 * @param array $user_ids       Array of unattributed user IDs.
 	 * @param array $term_ids       Array of unattributed term IDs.
 	 *
 	 * @return string Full path to the run-state file.
 	 */
-	public function write_unattributed_content( array $post_ids, array $attachment_ids, array $user_ids, array $term_ids ): string {
+	public function write_unattributed_content( array $posts, array $attachment_ids, array $user_ids, array $term_ids ): string {
 		$file_path = $this->get_file_path( self::FILE_UNATTRIBUTED_CONTENT );
 
 		// Overwrite existing file.
@@ -286,12 +286,12 @@ class RunState {
 			return $file_path;
 		}
 
-		foreach ( $post_ids as $id ) {
+		foreach ( $posts as $post ) {
 			$this->append_jsonl(
 				self::FILE_UNATTRIBUTED_CONTENT,
 				[
-					'type' => 'post',
-					'ID'   => (int) $id,
+					'type' => $post['post_type'],
+					'ID'   => (int) $post['ID'],
 				] 
 			);
 		}
