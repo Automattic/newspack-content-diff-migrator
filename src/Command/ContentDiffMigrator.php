@@ -254,49 +254,25 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-ids',
-						'description' => 'Comma-separated post IDs. Either use this, or provide file with IDs.',
-						'optional'    => true,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'post-ids-file',
-						'description' => 'File with post IDs, one ID per line.',
+						'description' => 'Post IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one post ID per line.',
 						'optional'    => true,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'attachment-ids',
-						'description' => 'Comma-separated attachment IDs. Either use this, or provide file with IDs.',
-						'optional'    => true,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'attachment-ids-file',
-						'description' => 'File with post IDs, one ID per line.',
+						'description' => 'Attachment IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one attachment ID per line.',
 						'optional'    => true,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'user-ids',
-						'description' => 'Comma-separated user IDs. Either use this, or provide file with IDs.',
-						'optional'    => true,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'user-ids-file',
-						'description' => 'File with user IDs, one ID per line.',
+						'description' => 'User IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one user ID per line.',
 						'optional'    => true,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'term-ids',
-						'description' => 'Comma-separated term IDs. Either use this, or provide file with IDs.',
-						'optional'    => true,
-					],
-					[
-						'type'        => 'assoc',
-						'name'        => 'term-ids-file',
-						'description' => 'File with term IDs, one ID per line.',
+						'description' => 'Term IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one term ID per line.',
 						'optional'    => true,
 					],
 				],
@@ -1041,10 +1017,10 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $term_ids ) ) );
 
 		// Generate timestamped CSV reports.
-		$reports_dir    = rtrim( $data_dir, '/' ) . '/reports';
-		$run_state      = new RunState( $data_dir );
-		$report_creator = new ReportCreator( $run_state );
-		$created_files  = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
+		$reports_dir     = rtrim( $data_dir, '/' ) . '/reports';
+		$this->run_state = new RunState( $data_dir );
+		$report_creator  = new ReportCreator( $this->run_state );
+		$created_files   = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
 
 		// Re-count and display remaining unattributed content.
 		$this->attribute_recount_unattributed( $post_types );
@@ -1347,10 +1323,10 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $matched_terms ) ) );
 
 		// Generate timestamped CSV reports.
-		$reports_dir    = rtrim( $data_dir, '/' ) . '/reports';
-		$run_state      = new RunState( $data_dir ); // Temporary for report generation.
-		$report_creator = new ReportCreator( $run_state );
-		$created_files  = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
+		$reports_dir     = rtrim( $data_dir, '/' ) . '/reports';
+		$this->run_state = new RunState( $data_dir );
+		$report_creator  = new ReportCreator( $this->run_state );
+		$created_files   = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
 
 		// Re-count and display remaining unattributed content.
 		$this->attribute_recount_unattributed( $post_types );
@@ -1372,11 +1348,11 @@ class ContentDiffMigrator {
 		$source_hostname = $assoc_args['source-hostname'] ?? false;
 		$data_dir        = $assoc_args['data-dir'] ?? false;
 
-		// Parse IDs from arguments.
-		$post_ids       = $this->attribute_parse_ids_input( $assoc_args['post-ids'] ?? null, $assoc_args['post-ids-file'] ?? null );
-		$attachment_ids = $this->attribute_parse_ids_input( $assoc_args['attachment-ids'] ?? null, $assoc_args['attachment-ids-file'] ?? null );
-		$user_ids       = $this->attribute_parse_ids_input( $assoc_args['user-ids'] ?? null, $assoc_args['user-ids-file'] ?? null );
-		$term_ids       = $this->attribute_parse_ids_input( $assoc_args['term-ids'] ?? null, $assoc_args['term-ids-file'] ?? null );
+		// Get IDs from arguments. These arguments accept either comma-separated IDs or full paths to files with one ID per line.
+		$post_ids       = $this->parse_argument_integer_ids_or_file( $assoc_args['post-ids'] ?? null );
+		$attachment_ids = $this->parse_argument_integer_ids_or_file( $assoc_args['attachment-ids'] ?? null );
+		$user_ids       = $this->parse_argument_integer_ids_or_file( $assoc_args['user-ids'] ?? null );
+		$term_ids       = $this->parse_argument_integer_ids_or_file( $assoc_args['term-ids'] ?? null );
 
 		// Validate at least one ID argument provided.
 		if ( empty( $post_ids ) && empty( $attachment_ids ) && empty( $user_ids ) && empty( $term_ids ) ) {
@@ -1587,10 +1563,10 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $term_ids ) ) );
 
 		// Generate timestamped CSV reports.
-		$reports_dir    = rtrim( $data_dir, '/' ) . '/reports';
-		$run_state      = new RunState( $data_dir );
-		$report_creator = new ReportCreator( $run_state );
-		$created_files  = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
+		$reports_dir     = rtrim( $data_dir, '/' ) . '/reports';
+		$this->run_state = new RunState( $data_dir );
+		$report_creator  = new ReportCreator( $this->run_state );
+		$created_files   = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
 
 		// Re-count and display remaining unattributed content.
 		$post_types = [ 'post', 'page', 'attachment' ];
@@ -2176,54 +2152,45 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Parses comma-separated IDs or reads from file.
+	 * Parses IDs from CLI input arguments which can be either comma-separated integers or a file path with one ID per line.
+	 * 
+	 * Auto-detects: if input is an existing file, reads IDs from it (one per line);
+	 * otherwise parses as comma-separated integers.
 	 *
-	 * @param string|null $csv  Comma-separated IDs.
-	 * @param string|null $file File path with IDs (one per line).
+	 * @param string|null $input Comma-separated IDs or file path.
 	 *
 	 * @return array Array of integer IDs.
 	 */
-	private function attribute_parse_ids_input( ?string $csv, ?string $file ): array {
-		// Check mutual exclusivity.
-		if ( ! empty( $csv ) && ! empty( $file ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, 'Cannot use both CSV and file arguments for the same type' );
+	private function parse_argument_integer_ids_or_file( ?string $input ): array {
+		if ( empty( $input ) ) {
 			return [];
 		}
 
 		$ids = [];
 
-		// Parse CSV.
-		if ( ! empty( $csv ) ) {
-			$parts = explode( ',', $csv );
-			foreach ( $parts as $part ) {
-				$part = trim( $part );
-				if ( is_numeric( $part ) ) {
-					$ids[] = (int) $part;
-				}
-			}
-		}
-
-		// Parse file.
-		if ( ! empty( $file ) ) {
-			if ( ! file_exists( $file ) ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'File not found: %s', $file ) );
-				return [];
-			}
-
-			$lines = file( $file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown
+		// If file exists, read IDs from file.
+		if ( file_exists( $input ) ) {
+			$lines = file( $input, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown
 			if ( false === $lines ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to read file: %s', $file ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to read argument input file: %s', $input ) );
 				return [];
 			}
-
 			foreach ( $lines as $line ) {
 				$line = trim( $line );
-				if ( empty( $line ) ) {
-					continue;
-				}
 				if ( is_numeric( $line ) ) {
 					$ids[] = (int) $line;
 				}
+			}
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d IDs from file: %s', count( $ids ), $input ) );
+			return array_unique( $ids );
+		}
+
+		// Otherwise parse as CSV.
+		$parts = explode( ',', $input );
+		foreach ( $parts as $part ) {
+			$part = trim( $part );
+			if ( is_numeric( $part ) ) {
+				$ids[] = (int) $part;
 			}
 		}
 
