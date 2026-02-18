@@ -116,36 +116,29 @@ class ContentDiffMigratorIndex {
 			// Category header.
 			$category_label = 'main' === $category ? 'MAIN MIGRATION COMMANDS' : 'UTILITY COMMANDS';
 			WP_CLI::line( WP_CLI::colorize( '%G' . $category_label . ':%n' ) );
-			WP_CLI::line( '' );
 
 			foreach ( $cmds as $cmd_name => $cmd_config ) {
-				$color = 'main' === $category ? '%C' : '%B';
+				$cmd_color = 'main' === $category ? '%Y' : '%B';
 				WP_CLI::line(
 					WP_CLI::colorize(
 						sprintf(
-							'  %s%2d.%%n %s',
-							$color,
+							'%%G%d.%%n %s%s%%n',
 							$option_num,
+							$cmd_color,
 							$cmd_name
 						) 
 					) 
 				);
-				WP_CLI::line(
-					sprintf(
-						'     %s',
-						$cmd_config['shortdesc']
-					) 
-				);
-				WP_CLI::line( '' );
+				WP_CLI::line( '    ' . $cmd_config['shortdesc'] );
 
 				$options[ $option_num ] = $cmd_name;
 				$cmd_map[ $option_num ] = [ $category, $cmd_name ];
 				++$option_num;
 			}
+			WP_CLI::line( '' );
 		}
 
 		// Prompt for selection.
-		WP_CLI::line( str_repeat( '─', 60 ) );
 		$selection = \cli\prompt(
 			sprintf( 'Select command (1-%d) or "q" to quit', count( $options ) )
 		);
@@ -175,7 +168,6 @@ class ContentDiffMigratorIndex {
 	private function show_full_description( string $cmd_name, array $commands ): void {
 		$cmd_config = $this->get_command_config( $cmd_name, $commands );
 
-		WP_CLI::line( '' );
 		WP_CLI::line( str_repeat( '─', 60 ) );
 		WP_CLI::line( WP_CLI::colorize( '%YCommand:%n ' . $cmd_name ) );
 		WP_CLI::line( str_repeat( '─', 60 ) );
@@ -222,7 +214,6 @@ class ContentDiffMigratorIndex {
 		// Prompt for required arguments.
 		if ( ! empty( $required ) ) {
 			WP_CLI::line( WP_CLI::colorize( '%YREQUIRED ARGUMENTS:%n' ) );
-			WP_CLI::line( '' );
 			foreach ( $required as $arg ) {
 				$args[ $arg['name'] ] = $this->prompt_for_argument( $arg, true );
 			}
@@ -232,14 +223,12 @@ class ContentDiffMigratorIndex {
 		// Prompt for optional arguments.
 		if ( ! empty( $optional ) ) {
 			WP_CLI::line( WP_CLI::colorize( '%YOPTIONAL ARGUMENTS:%n' ) );
-			WP_CLI::line( '' );
 			foreach ( $optional as $arg ) {
 				$value = $this->prompt_for_argument( $arg, false );
 				if ( '' !== $value ) {
 					$args[ $arg['name'] ] = $value;
 				}
 			}
-			WP_CLI::line( '' );
 		}
 
 		return $args;
@@ -257,9 +246,8 @@ class ContentDiffMigratorIndex {
 		$desc     = $arg['description'];
 		$type     = $arg['type'] ?? 'assoc';
 
-		// Display argument info.
-		WP_CLI::line( WP_CLI::colorize( '%G--' . $arg_name . ':%n' ) );
-		WP_CLI::line( '  ' . $desc );
+		// Display argument info: --arg-name: Description on same line.
+		WP_CLI::line( WP_CLI::colorize( '%G--' . $arg_name . ':%n' ) . ' ' . $desc );
 
 		// Handle flag type (boolean).
 		if ( 'flag' === $type ) {

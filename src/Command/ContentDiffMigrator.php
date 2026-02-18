@@ -98,7 +98,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'source-hostname',
-						'description' => 'Source hostname (e.g., www.example.com). Used to namespace old ID metadata.',
+						'description' => 'Source hostname (e.g. www.example.com). Used to namespace old ID metadata.',
 						'optional'    => false,
 						'repeating'   => false,
 					],
@@ -133,7 +133,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'source-hostname',
-						'description' => 'Source hostname (e.g., www.example.com).',
+						'description' => 'Source hostname (e.g. www.example.com).',
 						'optional'    => false,
 						'repeating'   => false,
 					],
@@ -168,7 +168,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'source-hostname',
-						'description' => 'Source hostname (e.g., www.example.com).',
+						'description' => 'Source hostname (e.g. www.example.com).',
 						'optional'    => false,
 					],
 					[
@@ -205,7 +205,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'source-hostname',
-						'description' => 'Source hostname (e.g., www.example.com).',
+						'description' => 'Source hostname (e.g. www.example.com).',
 						'optional'    => false,
 					],
 					[
@@ -232,17 +232,17 @@ class ContentDiffMigrator {
 				'method'    => 'cmd_attribute_ids',
 				'shortdesc' => 'Attribute specific content by ID to source hostname. Takes specific IDs of `posts` (and all CPTs), `users`, and/or `terms` and attributes just those objects to a source hostname. **Use case**: Some different custom migration was done in parallel for some reason, and then you wish to also run CDiff on that content. So you first assign the custom-migrated IDs metas, so that CDiff knows how to do the content refresh. This is very much an edge case, made for "just in case".',
 				'longdesc'  => "Attributes specific posts, attachments, users, or terms (by ID) to the source hostname. Provide IDs via comma-separated values or files (one ID per line).\n"
-								. "DATA TYPES WHICH CAN BE ATTRIBUTED:\n"
-								. "- Posts/Pages/CPTs (wp_postmeta)\n"
-								. "- Attachments (wp_postmeta)\n"
-								. "- Users (wp_usermeta)\n"
-								. "- Terms (wp_termmeta)\n"
-								. 'USE CASE: Targeted attribution for specific records.',
+								. 'USE CASE: Targeted attribution for specific records.\n'
+								. "DATA TYPES WHICH CAN BE ATTRIBUTED WITH THEIR OWN METAS:\n"
+								. "  - Posts/Pages/CPTs (wp_postmeta)\n"
+								. "  - Attachments (wp_postmeta)\n"
+								. "  - Users (wp_usermeta)\n"
+								. '  - Terms (wp_termmeta)',
 				'synopsis'  => [
 					[
 						'type'        => 'assoc',
 						'name'        => 'source-hostname',
-						'description' => 'Source hostname (e.g., www.example.com).',
+						'description' => 'Source hostname (e.g. www.example.com).',
 						'optional'    => false,
 					],
 					[
