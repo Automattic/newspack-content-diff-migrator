@@ -1001,7 +1001,7 @@ class ContentDiffMigrator {
 			];
 		}
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $term_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $attributed_data['terms'] ) ) );
 
 		// Generate timestamped CSV reports.
 		$reports_dir     = rtrim( $data_dir, '/' ) . '/reports';
@@ -1119,6 +1119,7 @@ class ContentDiffMigrator {
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Do the actual attribution.
+			$posts_attributed_count = 0;
 			foreach ( $matched_posts as $key_match => $match ) {
 				// Skip if post doesn't exist in DB.
 				if ( ! isset( $post_types_map[ $match['local_id'] ] ) ) {
@@ -1147,9 +1148,10 @@ class ContentDiffMigrator {
 					'live_id'   => $match['live_id'],
 					'post_type' => $post_types_map[ $match['local_id'] ],
 				];
+				++$posts_attributed_count;
 			}
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts/pages attributed.', count( $matched_posts ) ) );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts/pages attributed.', $posts_attributed_count ) );
 		}
 
 		/**
@@ -1171,6 +1173,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Do the actual attribution.
+		$attachments_attributed_count = 0;
 		foreach ( $matched_attachments as $key_match => $match ) {
 			// Skip if already attributed.
 			if ( isset( $already_attributed_attachments_map[ $match['local_id'] ] ) ) {
@@ -1194,9 +1197,10 @@ class ContentDiffMigrator {
 				'live_id'   => $match['live_id'],
 				'post_type' => 'attachment',
 			];
+			++$attachments_attributed_count;
 		}
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d attachments attributed.', count( $matched_attachments ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d attachments attributed.', $attachments_attributed_count ) );
 
 		/**
 		 * Match and attribute users.
@@ -1217,6 +1221,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Do the actual attribution.
+		$users_attributed_count = 0;
 		foreach ( $matched_users as $key_match => $match ) {
 			// Skip if already attributed.
 			if ( isset( $already_attributed_users_map[ $match['local_id'] ] ) ) {
@@ -1239,9 +1244,10 @@ class ContentDiffMigrator {
 				'local_id' => $match['local_id'],
 				'live_id'  => $match['live_id'],
 			];
+			++$users_attributed_count;
 		}
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', count( $matched_users ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', $users_attributed_count ) );
 
 		/**
 		 * Match and attribute terms.
@@ -1277,6 +1283,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Do the actual attribution.
+		$terms_attributed_count = 0;
 		foreach ( $matched_terms as $key_match => $match ) {
 			// Skip if term doesn't exist in DB.
 			if ( ! isset( $term_taxonomies_map[ $match['local_id'] ] ) ) {
@@ -1305,9 +1312,10 @@ class ContentDiffMigrator {
 				'live_id'  => $match['live_id'],
 				'taxonomy' => $term_taxonomies_map[ $match['local_id'] ],
 			];
+			++$terms_attributed_count;
 		}
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $matched_terms ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', $terms_attributed_count ) );
 
 		// Generate timestamped CSV reports.
 		$reports_dir     = rtrim( $data_dir, '/' ) . '/reports';
@@ -1375,6 +1383,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing specific IDs to %s...', $source_hostname ) );
 
 		// Attribute posts.
+		$posts_attributed_count = 0;
 		if ( ! empty( $post_ids ) ) {
 			
 			$ids_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
@@ -1414,11 +1423,13 @@ class ContentDiffMigrator {
 					'live_id'   => $post_id,
 					'post_type' => $existing_posts[ $post_id ],
 				];
+				++$posts_attributed_count;
 			}
 		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts attributed.', count( $post_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d posts attributed.', $posts_attributed_count ) );
 
 		// Attribute attachments.
+		$attachments_attributed_count = 0;
 		if ( ! empty( $attachment_ids ) ) {
 			$ids_placeholders = implode( ',', array_fill( 0, count( $attachment_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
@@ -1458,11 +1469,13 @@ class ContentDiffMigrator {
 					'live_id'   => $attachment_id,
 					'post_type' => 'attachment',
 				];
+				++$attachments_attributed_count;
 			}
 		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d attachments attributed.', count( $attachment_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d attachments attributed.', $attachments_attributed_count ) );
 
 		// Attribute users.
+		$users_attributed_count = 0;
 		if ( ! empty( $user_ids ) ) {
 			$ids_placeholders = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
@@ -1501,11 +1514,13 @@ class ContentDiffMigrator {
 					'local_id' => $user_id,
 					'live_id'  => $user_id,
 				];
+				++$users_attributed_count;
 			}
 		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', count( $user_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d users attributed.', $users_attributed_count ) );
 
 		// Attribute terms.
+		$terms_attributed_count = 0;
 		if ( ! empty( $term_ids ) ) {
 			$ids_placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
@@ -1545,9 +1560,10 @@ class ContentDiffMigrator {
 					'live_id'  => $term_id,
 					'taxonomy' => $existing_terms[ $term_id ],
 				];
+				++$terms_attributed_count;
 			}
 		}
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', count( $term_ids ) ) );
+		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::INFO, sprintf( '%d terms attributed.', $terms_attributed_count ) );
 
 		// Generate timestamped CSV reports.
 		$reports_dir     = rtrim( $data_dir, '/' ) . '/reports';
