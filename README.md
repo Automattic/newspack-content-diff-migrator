@@ -119,6 +119,23 @@ There are three easy and conveniently different ways (sub-commands) how you can 
 
 And just to clarify, to **"attribute some content to a source hostname"** simply means to assign "old ID and hostname metas" to that content, nothing more -- so that the CDiff plugin can track that content to the original source hostname, properly compare it to live tables, and do content refreshes. These metas are what makes the multi-source work.
 
+#### How Source Hostname Metas Work Per Type of Object
+
+Some object types rely on the source hostname meta to be properly compared/cdiff-ed agains the live tables, and this meta does affect whether they're being imported, while some other objects have it purely for tracking of origin purpose.
+
+| Entity | Meta Table | Meta used for import decision? | What happens WITHOUT the meta? |
+|--------|------------|---------------------------|---------------------------|
+| **Posts** (all CPTs) | `wp_postmeta` | **YES** | Object is considered "new" → **DUPLICATE CREATED** |
+| **Attachments** | `wp_postmeta` | **YES** | Object is considered "new" → **DUPLICATE CREATED** |
+| **Users** | `wp_usermeta` | No | Matched by `user_login` → merged/reused existing object |
+| **Terms** | `wp_termmeta` | No | Matched by name+taxonomy+parent → merged/reused existing object |
+
+**Posts and Attachments** — The source hostname meta is **critical** for these. During migration, the plugin builds a mapping of `live_id => local_id` from the metas. If a live post's ID is not in this map, it's considered "new" and will be imported — potentially creating a duplicate if that content already exists locally but wasn't attributed.
+
+**Users** — The meta is for tracking/mapping only. User lookup during import is done by `user_login` match, not by meta, and if a user with the same login exists locally, it will be reused regardless of whether it has the source hostname meta (with an appropriate warning in the log), while the meta is added for internal reference.
+
+**Terms (Categories, Tags, etc.)** — The meta is for tracking/mapping only. Term lookup during import is done by **name + taxonomy + parent**, not by meta. And if a term with the same name exists with the same taxonomy, and under the same parent, it will be reused regardless of whether it has the source hostname meta, while the meta is added for internal reference.
+
 These three commands all do the very same thing (assign metas), but in slightly different ways, for your convenience.
 
 #### 1/3: `attribute-all-unattributed`
