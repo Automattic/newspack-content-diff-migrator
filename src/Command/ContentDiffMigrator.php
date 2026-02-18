@@ -962,7 +962,7 @@ class ContentDiffMigrator {
 			}
 			
 			update_post_meta( $post_id, $meta_key, $post_id );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 500 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 1000 );
 			
 			$attributed_data['posts'][] = [
 				'local_id'  => $post_id,
@@ -1005,7 +1005,7 @@ class ContentDiffMigrator {
 			}
 			
 			update_term_meta( $term_id, $meta_key, $term_id );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 500 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 1000 );
 
 			$attributed_data['terms'][] = [
 				'local_id' => $term_id,
@@ -1144,7 +1144,7 @@ class ContentDiffMigrator {
 				}
 				// Attribute post.
 				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
 				// Log.
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
@@ -1191,7 +1191,7 @@ class ContentDiffMigrator {
 			}
 			// Attribute attachment.
 			update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
 			// Log.
 			Logger::instance()->log(
 				Logger::OUTPUT_FILE,
@@ -1237,7 +1237,7 @@ class ContentDiffMigrator {
 			}
 			// Attribute user.
 			update_user_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
 			// Log.
 			Logger::instance()->log(
 				Logger::OUTPUT_FILE,
@@ -1302,7 +1302,7 @@ class ContentDiffMigrator {
 			}
 			// Attribute term.
 			update_term_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 500 );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
 			// Log.
 			Logger::instance()->log(
 				Logger::OUTPUT_FILE,
@@ -1411,7 +1411,7 @@ class ContentDiffMigrator {
 				}
 				
 				update_post_meta( $post_id, $meta_key, $post_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 500 );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
@@ -1455,7 +1455,7 @@ class ContentDiffMigrator {
 				}
 				
 				update_post_meta( $attachment_id, $meta_key, $attachment_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_attachment_id, 500 );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_attachment_id, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
@@ -1499,7 +1499,7 @@ class ContentDiffMigrator {
 				}
 				
 				update_user_meta( $user_id, $meta_key, $user_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_user_id, 500 );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_user_id, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
@@ -1542,7 +1542,7 @@ class ContentDiffMigrator {
 				}
 				
 				update_term_meta( $term_id, $meta_key, $term_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 500 );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
