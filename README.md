@@ -361,11 +361,7 @@ The search command runs **6 checks in order** for each previously imported post.
 
 Pages and attachments are **excluded** from these modification checks as per the Migration Data Consistency Standard.
 
-Note that if a local post gets assigned a Newspack Brand since the last migration run, this will trigger a modification check, as the Newspack Brand is a new term relationship which was added locally. In those cases, it is advisable to:
-
-- temporarily remove the Newspack Brand from the posts,
-- run the CDiff migration,
-- and then add the Newspack Brand back to the posts.
+Note that locally added terms (such as Newspack Brands assigned during Newspackification) do not trigger the modification detection, thanks to the fact that they don't have a `newspackcontentdiff_oldid_{hostname}` termmeta. Such local terms without the metas are skipped during the taxonomy comparison.
 
 #### Users
 
