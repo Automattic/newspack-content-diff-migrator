@@ -405,7 +405,7 @@ The following fields are **directly scanned** for changes (see [check order abov
 - **Comment count** — compared directly (`comment_count`)
 - **Author** — local `post_author` (Old VS New ID mapping is compared to detect a change)
 - **Featured image** — local `_thumbnail_id` (Old VS New ID mapping is compared to detect a change)
-- **Category/tags/taxonomies** — local term IDs (Old IDs VS New IDs mapping is compared to detect any changes), which also covers changes in 'author' (Guest AUthor) taxonomy term changes
+- **Category/tags/taxonomies** — local term IDs (Old IDs VS New IDs mapping is compared to detect any changes), which also covers changes in 'author' (Guest Author) taxonomy term changes
 
 The following fields are **not scanned directly**, but changes to them will bump `post_modified` (when edited through Gutenberg), which triggers the post_modified check above and causes a full reimport:
 
