@@ -342,25 +342,81 @@ The plugin uses two complementary update strategies internally, depending on the
 | **Users** | Checked on each run | Individual field updates |
 | **Terms** (categories, tags) | Checked on each run | Individual field updates |
 
+### How Modification Detection Works
+
+During the `search-new-content-on-live` command, each object type is checked for modifications according to the Migration Data Consistency Standard. Understanding this logic may be important for debugging why a particular object was (or wasn't) flagged as modified.
+
+#### Posts and all Custom Post Types
+
+The search command runs **6 checks in order** for each previously imported post. Once one fo these checks triggers, the post is marked as modified and will be deleted and reimported (with same existing local ID, to preserve any references to that reimported local post ID).
+
+| # | Field | Comparison |
+|---|-------|------------|
+| 1 | `post_modified` | Local and live values directly compared |
+| 2 | `post_status` | Local and live values directly compared |
+| 3 | `comment_count` | Local and live values directly compared |
+| 4 | `post_author` | Old VS New ID mapping is compared to detect a change |
+| 5 | `_thumbnail_id` | Old ID VS New ID mapping is compared to detect a change |
+| 6 | Taxonomies | Old IDs VS New IDs mapping is compared to detect any changes |
+
+Pages and attachments are **excluded** from these modification checks as per the Migration Data Consistency Standard.
+
+Note that if a local post gets assigned a Newspack Brand since the last migration run, this will trigger a modification check, as the Newspack Brand is a new term relationship which was added locally. In those cases, it is advisable to:
+
+- temporarily remove the Newspack Brand from the posts,
+- run the CDiff migration,
+- and then add the Newspack Brand back to the posts.
+
+#### Users
+
+All users are processed on every migration run, and modification is detected by comparing:
+
+- **Email** — live VS local `user_email`
+- **Display name** — live VS local `display_name`
+- **Avatar** — Simple Local Avatars attachment ID (Old VS New ID mapping is compared to detect a change)
+
+Users are uniquely matched by `user_login` -- not by old_id meta. If any of the above fields differ, the user is marked as modified and those changed fields get updated individually/directly (not by a full reimport, only posts are reimported this way).
+
+#### Attachments
+
+Attachments are not checked for modification in the same way as posts. Instead, specific fields are compared individually and updated directly:
+
+- **Caption** (`post_excerpt`)
+- **Alt text** (`_wp_attachment_image_alt`)
+- **Description** (`post_content`)
+- **Credit** (`_media_credit`)
+- **Credit URL** (`_media_credit_url`)
+
+Each field is compared independently, and only the fields that actually differ are updated.
+
+#### Terms (Categories, Tags, Custom Taxonomies)
+
+Terms are matched by **name + taxonomy + parent** (not by old_id meta). Specific fields are compared and updated individually:
+
+- **Slug** — updated if different
+- **Description** — updated if different
+
+Name and parent are identifier fields and are not updated.
+
 ### Field-by-Field Specification
 
 #### Posts
 
-The following fields are **directly scanned** for changes and update on these fields triggers a full post reimport ("modified" post is deleted and reimported):
+The following fields are **directly scanned** for changes (see [check order above](#posts-and-custom-post-types)) and a change on any of these fields triggers a full post reimport ("modified" post is deleted and reimported):
 
-- **Date modified** — compared directly (`post_modified`)
+- **Date modified** — compared directly (`post_modified`), and live timestamp must be newer
 - **Status** — compared directly (`post_status`)
-- **Author** — compared directly (`post_author`)
-- **Category/tags/taxonomies** — compared directly (`term_relationships`), also covers changes in 'author' taxonmy term
-- **Featured image** — compared directly (`_thumbnail_id` postmeta)
 - **Comment count** — compared directly (`comment_count`)
+- **Author** — local `post_author` (Old VS New ID mapping is compared to detect a change)
+- **Featured image** — local `_thumbnail_id` (Old VS New ID mapping is compared to detect a change)
+- **Category/tags/taxonomies** — local term IDs (Old IDs VS New IDs mapping is compared to detect any changes), which also covers changes in 'author' (Guest AUthor) taxonomy term changes
 
-The following fields are **not scanned directly**, but changes to `post_modified` will update the entire post:
+The following fields are **not scanned directly**, but changes to them will bump `post_modified` (when edited through Gutenberg), which triggers the post_modified check above and causes a full reimport:
 
 - **Content** — detected indirectly via `post_modified` change
 - **Excerpt** — detected indirectly via `post_modified` change
 
-The following fields are **not detected directly** (changes on live will not trigger reimport, unless another field such as `post_modified` triggers reimport):
+The following fields are **not detected** (changes on live will not trigger reimport, unless another scanned field also changed):
 
 - **Postmeta**
 - **Comments**
@@ -373,19 +429,7 @@ The following are **identifier fields** — changes to these fields are ignored 
 
 When any directly-scanned field has changed, or when `post_modified` is newer on live, the post is marked as **modified** and will be deleted and fully reimported. Such a full reimport **preserves its local `wp_posts.ID`** to ensure any references to the reimported local post ID remain valid.
 
-Fields such as `post_content`, `post_excerpt`, `postmeta`, etc. are detected indirectly via `post_modified` change. Fields listed above as **directly scanned** fields are updated individually on the local post -- when you change a post's **categories/tags**, WordPress does NOT update `post_modified`.
-
-What updates `post_modified` from **Gutenberg**:
-
-- Post content, title, excerpt
-- Post status, date
-- Featured image, parent page
-
-What does NOT update `post_modified` from **Gutenberg**:
-
-- Categories, tags, custom taxonomies
-- Post meta (custom fields)
-- Comments
+The directly-scanned fields for author, featured image, and taxonomies exist because WordPress does NOT update `post_modified` when these are changed in Gutenberg — so they must be checked independently.
 
 #### Custom Post Types
 
