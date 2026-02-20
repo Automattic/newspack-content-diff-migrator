@@ -670,6 +670,9 @@ class DataImporter {
 		// Save old_id termmeta for Migration Data Consistency Standard.
 		$meta_key = ContentDiffLogic::get_old_id_meta_key( $source_hostname );
 
+		// Flush to ensure a fresh DB read from get_term_meta(); the $wpdb->insert() below bypasses the cache, so it may be stale.
+		wp_cache_delete( $local_term_id, 'term_meta' );
+
 		// Check if already attributed to this source (idempotent - avoids duplicate warnings).
 		$existing_meta = get_term_meta( $local_term_id, $meta_key, true );
 		if ( ! empty( $existing_meta ) ) {
@@ -698,6 +701,9 @@ class DataImporter {
 				]
 			);
 		}
+
+		// Flush the WP object cache (no performance costs, just flushing the cache, not making any queries).
+		wp_cache_delete( $local_term_id, 'term_meta' );
 
 		// Mark this term's termmeta as imported.
 		$this->termmeta_imported[ $live_term_id ] = true;
