@@ -46,6 +46,8 @@ The plugin reads from live DB tables (e.g., `cdiff_posts`, `cdiff_postmeta`) tha
 - **Collation handling** – Compares and automatically corrects database collations between live and local tables, so they can be compared against each other.
 - **ID tracking for resumability** – Stores original live ID and source hostname in postmeta (`newspackcontentdiff_oldid_{hostname}`). Commands skip already-processed IDs on re-run.
 - **Multi-source support** – Multiple `--source-hostname` values, each tracked with its own meta key.
+- **On-the-fly taxonomy creation** – Categories/terms created only when needed by posts (no bulk pre-import).
+- **Multi-source collision handling** – Users/terms with same unique identifiers are gracefully merged across sources.
 - **RunState persistence** – JSONL files used by the application logic to track the state of the migration in `{data-dir}/run-state/`, used for resumable operations.
 - **CSV report generation** – Creates posts.csv, users.csv, terms.csv in `{data-dir}/reports/` folder, used for reporting the results of the migration.
 
@@ -254,38 +256,15 @@ WordPress + VIP-Go + WordPress-Docs standards. Short array syntax `[]` allowed. 
 vendor/bin/phpunit          # Run tests
 ```
 
-Tests use `WP_UnitTestCase`. The test suite is extensive:
+Tests use `WP_UnitTestCase`. CI runs tests on every push.
 
-**Unit tests** (`tests/unit/`):
-- `Logic/BlockUpdaterTest.php` – Block ID rewriting
-- `Logic/ContentDiffLogicTest.php` – Core diff detection
-- `Logic/DataImporterTest.php` – Import operations
-- `Logic/RunStateTest.php` – State persistence
-- `Utils/ReportCreatorTest.php` – CSV report generation
+v2 has comprehensive test coverage (~600 tests, ~21k lines of test code):
 
-**Integration tests** (`tests/Integration/`):
-- `CmdSearchNewContentOnLiveTest.php` – Search command
-- `CmdMigrateLiveContentPostsTest.php` – Post migration
-- `CmdMigrateLiveContentPostsModifiedTest.php` – Modified post detection
-- `CmdMigrateLiveContentAttachmentsTest.php` – Attachment handling
-- `CmdMigrateLiveContentUsersTest.php` – User migration
-- `CmdMigrateLiveContentTaxonomyTest.php` – Taxonomy reconstruction
-- `CmdMigrateLiveContentCommentsTest.php` – Comment migration
-- `CmdMigrateLiveContentBlocksTest.php` – Block ID updates
-- `CmdMigrateLiveContentFeaturedImageTest.php` – Featured image remapping
-- `CmdMigrateLiveContentSourceHostnameTest.php` – Multi-source
-- `CmdMigrateLiveContentMultiSourceCollisionTest.php` – Collision handling
-- `CmdMigrateLiveContentRunStateTest.php` – Resumability
-- `CmdMigrateLiveContentRerunAndIdempotencyTest.php` – Idempotency
-- `CmdMigrateLiveContentMigrationDataConsistencyStandardTest.php` – MDCS
-- `CmdMigrateLiveContentE2ETest.php` – End-to-end
-- `CmdMigrateLiveContentErrorHandlingTest.php` – Error scenarios
-- `CmdAttributeTest.php` – Attribution commands
-- `CmdListSourceHostnamesTest.php` – List hostnames
+- **Unit tests**: 369 tests across 5 test classes covering all Logic and Utils classes
+- **Integration tests**: 230 tests across 18 test classes covering all commands, MDCS, multi-source, E2E scenarios
+- **Fixtures**: Block HTML fixtures + live-table JSON fixtures for realistic test data
 
-**Fixtures** (`tests/fixtures/`):
-- `blocks/` – 10 HTML block fixtures for block parsing tests
-- `live-tables/` – 5 JSON fixtures for simulating live table data
+Key logic classes have 92-97% code coverage. The MDCS implementation alone has 47 dedicated integration tests.
 
 ## Gotchas
 
