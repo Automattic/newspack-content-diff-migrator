@@ -1292,7 +1292,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$post_id = self::factory()->post->create();
 		// No thumbnail set.
 
-		$this->logic->update_featured_image( $post_id, [ '123' => 456 ] );
+		$map = [ '123' => 456 ];
+		$this->logic->update_featured_image( $post_id, $map );
 
 		// Should not throw, just return.
 		$this->assertEmpty( get_post_meta( $post_id, '_thumbnail_id', true ) );
@@ -1304,7 +1305,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		update_post_meta( $post_id, '_thumbnail_id', $attachment_id );
 
 		// Map doesn't contain the current thumbnail ID.
-		$this->logic->update_featured_image( $post_id, [ '999' => 888 ] );
+		$map = [ '999' => 888 ];
+		$this->logic->update_featured_image( $post_id, $map );
 
 		// Should remain unchanged.
 		$result = get_post_meta( $post_id, '_thumbnail_id', true );
@@ -1326,6 +1328,26 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$this->assertEquals( $attachment_new, (int) $result );
 	}
 
+	public function test_update_featured_image_should_skip_when_thumbnail_is_already_local_id(): void {
+		$attachment_old = self::factory()->attachment->create();
+		$attachment_new = self::factory()->attachment->create();
+		$post_id        = self::factory()->post->create();
+		// Set thumbnail to a value that's already a local ID (from previous run).
+		update_post_meta( $post_id, '_thumbnail_id', $attachment_new );
+
+		// Map that could cause collision: current thumbnail matches a live_id in the map.
+		$map = [
+			(string) $attachment_old => $attachment_new,
+			(string) $attachment_new => 99999, // Collision risk: current thumb matches this live_id.
+		];
+
+		$this->logic->update_featured_image( $post_id, $map );
+
+		// Should remain unchanged because attachment_new is in local_ids_set.
+		$result = get_post_meta( $post_id, '_thumbnail_id', true );
+		$this->assertEquals( $attachment_new, (int) $result );
+	}
+
 	/**
 	 * =========================================================================
 	 * update_blocks_ids Tests
@@ -1343,7 +1365,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 	public function test_update_blocks_ids_should_return_when_post_not_found(): void {
 		// Should not throw for non-existent post.
-		$this->logic->update_blocks_ids( 999999, [ '123' => 456 ] );
+		$map = [ '123' => 456 ];
+		$this->logic->update_blocks_ids( 999999, $map );
 		$this->assertTrue( true );
 	}
 
@@ -1362,7 +1385,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 			] 
 		);
 
-		$logic->update_blocks_ids( $post_id, [ '1' => 2 ] );
+		$map = [ '1' => 2 ];
+		$logic->update_blocks_ids( $post_id, $map );
 
 		// Assertion is via mock expectation.
 	}
@@ -1380,7 +1404,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$logic   = new ContentDiffLogic( $wpdb, $mock_block_updater );
 		$post_id = self::factory()->post->create( [ 'post_content' => 'old content' ] );
 
-		$logic->update_blocks_ids( $post_id, [ '1' => 2 ] );
+		$map = [ '1' => 2 ];
+		$logic->update_blocks_ids( $post_id, $map );
 
 		clean_post_cache( $post_id );
 		$post = get_post( $post_id );
@@ -1397,7 +1422,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$original_content = 'unchanged content ' . uniqid();
 		$post_id          = self::factory()->post->create( [ 'post_content' => $original_content ] );
 
-		$logic->update_blocks_ids( $post_id, [ '1' => 2 ] );
+		$map = [ '1' => 2 ];
+		$logic->update_blocks_ids( $post_id, $map );
 
 		clean_post_cache( $post_id );
 		$post = get_post( $post_id );
@@ -1429,7 +1455,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 		// Pass local hostname in aliases - should be filtered out before passing to block_updater.
 		$aliases = [ $local_host, 'other.example.com' ];
-		$logic->update_blocks_ids( $post_id, [ '1' => 2 ], $aliases );
+		$map     = [ '1' => 2 ];
+		$logic->update_blocks_ids( $post_id, $map, $aliases );
 	}
 
 	/**

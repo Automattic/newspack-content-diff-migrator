@@ -1640,6 +1640,11 @@ class ContentDiffLogic {
 			return;
 		}
 
+		// Skip if current thumbnail is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
+		if ( in_array( (int) $current_thumbnail_id, array_values( $imported_attachment_ids_map ), true ) ) {
+			return;
+		}
+
 		// Get the new _thumbnail_id.
 		$new_thumbnail_id = $imported_attachment_ids_map[ $current_thumbnail_id ] ?? null;
 		if ( is_null( $new_thumbnail_id ) ) {

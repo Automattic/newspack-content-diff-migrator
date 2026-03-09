@@ -111,8 +111,9 @@ HTML;
 		$content_before         = sprintf( $template, 111111, 111111 );
 		$content_after_expected = sprintf( $template, 999999, 999999 );
 
-		$known_ids = [ 111111 => 999999 ];
-		$result    = $this->updater->update_image_blocks_ids( $content_before, $known_ids );
+		$known_ids                               = [ 111111 => 999999 ];
+		$imported_local_attachment_and_block_ids = array_flip( array_map( 'intval', array_values( $known_ids ) ) );
+		$result                                  = $this->updater->update_image_blocks_ids( $content_before, $known_ids, $imported_local_attachment_and_block_ids );
 
 		$this->assertEquals( $content_after_expected, $result );
 	}
@@ -289,6 +290,40 @@ HTML;
 		$known_ids = [ 1000 => 1000 ]; // Maps to itself.
 		$result    = $this->updater->update_image_blocks_ids( $content, $known_ids );
 
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
+	 *
+	 * Tests the ID collision bug fix: when the current ID is already a local ID
+	 * (exists in the map values), it should NOT be updated even if it matches
+	 * a different live ID as a key in the map.
+	 *
+	 * Scenario:
+	 *   - First CDiff run: live attachment 52837 -> imported as local 27478
+	 *   - First CDiff run: live attachment 27478 -> imported as local 21949
+	 *   - A post was correctly set with image ID 27478 (local)
+	 *   - On second run, 27478 exists as a KEY in the map, but since it's also
+	 *     a VALUE (local ID), it should be skipped to prevent wrong re-mapping.
+	 */
+	public function image_block_skips_when_id_is_already_local(): void {
+		$content = <<<'HTML'
+<!-- wp:image {"id":27478,"sizeSlug":"large"} -->
+<figure class="wp-block-image"><img src="https://example.com/image.jpg" class="wp-image-27478"/></figure>
+<!-- /wp:image -->
+HTML;
+
+		// Cumulative map from multiple runs - 27478 is both a VALUE and a KEY.
+		$known_ids = [
+			52837 => 27478, // First import: live 52837 -> local 27478
+			27478 => 21949, // Second import: live 27478 -> local 21949 (COLLISION RISK!)
+		];
+
+		$result = $this->updater->update_image_blocks_ids( $content, $known_ids );
+
+		// Should remain unchanged because 27478 is already a local ID (exists in values).
 		$this->assertEquals( $content, $result );
 	}
 
@@ -1251,6 +1286,41 @@ HTML;
 	/**
 	 * @test
 	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
+	 *
+	 * Tests the ID collision bug fix for the gallery `ids` array: when some IDs
+	 * are already local IDs (exist in map values), only non-local IDs should be updated.
+	 *
+	 * Scenario: Gallery has ids [27478, 5000].
+	 *   - 27478 is already a local ID (from a previous import)
+	 *   - 27478 also happens to be a live ID key mapping to 21949
+	 *   - 5000 is a live ID that should be updated to 6000
+	 *   - Result: 27478 should be preserved, only 5000 gets updated.
+	 */
+	public function jetpack_tiled_gallery_skips_already_local_ids_in_array(): void {
+		$content = <<<'HTML'
+<!-- wp:jetpack/tiled-gallery {"ids":[27478,5000]} -->
+<div><img data-id="27478" class="wp-image-27478"/><img data-id="5000" class="wp-image-5000"/></div>
+<!-- /wp:jetpack/tiled-gallery -->
+HTML;
+
+		// Cumulative map: 27478 is both a VALUE (local) and a KEY (live from different object).
+		$known_ids = [
+			52837 => 27478, // First import: live 52837 -> local 27478
+			27478 => 21949, // Different object: live 27478 -> local 21949 (COLLISION RISK for first ID!)
+			5000  => 6000,  // Normal mapping that should be applied.
+		];
+
+		$result = $this->updater->update_jetpacktiledgallery_blocks_ids( $content, $known_ids );
+
+		// 27478 should remain unchanged (it's a local ID).
+		// 5000 should be updated to 6000.
+		$this->assertStringContainsString( '"ids":[27478,6000]', $result );
+		$this->assertStringContainsString( 'data-id="27478"', $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_jetpacktiledgallery_blocks_ids
 	 */
 	public function jetpack_tiled_gallery_without_mapping_remains_unchanged(): void {
 		$content = <<<'HTML'
@@ -1864,6 +1934,28 @@ HTML;
 		$result = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
 
 		// Should return content unchanged when no mapping exists.
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_patterns_wp_block_ids
+	 *
+	 * Tests the ID collision bug fix for wp:block patterns: when the ref ID
+	 * is already a local ID (exists in map values), it should NOT be updated.
+	 */
+	public function pattern_wp_block_skips_when_id_is_already_local(): void {
+		$content = '<!-- wp:block {"ref":27478} /-->';
+
+		// Cumulative map: 27478 is both a VALUE (local) and a KEY (live from different object).
+		$known_ids = [
+			52837 => 27478, // First import: live 52837 -> local 27478
+			27478 => 21949, // Different object: live 27478 -> local 21949 (COLLISION RISK!)
+		];
+
+		$result = $this->updater->update_patterns_wp_block_ids( $content, $known_ids );
+
+		// Should remain unchanged because 27478 is already a local ID.
 		$this->assertEquals( $content, $result );
 	}
 }

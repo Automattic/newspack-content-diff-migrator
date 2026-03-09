@@ -1863,8 +1863,8 @@ class ContentDiffMigrator {
 	 *         @type string $id_new    New ID of imported post.
 	 *     }
 	 * }
-	 * @param string $source_hostname     Source hostname.
-	 * @param array  $imported_ids_map    Map of old_id => new_id for all imported posts.
+	 * @param string $source_hostname  Source hostname.
+	 * @param array  $imported_ids_map Map of old_id => new_id for all imported posts.
 	 */
 	private function update_post_parent_ids( array $all_live_posts_ids, array $imported_posts_data, string $source_hostname, array $imported_ids_map ): void {
 		global $wpdb;
@@ -1914,6 +1914,20 @@ class ContentDiffMigrator {
 			$parent_id_old = $post_row['post_parent'] ?? null;
 			if ( ( '0' == $parent_id_old ) || empty( $parent_id_old ) ) {
 				// No update on parent ID 0.
+				continue;
+			}
+
+			// Skip if current parent is already a valid local ID, i.e. was already updated (prevents ID overlap/collision on subsequent runs).
+			if ( in_array( (int) $parent_id_old, array_values( $imported_ids_map ), true ) ) {
+				// Still log to run-state for resume capability, marking as unchanged.
+				$this->run_state->append_updated_parent(
+					[
+						'id_old'        => $id_old,
+						'id_new'        => $id_new,
+						'parent_id_old' => $parent_id_old,
+						'parent_id_new' => $parent_id_old,
+					] 
+				);
 				continue;
 			}
 
