@@ -297,6 +297,8 @@ Not tracked in the reports:
 - Block attachment ID corrections (internal plumbing)
 - Comments and comment metadata
 
+> **Note:** The ID correction operations (post parent, featured image, block attachment IDs) process all previously imported content from the source hostname, not just the current batch. This serves as a self-healing mechanism if an attachment import failed in a previous run, but succeeds in a later run, all posts that reference that attachment will have their IDs correctly updated.
+
 ---
 
 ## Using the Data Directory (`--data-dir`)
