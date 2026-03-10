@@ -20,7 +20,8 @@
     "automattic/newspack-content-converter": "dev-master",
     "automattic/newspack-migration-tools": "dev-trunk",
     "monolog/monolog": "^3.7",
-    "bramus/monolog-colored-line-formatter": "^3.1"
+    "bramus/monolog-colored-line-formatter": "^3.1",
+    "simplehtmldom/simplehtmldom": "2.0-RC2"
   },
   "require-dev": {
     "automattic/vipwpcs": "^3.0",
