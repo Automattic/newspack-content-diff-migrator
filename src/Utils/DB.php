@@ -37,6 +37,13 @@ class DB {
 	];
 
 	/**
+	 * Four gigabytes in bytes.
+	 *
+	 * @var int
+	 */
+	const FOUR_GB_IN_BYTES = 4 * 1024 * 1024 * 1024;
+
+	/**
 	 * Global $wpdb.
 	 *
 	 * @var wpdb Global $wpdb.
@@ -244,8 +251,7 @@ class DB {
 	 */
 	public function copy_table_data_using_proper_collation( string $prefix, string $table, int $total_size_bytes = 0 ): void {
 		// Auto-determine speed based on total size of tables being fixed.
-		$four_gb_in_bytes = 4 * 1024 * 1024 * 1024;
-		$is_small_dataset = $total_size_bytes < $four_gb_in_bytes;
+		$is_small_dataset = $total_size_bytes < self::FOUR_GB_IN_BYTES;
 
 		// Speed settings: small datasets get faster batching, large datasets get throttled.
 		$records_per_transaction = $is_small_dataset ? 250000 : 100000;
