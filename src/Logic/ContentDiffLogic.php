@@ -747,6 +747,7 @@ class ContentDiffLogic {
 	 * Checks the following for modifications (per Migration Data Consistency Standard):
 	 * - post_modified date (always checked)
 	 * - post_status (always checked)
+	 * - comment_count (always checked)
 	 * - post_author (if user_old_id_map provided)
 	 * - _thumbnail_id (if attachment_old_id_map provided)
 	 * - taxonomies (if term_old_id_map provided)
@@ -765,8 +766,9 @@ class ContentDiffLogic {
 	 *     Array of modified post ID pairs.
 	 *
 	 *     @type array $match {
-	 *         @type int $live_id  Live post ID.
-	 *         @type int $local_id Matching local post ID.
+	 *         @type int $live_id   Live post ID.
+	 *         @type int $local_id  Matching local post ID.
+	 *         @type array $changes Array of changes detected.
 	 *     }
 	 * }
 	 */
@@ -819,39 +821,48 @@ class ContentDiffLogic {
 				continue;
 			}
 
-			$local_post  = $local_posts_by_id[ $local_id ];
-			$is_modified = false;
+			$local_post = $local_posts_by_id[ $local_id ];
+			$changes    = [];
 
 			// Check 1: post_modified is newer on live.
 			if ( $live_post['post_modified'] > $local_post['post_modified'] ) {
-				$is_modified = true;
+				$changes['post_modified'] = [
+					'live'  => $live_post['post_modified'],
+					'local' => $local_post['post_modified'],
+				];
 			}
 
 			// Check 2: post_status changed.
-			if ( ! $is_modified && isset( $live_post['post_status'] ) && isset( $local_post['post_status'] ) ) {
-				if ( $live_post['post_status'] !== $local_post['post_status'] ) {
-					$is_modified = true;
-				}
+			if ( isset( $live_post['post_status'], $local_post['post_status'] ) && $live_post['post_status'] !== $local_post['post_status'] ) {
+				$changes['post_status'] = [
+					'live'  => $live_post['post_status'],
+					'local' => $local_post['post_status'],
+				];
 			}
 
 			// Check 3: comment_count changed.
-			if ( ! $is_modified && isset( $live_post['comment_count'] ) && isset( $local_post['comment_count'] ) ) {
-				if ( (int) $live_post['comment_count'] !== (int) $local_post['comment_count'] ) {
-					$is_modified = true;
-				}
+			if ( isset( $live_post['comment_count'], $local_post['comment_count'] ) && (int) $live_post['comment_count'] !== (int) $local_post['comment_count'] ) {
+				$changes['comment_count'] = [
+					'live'  => (int) $live_post['comment_count'],
+					'local' => (int) $local_post['comment_count'],
+				];
 			}
 
 			// Check 4: post_author changed (translate local author ID to live ID for comparison).
-			if ( ! $is_modified && ! empty( $local_to_live_user_map ) && isset( $live_post['post_author'] ) && isset( $local_post['post_author'] ) ) {
+			if ( ! empty( $local_to_live_user_map ) && isset( $live_post['post_author'] ) && isset( $local_post['post_author'] ) ) {
 				$local_author_id         = (int) $local_post['post_author'];
 				$live_author_id_expected = $local_to_live_user_map[ $local_author_id ] ?? null;
 				if ( null !== $live_author_id_expected && (int) $live_post['post_author'] !== $live_author_id_expected ) {
-					$is_modified = true;
+					$changes['post_author'] = [
+						'live'              => (int) $live_post['post_author'],
+						'local'             => $local_author_id,
+						'local_meta_old_id' => $live_author_id_expected,
+					];
 				}
 			}
 
 			// Check 5: _thumbnail_id changed (translate local thumbnail ID to live ID for comparison).
-			if ( ! $is_modified && ! empty( $local_to_live_attachment_map ) && ! empty( $live_table_prefix ) ) {
+			if ( ! empty( $local_to_live_attachment_map ) && ! empty( $live_table_prefix ) ) {
 				$local_thumbnail_id = (int) get_post_meta( $local_id, '_thumbnail_id', true );
 
 				// Get live thumbnail ID.
@@ -868,25 +879,35 @@ class ContentDiffLogic {
 				if ( $local_thumbnail_id > 0 || $live_thumbnail > 0 ) {
 					$live_thumbnail_id_expected = $local_to_live_attachment_map[ $local_thumbnail_id ] ?? 0;
 					if ( $live_thumbnail !== $live_thumbnail_id_expected ) {
-						$is_modified = true;
+						$changes['_thumbnail_id'] = [
+							'live'              => $live_thumbnail,
+							'local'             => $local_thumbnail_id,
+							'local_meta_old_id' => $live_thumbnail_id_expected,
+						];
 					}
 				}
 			}
 
 			// Check 6: taxonomies changed (compare term sets).
-			if ( ! $is_modified && ! empty( $local_to_live_term_map ) && ! empty( $live_table_prefix ) ) {
-				// Get live term IDs.
+			if ( ! empty( $local_to_live_term_map ) && ! empty( $live_table_prefix ) ) {
+				// Get live term IDs with their details.
 				$live_term_relationships = $this->select_term_relationships_rows( $live_table_prefix, $live_id );
 				$live_term_ids           = [];
-				foreach ( $live_term_relationships as $rel ) {
-					$term_taxonomy = $this->select_term_taxonomy_row( $live_table_prefix, $rel['term_taxonomy_id'] );
+				$live_term_details       = [];
+				foreach ( $live_term_relationships as $relationship ) {
+					$term_taxonomy = $this->select_term_taxonomy_row( $live_table_prefix, $relationship['term_taxonomy_id'] );
+					// Get details for the live terms.
 					if ( $term_taxonomy ) {
-						$live_term_ids[] = (int) $term_taxonomy['term_id'];
+						$term_id                       = (int) $term_taxonomy['term_id'];
+						$live_term_ids[]               = $term_id;
+						$live_term_details[ $term_id ] = [
+							'taxonomy' => $term_taxonomy['taxonomy'],
+						];
 					}
 				}
 				sort( $live_term_ids );
 
-				// Get local term IDs translated to live IDs.
+				// Get local term IDs translated/mapped to live IDs.
 				$local_terms            = wp_get_object_terms( $local_id, get_taxonomies(), [ 'fields' => 'ids' ] );
 				$local_term_ids_as_live = [];
 				if ( ! is_wp_error( $local_terms ) ) {
@@ -900,14 +921,41 @@ class ContentDiffLogic {
 				sort( $local_term_ids_as_live );
 
 				if ( $live_term_ids !== $local_term_ids_as_live ) {
-					$is_modified = true;
+					$taxonomies_change = [];
+
+					// Live terms exist on live but not on local.
+					$live_terms_not_on_local = array_diff( $live_term_ids, $local_term_ids_as_live );
+					if ( ! empty( $live_terms_not_on_local ) ) {
+						$live_terms_not_found_on_local = [];
+						foreach ( $live_terms_not_on_local as $term_id ) {
+							$term_row                        = $this->select_term_row( $live_table_prefix, $term_id );
+							$live_terms_not_found_on_local[] = [
+								'live_term_id' => $term_id,
+								'name'         => $term_row['name'] ?? '',
+								'taxonomy'     => $live_term_details[ $term_id ]['taxonomy'] ?? '',
+							];
+						}
+						$taxonomies_change['live_terms_not_found_on_local'] = $live_terms_not_found_on_local;
+					}
+
+					// Local terms with "old ID mapping" do not exist (were removed) on live.
+					$local_terms_not_on_live = array_diff( $local_term_ids_as_live, $live_term_ids );
+					if ( ! empty( $local_terms_not_on_live ) ) {
+						$taxonomies_change['local_mapped_terms_not_found_on_live'] = array_values( $local_terms_not_on_live );
+					}
+
+					if ( ! empty( $taxonomies_change ) ) {
+						$changes['taxonomies'] = $taxonomies_change;
+					}
 				}
 			}
 
-			if ( $is_modified ) {
+			// If any changes were detected, add the post to the list of modified posts.
+			if ( ! empty( $changes ) ) {
 				$ids_modified[] = [
 					'live_id'  => $live_id,
 					'local_id' => $local_id,
+					'changes'  => $changes,
 				];
 			}
 		}

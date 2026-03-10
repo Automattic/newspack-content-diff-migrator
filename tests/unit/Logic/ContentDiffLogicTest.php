@@ -563,6 +563,128 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$this->assertSame( 10, $result[0]['local_id'] );
 	}
 
+	public function test_filter_modified_live_ids_should_detect_comment_count_change(): void {
+		$live_posts  = [
+			[
+				'ID'            => '1',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+				'comment_count' => 5,
+			],
+		];
+		$local_posts = [
+			[
+				'ID'            => '10',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+				'comment_count' => 3,
+			],
+		];
+		$old_id_map  = [ 1 => 10 ];
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+
+		$this->assertCount( 1, $result );
+		$this->assertSame( 1, $result[0]['live_id'] );
+		$this->assertSame( 10, $result[0]['local_id'] );
+		$this->assertArrayHasKey( 'changes', $result[0] );
+		$this->assertArrayHasKey( 'comment_count', $result[0]['changes'] );
+		$this->assertSame( 5, $result[0]['changes']['comment_count']['live'] );
+		$this->assertSame( 3, $result[0]['changes']['comment_count']['local'] );
+	}
+
+	public function test_filter_modified_live_ids_should_detect_author_change_with_mapping(): void {
+		$live_posts      = [
+			[
+				'ID'            => '1',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 99, // Live author ID.
+				'comment_count' => 0,
+			],
+		];
+		$local_posts     = [
+			[
+				'ID'            => '10',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 5, // Local author ID.
+				'comment_count' => 0,
+			],
+		];
+		$old_id_map      = [ 1 => 10 ];
+		$user_old_id_map = [ 50 => 5 ]; // Local user 5 maps to live user 50, but live post has author 99.
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', $user_old_id_map );
+
+		$this->assertCount( 1, $result );
+		$this->assertArrayHasKey( 'changes', $result[0] );
+		$this->assertArrayHasKey( 'post_author', $result[0]['changes'] );
+		$this->assertSame( 99, $result[0]['changes']['post_author']['live'] );
+		$this->assertSame( 5, $result[0]['changes']['post_author']['local'] );
+		$this->assertSame( 50, $result[0]['changes']['post_author']['local_meta_old_id'] );
+	}
+
+	public function test_filter_modified_live_ids_should_not_detect_author_change_when_local_not_in_map(): void {
+		$live_posts      = [
+			[
+				'ID'            => '1',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 99,
+				'comment_count' => 0,
+			],
+		];
+		$local_posts     = [
+			[
+				'ID'            => '10',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'publish',
+				'post_author'   => 5, // Local author not in the map.
+				'comment_count' => 0,
+			],
+		];
+		$old_id_map      = [ 1 => 10 ];
+		$user_old_id_map = [ 100 => 20 ]; // Different user mapping, local user 5 not in map.
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', $user_old_id_map );
+
+		$this->assertCount( 0, $result, 'Should not detect modification when local author has no mapping.' );
+	}
+
+	public function test_filter_modified_live_ids_changes_should_contain_all_detected_changes(): void {
+		$live_posts  = [
+			[
+				'ID'            => '1',
+				'post_modified' => '2025-01-02',
+				'post_status'   => 'publish',
+				'post_author'   => 1,
+				'comment_count' => 10,
+			],
+		];
+		$local_posts = [
+			[
+				'ID'            => '10',
+				'post_modified' => '2025-01-01',
+				'post_status'   => 'draft',
+				'post_author'   => 1,
+				'comment_count' => 5,
+			],
+		];
+		$old_id_map  = [ 1 => 10 ];
+
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+
+		$this->assertCount( 1, $result );
+		$this->assertArrayHasKey( 'changes', $result[0] );
+		$changes = $result[0]['changes'];
+		$this->assertArrayHasKey( 'post_modified', $changes, 'Should detect post_modified change.' );
+		$this->assertArrayHasKey( 'post_status', $changes, 'Should detect post_status change.' );
+		$this->assertArrayHasKey( 'comment_count', $changes, 'Should detect comment_count change.' );
+	}
+
 	/**
 	 * =========================================================================
 	 * match_local_to_live_posts Tests

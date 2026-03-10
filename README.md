@@ -363,7 +363,7 @@ The search command runs **6 checks in order** for each previously imported post.
 
 Pages and attachments are **excluded** from these modification checks as per the Migration Data Consistency Standard.
 
-Note that locally added terms (such as Newspack Brands assigned during Newspackification) do not trigger the modification detection, thanks to the fact that they don't have a `newspackcontentdiff_oldid_{hostname}` termmeta. Such local terms without the metas are skipped during the taxonomy comparison.
+Note that locally added terms (such as Newspack Brands assigned during Newspackification) will not trigger the modification detection, thanks to the fact that they don't have a `newspackcontentdiff_oldid_{hostname}` termmeta. Such local terms without the metas are skipped during the taxonomy comparison to allow for some Newspack customizations to posts in migration.
 
 #### Users
 

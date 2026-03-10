@@ -1372,6 +1372,39 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	}
 
 	/**
+	 * Tests that post is detected as modified when a term is removed on live.
+	 * Taxonomy changes are the most complex of "modified" criteria detection, and test covers that part of the logic.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_filter_modified_posts_when_term_removed_on_live(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture( [ 'ID' => 4006 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create two categories initially.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4303, 'name' => 'Cat C', 'slug' => 'cat-c', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4303, 'term_id' => 4303, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4006, 'term_taxonomy_id' => 4303 ] ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4304, 'name' => 'Cat D', 'slug' => 'cat-d', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4304, 'term_id' => 4304, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4006, 'term_taxonomy_id' => 4304 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Remove Cat D from the post on live (simulates editor removing a category).
+		$wpdb->delete( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4006, 'term_taxonomy_id' => 4304 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayHasKey( 4006, $modified_ids, 'Post should be detected as modified when a term is removed on live.' );
+	}
+
+	/**
 	 * Tests that reimporting updates post content correctly.
 	 *
 	 * @group migration-data-consistency-standard
