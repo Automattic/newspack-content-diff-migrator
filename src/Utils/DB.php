@@ -275,7 +275,7 @@ class DB {
 
 		$create_like_table_sql = "CREATE TABLE {$source_table} LIKE $match_collation_for_table";
 		// phpcs:ignore -- query fully sanitized.
-	$create_result = $this->wpdb->query( $create_like_table_sql );
+		$create_result = $this->wpdb->query( $create_like_table_sql );
 
 		if ( false === $create_result ) {
 			throw new \RuntimeException( sprintf( "Unable to create table: '%s', DB error: %s", $create_like_table_sql, ( '' != $this->wpdb->last_error ) ? $this->wpdb->last_error : 'unknown error' ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
@@ -338,10 +338,8 @@ class DB {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( "Deleted backup table '%s'.", $backup_table ) );
 		}
 
-		// Sleep after table is complete (for small datasets).
-		if ( $sleep_after_table > 0 ) {
-			sleep( $sleep_after_table );
-		}
+		// Sleep after table is completed.
+		sleep( $sleep_after_table );
 	}
 
 	/**
