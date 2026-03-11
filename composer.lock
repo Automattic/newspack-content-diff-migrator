@@ -55,12 +55,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Automattic/newspack-migration-tools.git",
-                "reference": "5405933e19760f458ebb5d9e501a57941c6ef13b"
+                "reference": "2c17b0df3df5dcc66bc89f90fa4a3a79d9f77de3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/5405933e19760f458ebb5d9e501a57941c6ef13b",
-                "reference": "5405933e19760f458ebb5d9e501a57941c6ef13b",
+                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/2c17b0df3df5dcc66bc89f90fa4a3a79d9f77de3",
+                "reference": "2c17b0df3df5dcc66bc89f90fa4a3a79d9f77de3",
                 "shasum": ""
             },
             "require": {
@@ -116,10 +116,10 @@
             ],
             "description": "A set of tools to help migration to WordPress.",
             "support": {
-                "source": "https://github.com/Automattic/newspack-migration-tools/tree/v1.0.6",
+                "source": "https://github.com/Automattic/newspack-migration-tools/tree/trunk",
                 "issues": "https://github.com/Automattic/newspack-migration-tools/issues"
             },
-            "time": "2026-03-09T10:39:27+00:00"
+            "time": "2026-03-11T17:38:35+00:00"
         },
         {
             "name": "bramus/ansi-php",
