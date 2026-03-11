@@ -1728,7 +1728,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					"There are a total of %d existing objects on local without any `%s*` metas. See %s for full IDs, following is a summary with some sample IDs:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
+					"There are %d total objects on local not belonging to any migrated source hostname (no `%s*` metas). See %s for full IDs, and here are some quick samples for you:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
 					$total,
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$file_path,
