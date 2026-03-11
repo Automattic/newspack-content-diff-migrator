@@ -106,22 +106,33 @@ Lists all previously migrated source hostnames. Useful for checking what sources
 wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 ```
 
-### Attribution Commands
+### Attribution
 
 When you run a CDiff migration, the imported content gets the "old ID and hostname meta" assigned to it. The following WP data objects can have this meta assigned to them, stored in the corresponding WP metas tables:
-- Posts/Pages/Attachmewnts/CPTs (stored in `wp_postmeta`)
+- Posts/Pages/Attachments/CPTs (stored in `wp_postmeta`)
 - Users (stored in `wp_usermeta`)
 - Terms (stored in `wp_termmeta`)
 
-But what happens if you clone a site, or have performed some independent custom migration with the site's content, and you need to run a content diff _**including**_ that content?
+To **"attribute content to a source hostname"** simply means to assign "old ID and hostname metas" to that content -- so that CDiff can track that content to the original source hostname, properly compare it to live tables, and do content refreshes. These metas are what makes multi-source migrations work.
 
-There are three easy and conveniently different ways (sub-commands) how you can "attribute" (assign) the "old ID and source hostname" metas to it.
+#### Automatic Attribution
 
-And just to clarify, to **"attribute some content to a source hostname"** simply means to assign "old ID and hostname metas" to that content, nothing more -- so that the CDiff plugin can track that content to the original source hostname, properly compare it to live tables, and do content refreshes. These metas are what makes the multi-source work.
+The `search-new-content-on-live` command now **automatically attributes** matching content when it detects unattributed local content:
+
+1. **Checks for unattributed content** - Content without source hostname meta
+2. **Auto-matches to live tables** - Compares local content against live DB tables
+3. **Attributes matches** - Assigns source hostname meta to matching content
+4. **Warns about remaining** - If content couldn't be matched, prompts whether to continue
+
+This eliminates the need to manually run attribution commands before searching in most scenarios. The auto-attribution matches content using:
+- **Posts/CPTs**: Matched by title + slug + date + type
+- **Attachments**: Matched by title + slug + date
+- **Users**: Matched by user_login
+- **Terms**: Matched by slug + taxonomy
 
 #### How Source Hostname Metas Work Per Type of Object
 
-Some object types rely on the source hostname meta to be properly compared/cdiff-ed agains the live tables, and this meta does affect whether they're being imported, while some other objects have it purely for tracking of origin purpose.
+Some object types rely on the source hostname meta to be properly compared/cdiff-ed against the live tables, and this meta does affect whether they're being imported, while some other objects have it purely for tracking of origin purpose.
 
 | Entity | Meta Table | Meta used for import decision? | What happens WITHOUT the meta? |
 |--------|------------|---------------------------|---------------------------|
@@ -136,72 +147,21 @@ Some object types rely on the source hostname meta to be properly compared/cdiff
 
 **Terms (Categories, Tags, etc.)** — The meta is for tracking/mapping only. Term lookup during import is done by **name + taxonomy + parent**, not by meta. And if a term with the same name exists with the same taxonomy, and under the same parent, it will be reused regardless of whether it has the source hostname meta, while the meta is added for internal reference.
 
-These three commands all do the very same thing (assign metas), but in slightly different ways, for your convenience.
+#### Manual Attribution: `attribute-ids`
 
-#### 1/3: `attribute-all-unattributed`
+Manual attribution is very much an edge case, made for special ops, and "just in case" scenarios where automatic attribution won't work.
 
-Will attribute **ALL** unattributed local content to a source hostname.
+**Use case**: Content from a source hostname was migrated with different parallel migration tools. For example, the first part of content was migrated by an external tool (Ghost CMS migrator, WP Importer, etc.) which transformed the content identifiers (different slugs, dates, etc.), and then for some reason you need to use the CDiff to migrate the second part of the content. If you have the ID mappings from the external tool (old IDs => new IDs), in order to use CDiff on the second part, you need to "attribute" i.e. set "old IDs and source hostname" metas to the first part of the content, so that CDiff doesn't create duplicates.
 
-**Use case**: perfect to run **immediately** after cloning a site and it will assign the metas to all the existing content, and it doesn't need the live tables.
-
-**Arguments**:
-- `--source-hostname` (required): Source hostname (e.g., www.example.com)
-- `--data-dir` (required): Data directory for logs and reports
-- `--post-types-csv` (optional): CSV of post types to attribute.
-
-```bash
-wp newspack-content-diff-migrator attribute-all-unattributed \
-    --source-hostname=www.example.com \
-    --data-dir=/tmp/migration_data
-
-# With custom post types
-wp newspack-content-diff-migrator attribute-all-unattributed \
-    --source-hostname=www.example.com \
-    --data-dir=/tmp/migration_data \
-    [--post-types-csv=post,page,attachment,guest-author]
-```
-
-#### 2/3 `attribute-match-local-to-live-tables`
-
-Automatically compares the unattributed local content to the live DB tables, finds matches and attributes it to the source hostname. Just give this command the live DB table prefix and the source hostname, and it will do the rest.
-
-**Use case**: You cloned the live DB to your local site, but also some custom content was created there too (e.g. Newspackification stuff). And you need to attribute just the original cloned content to the source hostname, not all of it.
-
-**Arguments**:
-- `--live-table-prefix` (required): Live DB table prefix
-- `--source-hostname` (required): Source hostname (e.g., www.example.com)
-- `--data-dir` (required): Data directory for logs and reports
-- `--post-types-csv` (optional): CSV of post types to match and attribute
-- `--custom-taxonomies-csv` (optional): CSV of taxonomies to match and attribute
-
-```bash
-wp newspack-content-diff-migrator attribute-match-local-to-live-tables \
-    --live-table-prefix=cdiff_ \
-    --source-hostname=www.example.com \
-    --data-dir=/tmp/migration_data
-
-# With custom post types and taxonomies
-wp newspack-content-diff-migrator attribute-match-local-to-live-tables \
-    --live-table-prefix=cdiff_ \
-    --source-hostname=www.example.com \
-    --data-dir=/tmp/migration_data \
-    [--post-types-csv=post,page,attachment,guest-author] \
-    [--custom-taxonomies-csv=category,post_tag,author,brand]
-```
-
-#### 3/3: `attribute-ids`
-
-Takes specific IDs of `posts` (and all CPTs), `users`, and/or `terms` and attributes just those objects to a source hostname.
-
-**Use case**: Some different custom migration was done in parallel for some reason, and then you wish to also run CDiff on that content. So you first assign the custom-migrated IDs metas, so that CDiff knows how to do the content refresh. This is very much an edge case, made for "just in case".
+This command takes actual old IDs and new IDs, and simply assigns/attributes the "old ID and source hostname meta", enabling CDiff to properly compare and migrate the remaining content.
 
 **Arguments**:
 - `--source-hostname` (required): Source hostname (e.g., www.example.com)
 - `--data-dir` (required): Data directory for logs and reports
-- `--post-ids` or `--post-ids-file` (optional): List of post IDs
-- `--attachment-ids` or `--attachment-ids-file` (optional): List of attachment IDs
-- `--user-ids` or `--user-ids-file` (optional): List of user IDs
-- `--term-ids` or `--term-ids-file` (optional): List of term IDs
+- `--post-ids` (optional): Post IDs as comma-separated values or file path
+- `--attachment-ids` (optional): Attachment IDs as comma-separated values or file path
+- `--user-ids` (optional): User IDs as comma-separated values or file path
+- `--term-ids` (optional): Term IDs as comma-separated values or file path
 
 ```bash
 # Multiple types at once
@@ -216,8 +176,8 @@ wp newspack-content-diff-migrator attribute-ids \
 wp newspack-content-diff-migrator attribute-ids \
     --source-hostname=www.example.com \
     --data-dir=/tmp/migration_data \
-    --post-ids-file=/tmp/post_ids.txt \
-    --user-ids-file=/tmp/user_ids.txt
+    --post-ids=/tmp/post_ids.txt \
+    --user-ids=/tmp/user_ids.txt
 ```
 
 **ID file format**:
@@ -226,13 +186,6 @@ wp newspack-content-diff-migrator attribute-ids \
 456
 789
 ```
-
-#### Attribution Reports
-
-All three attribute commands automatically create **attribution reports** -- simple timestamped CSVs in `{--data-dir}/reports/` directory:
-- `attributed_posts_{timestamp}.csv` - Posts and attachments which were attributed
-- `attributed_users_{timestamp}.csv` - Users attributed  
-- `attributed_terms_{timestamp}.csv` - Terms attributed
 
 ---
 

@@ -103,17 +103,14 @@ class CmdMigrateLiveContentUsersTest extends IntegrationTestCase {
 		);
 		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
 
-		// First, run attribution to assign old_id meta to existing local content.
-		$this->run_attribute_match_local_to_live_tables();
-
-		// Verify old_id meta was set on existing user by attribution.
-		$meta_key = $this->get_old_id_meta_key();
-		$old_id   = get_user_meta( $existing_user_id, $meta_key, true );
-		$this->assertEquals( 201, (int) $old_id, 'Existing user should have old_id meta after attribution.' );
-
-		// Now run migration.
+		// Run search (which now auto-attributes matching content) and migrate.
 		$this->run_search_command();
 		$this->run_migrate_command();
+
+		// Verify old_id meta was set on existing user by auto-attribution during search.
+		$meta_key = $this->get_old_id_meta_key();
+		$old_id   = get_user_meta( $existing_user_id, $meta_key, true );
+		$this->assertEquals( 201, (int) $old_id, 'Existing user should have old_id meta after auto-attribution.' );
 
 		// Verify existing user was used (not duplicated).
 		$users = get_users( [ 'login' => 'existinguser' ] );

@@ -383,21 +383,6 @@ class IntegrationTestCase extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Calls cmd_attribute_match_local_to_live_tables with given arguments.
-	 *
-	 * @param array $assoc_args Associative arguments for the command.
-	 */
-	protected function run_attribute_match_local_to_live_tables( array $assoc_args = [] ): void {
-		$default_args = [
-			'live-table-prefix' => $this->live_table_prefix,
-			'source-hostname'   => $this->source_hostname,
-			'data-dir'          => $this->temp_data_dir,
-		];
-
-		$this->command->cmd_attribute_match_local_to_live_tables( [], array_merge( $default_args, $assoc_args ) );
-	}
-
-	/**
 	 * Gets the old_id meta key for the test source hostname.
 	 *
 	 * @param string|null $hostname Optional hostname override.

@@ -578,7 +578,12 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	/**
-	 * Tests that merged users are saved to run-state with status "merged".
+	 * Tests that existing users matched during auto-attribution are saved to run-state
+	 * with status "modified" when their data is updated from live.
+	 *
+	 * Note: With auto-attribution in search command, users with matching login are
+	 * automatically attributed before migrate. During migrate, if user data differs
+	 * (e.g., email, display_name), the user gets "modified" status.
 	 *
 	 * @group run-state
 	 */
@@ -590,7 +595,7 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		// Create local user first.
 		$local_user_id = $this->factory->user->create( [ 'user_login' => $unique_login ] );
 
-		// Create same user in live DB with different ID.
+		// Create same user in live DB with different ID (and different email/display_name from fixture).
 		$live_user = $this->create_user_fixture(
 			[
 				'ID'         => 21001,
@@ -610,18 +615,20 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$this->run_search_command();
 		$this->run_migrate_command();
 
-		// Verify user was saved to run-state with merged status.
+		// Verify user was saved to run-state with modified status.
+		// The user was auto-attributed during search, then updated during migrate
+		// (because live user has different email/display_name from local).
 		$imported_users = $this->run_state->read_imported_users();
 
 		$found = false;
 		foreach ( $imported_users as $user ) {
 			if ( 21001 === (int) $user['id_old'] && $local_user_id === (int) $user['id_new'] ) {
 				$found = true;
-				$this->assertEquals( 'merged', $user['status'], 'User status should be merged.' );
+				$this->assertEquals( 'modified', $user['status'], 'User status should be modified (auto-attributed during search, updated during migrate).' );
 				break;
 			}
 		}
-		$this->assertTrue( $found, 'Merged user should be in run-state.' );
+		$this->assertTrue( $found, 'Auto-attributed user should be in run-state.' );
 	}
 
 	// =========================================================================
