@@ -25,6 +25,13 @@ use WP_CLI;
 class ContentDiffMigrator {
 
 	/**
+	 * Default post types to migrate. Can be changed with --post-types-csv argument.
+	 *
+	 * @var array
+	 */
+	const DEFAULT_POST_TYPES = [ 'post', 'page', 'attachment', 'wp_block' ];
+
+	/**
 	 * Content Diff logic class.
 	 *
 	 * @var ContentDiffLogic Logic.
@@ -105,7 +112,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,wp_block,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv).',
+						'description' => 'CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,wp_block,guest-author,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv). Defaults are defined by the constant DEFAULT_POST_TYPES.',
 						'optional'    => true,
 						'repeating'   => false,
 					],
@@ -180,7 +187,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to attribute. E.g., --post-types-csv=post,page,attachment,wp_block,guest-author',
+						'description' => 'CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,wp_block,guest-author,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv). Defaults are defined by the constant DEFAULT_POST_TYPES.',
 						'optional'    => true,
 					],
 				],
@@ -217,7 +224,7 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-types-csv',
-						'description' => 'Defaults are set/hardcoded at the top of the command, in the variable $post_types. CSV of post types to match and attribute. E.g., --post-types-csv=post,page,attachment,wp_block,guest-author',
+						'description' => 'CSV of all the post types to scan, no extra spaces. E.g. --post-types-csv=post,page,attachment,wp_block,guest-author,custom_cpt1. Note: For CoAuthors Plus Guest Authors support, include guest-author CPT, and in the migrate command make sure author taxonomy is migrated (author taxonomy is already a default value in --custom-taxonomies-csv). Defaults are defined by the constant DEFAULT_POST_TYPES.',
 						'optional'    => true,
 					],
 					[
@@ -386,7 +393,7 @@ class ContentDiffMigrator {
 		$data_dir          = $assoc_args['data-dir'] ?? false;
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
-		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment', 'wp_block' ];
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : self::DEFAULT_POST_TYPES;
 		
 		// Set instance properties.
 		global $wpdb;
@@ -905,7 +912,7 @@ class ContentDiffMigrator {
 	public function cmd_attribute_all_unattributed( array $pos_args, array $assoc_args ): void {
 		$source_hostname = $assoc_args['source-hostname'] ?? false;
 		$data_dir        = $assoc_args['data-dir'] ?? false;
-		$post_types      = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment', 'wp_block' ];
+		$post_types      = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : self::DEFAULT_POST_TYPES;
 
 		// Init logger.
 		Logger::instance()->init( $data_dir . '/' . __FUNCTION__ . '.log' );
@@ -1032,7 +1039,7 @@ class ContentDiffMigrator {
 		$live_table_prefix = $assoc_args['live-table-prefix'] ?? false;
 		$source_hostname   = $assoc_args['source-hostname'] ?? false;
 		$data_dir          = $assoc_args['data-dir'] ?? false;
-		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : [ 'post', 'page', 'attachment' ];
+		$post_types        = isset( $assoc_args['post-types-csv'] ) ? explode( ',', $assoc_args['post-types-csv'] ) : self::DEFAULT_POST_TYPES;
 		$taxonomies        = isset( $assoc_args['custom-taxonomies-csv'] ) ? explode( ',', $assoc_args['custom-taxonomies-csv'] ) : [ 'category', 'post_tag', 'author' ];
 
 		// Init logger.
@@ -1572,8 +1579,7 @@ class ContentDiffMigrator {
 		$created_files   = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
 
 		// Re-count and display remaining unattributed content.
-		$post_types = [ 'post', 'page', 'attachment' ];
-		$this->attribute_recount_unattributed( $post_types );
+		$this->attribute_recount_unattributed( self::DEFAULT_POST_TYPES );
 
 		// Display summary.
 		$this->attribute_display_summary( $reports_dir, $timestamp, $created_files );
