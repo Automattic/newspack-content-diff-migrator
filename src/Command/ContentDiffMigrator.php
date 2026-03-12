@@ -201,25 +201,25 @@ class ContentDiffMigrator {
 					[
 						'type'        => 'assoc',
 						'name'        => 'post-ids',
-						'description' => 'Post IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one post ID per line.',
+						'description' => 'Path to JSONL file with ID pairs, one pair of IDs per each line, e.g.: {"old_id": 100, "local_id": 200}',
 						'optional'    => true,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'attachment-ids',
-						'description' => 'Attachment IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one attachment ID per line.',
+						'description' => 'Path to JSONL file with ID pairs, one pair of IDs per each line, e.g.: {"old_id": 100, "local_id": 200}',
 						'optional'    => true,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'user-ids',
-						'description' => 'User IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one user ID per line.',
+						'description' => 'Path to JSONL file with ID pairs, one pair of IDs per each line, e.g.: {"old_id": 100, "local_id": 200}',
 						'optional'    => true,
 					],
 					[
 						'type'        => 'assoc',
 						'name'        => 'term-ids',
-						'description' => 'Term IDs: comma-separated integers (e.g., "1,2,3") OR full path to file with one term ID per line.',
+						'description' => 'Path to JSONL file with ID pairs, one pair of IDs per each line, e.g.: {"old_id": 100, "local_id": 200}',
 						'optional'    => true,
 					],
 				],
@@ -896,15 +896,15 @@ class ContentDiffMigrator {
 		$source_hostname = $assoc_args['source-hostname'] ?? false;
 		$data_dir        = $assoc_args['data-dir'] ?? false;
 
-		// Get IDs from arguments. These arguments accept either comma-separated IDs or full paths to files with one ID per line.
-		$post_ids       = $this->parse_argument_integer_ids_or_file( $assoc_args['post-ids'] ?? null );
-		$attachment_ids = $this->parse_argument_integer_ids_or_file( $assoc_args['attachment-ids'] ?? null );
-		$user_ids       = $this->parse_argument_integer_ids_or_file( $assoc_args['user-ids'] ?? null );
-		$term_ids       = $this->parse_argument_integer_ids_or_file( $assoc_args['term-ids'] ?? null );
+		// Get ID pairs from JSONL files.
+		$post_pairs       = isset( $assoc_args['post-ids'] ) ? $this->parse_jsonl_id_pairs( $assoc_args['post-ids'] ) : [];
+		$attachment_pairs = isset( $assoc_args['attachment-ids'] ) ? $this->parse_jsonl_id_pairs( $assoc_args['attachment-ids'] ) : [];
+		$user_pairs       = isset( $assoc_args['user-ids'] ) ? $this->parse_jsonl_id_pairs( $assoc_args['user-ids'] ) : [];
+		$term_pairs       = isset( $assoc_args['term-ids'] ) ? $this->parse_jsonl_id_pairs( $assoc_args['term-ids'] ) : [];
 
-		// Validate at least one ID argument provided.
-		if ( empty( $post_ids ) && empty( $attachment_ids ) && empty( $user_ids ) && empty( $term_ids ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, 'At least one argument with IDs to attribute is required.' );
+		// Validate at least one ID pair argument provided.
+		if ( empty( $post_pairs ) && empty( $attachment_pairs ) && empty( $user_pairs ) && empty( $term_pairs ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, 'At least one argument with ID pairs to attribute is required.' );
 			return;
 		}
 
@@ -921,7 +921,7 @@ class ContentDiffMigrator {
 		);
 
 		// Confirm action.
-		$this->attribute_confirm_action( sprintf( 'This will attribute specific content (IDs from arguments) to %s.', $source_hostname ) );
+		$this->attribute_confirm_action( sprintf( 'This will attribute specified ID pairs from JSONL files to %s.', $source_hostname ) );
 
 		// Variables.
 		global $wpdb;
@@ -933,48 +933,51 @@ class ContentDiffMigrator {
 			'terms' => [],
 		];
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing specific IDs to %s...', $source_hostname ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing IDs to %s...', $source_hostname ) );
 
 		// Attribute posts.
 		$posts_attributed_count = 0;
-		if ( ! empty( $post_ids ) ) {
-			
-			$ids_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
+		if ( ! empty( $post_pairs ) ) {
+			$local_ids        = array_column( $post_pairs, 'local_id' );
+			$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
-			$existing_posts_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $post_ids ), ARRAY_A );
+			$existing_posts_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $local_ids ), ARRAY_A );
 			// phpcs:enable
 			$existing_posts = array_column( $existing_posts_results, 'post_type', 'ID' );
 			
 			// Fetch already-attributed post IDs.
-			$already_attributed_posts     = $this->logic->get_attributed_post_ids( $source_hostname, $post_ids );
+			$already_attributed_posts     = $this->logic->get_attributed_post_ids( $source_hostname, $local_ids );
 			$already_attributed_posts_map = array_flip( $already_attributed_posts );
 			
-			foreach ( $post_ids as $key_post_id => $post_id ) {
-				if ( ! isset( $existing_posts[ $post_id ] ) ) {
-					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $post_id ) );
+			foreach ( $post_pairs as $key => $pair ) {
+				$local_id = $pair['local_id'];
+				$old_id   = $pair['old_id'];
+				
+				if ( ! isset( $existing_posts[ $local_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post local_id %d not found in database, skipping attribution.', $local_id ) );
 					continue;
 				}
 				// Skip if already attributed.
-				if ( isset( $already_attributed_posts_map[ $post_id ] ) ) {
+				if ( isset( $already_attributed_posts_map[ $local_id ] ) ) {
 					continue;
 				}
 				
-				update_post_meta( $post_id, $meta_key, $post_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_post_id, 1000 );
+				update_post_meta( $local_id, $meta_key, $old_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
 					sprintf( 'Post attributed to %s', $source_hostname ),
 					[
-						'local_id' => $post_id,
-						'live_id'  => $post_id,
+						'old_id'   => $old_id,
+						'local_id' => $local_id,
 					] 
 				);
 				$attributed_data['posts'][] = [
-					'local_id'  => $post_id,
-					'live_id'   => $post_id,
-					'post_type' => $existing_posts[ $post_id ],
+					'live_id'   => $old_id,
+					'local_id'  => $local_id,
+					'post_type' => $existing_posts[ $local_id ],
 				];
 				++$posts_attributed_count;
 			}
@@ -983,43 +986,47 @@ class ContentDiffMigrator {
 
 		// Attribute attachments.
 		$attachments_attributed_count = 0;
-		if ( ! empty( $attachment_ids ) ) {
-			$ids_placeholders = implode( ',', array_fill( 0, count( $attachment_ids ), '%d' ) );
+		if ( ! empty( $attachment_pairs ) ) {
+			$local_ids        = array_column( $attachment_pairs, 'local_id' );
+			$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
-			$existing_attachments_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} ) AND post_type = 'attachment'", $attachment_ids ), ARRAY_A );
+			$existing_attachments_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} ) AND post_type = 'attachment'", $local_ids ), ARRAY_A );
 			// phpcs:enable
 			// Re-index as flat array for isset checks.
 			$existing_attachments = array_column( $existing_attachments_results, 'ID', 'ID' );
 			
 			// Fetch already-attributed attachment IDs.
-			$already_attributed_attachments     = $this->logic->get_attributed_attachment_ids( $source_hostname, $attachment_ids );
+			$already_attributed_attachments     = $this->logic->get_attributed_attachment_ids( $source_hostname, $local_ids );
 			$already_attributed_attachments_map = array_flip( $already_attributed_attachments );
 			
-			foreach ( $attachment_ids as $key_attachment_id => $attachment_id ) {
-				if ( ! isset( $existing_attachments[ $attachment_id ] ) ) {
-					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Attachment ID %d not found in database or is not an attachment, skipping attribution.', $attachment_id ) );
+			foreach ( $attachment_pairs as $key => $pair ) {
+				$local_id = $pair['local_id'];
+				$old_id   = $pair['old_id'];
+				
+				if ( ! isset( $existing_attachments[ $local_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Attachment local_id %d not found in database or is not an attachment, skipping attribution.', $local_id ) );
 					continue;
 				}
 				// Skip if already attributed.
-				if ( isset( $already_attributed_attachments_map[ $attachment_id ] ) ) {
+				if ( isset( $already_attributed_attachments_map[ $local_id ] ) ) {
 					continue;
 				}
 				
-				update_post_meta( $attachment_id, $meta_key, $attachment_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_attachment_id, 1000 );
+				update_post_meta( $local_id, $meta_key, $old_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
 					sprintf( 'Attachment attributed to %s', $source_hostname ),
 					[
-						'local_id' => $attachment_id,
-						'live_id'  => $attachment_id,
+						'old_id'   => $old_id,
+						'local_id' => $local_id,
 					] 
 				);
 				$attributed_data['posts'][] = [
-					'local_id'  => $attachment_id,
-					'live_id'   => $attachment_id,
+					'live_id'   => $old_id,
+					'local_id'  => $local_id,
 					'post_type' => 'attachment',
 				];
 				++$attachments_attributed_count;
@@ -1029,43 +1036,47 @@ class ContentDiffMigrator {
 
 		// Attribute users.
 		$users_attributed_count = 0;
-		if ( ! empty( $user_ids ) ) {
-			$ids_placeholders = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+		if ( ! empty( $user_pairs ) ) {
+			$local_ids        = array_column( $user_pairs, 'local_id' );
+			$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
-			$existing_users_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID FROM {$wpdb->users} WHERE ID IN ( {$ids_placeholders} )", $user_ids ), ARRAY_A );
+			$existing_users_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID FROM {$wpdb->users} WHERE ID IN ( {$ids_placeholders} )", $local_ids ), ARRAY_A );
 			// phpcs:enable
 			// Re-index as flat array for isset checks.
 			$existing_users = array_column( $existing_users_results, 'ID', 'ID' );
 			
 			// Fetch already-attributed user IDs.
-			$already_attributed_users     = $this->logic->get_attributed_user_ids( $source_hostname, $user_ids );
+			$already_attributed_users     = $this->logic->get_attributed_user_ids( $source_hostname, $local_ids );
 			$already_attributed_users_map = array_flip( $already_attributed_users );
 			
-			foreach ( $user_ids as $key_user_id => $user_id ) {
-				if ( ! isset( $existing_users[ $user_id ] ) ) {
-					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'User ID %d not found in database, skipping attribution.', $user_id ) );
+			foreach ( $user_pairs as $key => $pair ) {
+				$local_id = $pair['local_id'];
+				$old_id   = $pair['old_id'];
+				
+				if ( ! isset( $existing_users[ $local_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'User local_id %d not found in database, skipping attribution.', $local_id ) );
 					continue;
 				}
 				// Skip if already attributed.
-				if ( isset( $already_attributed_users_map[ $user_id ] ) ) {
+				if ( isset( $already_attributed_users_map[ $local_id ] ) ) {
 					continue;
 				}
 				
-				update_user_meta( $user_id, $meta_key, $user_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_user_id, 1000 );
+				update_user_meta( $local_id, $meta_key, $old_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
 					sprintf( 'User attributed to %s', $source_hostname ),
 					[
-						'local_id' => $user_id,
-						'live_id'  => $user_id,
+						'old_id'   => $old_id,
+						'local_id' => $local_id,
 					] 
 				);
 				$attributed_data['users'][] = [
-					'local_id' => $user_id,
-					'live_id'  => $user_id,
+					'live_id'  => $old_id,
+					'local_id' => $local_id,
 				];
 				++$users_attributed_count;
 			}
@@ -1074,44 +1085,48 @@ class ContentDiffMigrator {
 
 		// Attribute terms.
 		$terms_attributed_count = 0;
-		if ( ! empty( $term_ids ) ) {
-			$ids_placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
+		if ( ! empty( $term_pairs ) ) {
+			$local_ids        = array_column( $term_pairs, 'local_id' );
+			$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
 			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
-			$existing_terms_results = $wpdb->get_results( $wpdb->prepare( "SELECT t.term_id, tt.taxonomy  FROM {$wpdb->terms} t  INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id  WHERE t.term_id IN ( {$ids_placeholders} )", $term_ids ), ARRAY_A );
+			$existing_terms_results = $wpdb->get_results( $wpdb->prepare( "SELECT t.term_id, tt.taxonomy  FROM {$wpdb->terms} t  INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id  WHERE t.term_id IN ( {$ids_placeholders} )", $local_ids ), ARRAY_A );
 			// phpcs:enable
 			// Re-index by term_id for quick lookup.
 			$existing_terms = array_column( $existing_terms_results, 'taxonomy', 'term_id' );
 			
 			// Fetch already-attributed term IDs.
-			$already_attributed_terms     = $this->logic->get_attributed_term_ids( $source_hostname, $term_ids );
+			$already_attributed_terms     = $this->logic->get_attributed_term_ids( $source_hostname, $local_ids );
 			$already_attributed_terms_map = array_flip( $already_attributed_terms );
 			
-			foreach ( $term_ids as $key_term_id => $term_id ) {
-				if ( ! isset( $existing_terms[ $term_id ] ) ) {
-					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Term ID %d not found in database, skipping attribution.', $term_id ) );
+			foreach ( $term_pairs as $key => $pair ) {
+				$local_id = $pair['local_id'];
+				$old_id   = $pair['old_id'];
+				
+				if ( ! isset( $existing_terms[ $local_id ] ) ) {
+					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Term local_id %d not found in database, skipping attribution.', $local_id ) );
 					continue;
 				}
 				// Skip if already attributed.
-				if ( isset( $already_attributed_terms_map[ $term_id ] ) ) {
+				if ( isset( $already_attributed_terms_map[ $local_id ] ) ) {
 					continue;
 				}
 				
-				update_term_meta( $term_id, $meta_key, $term_id );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_term_id, 1000 );
+				update_term_meta( $local_id, $meta_key, $old_id );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key, 1000 );
 				
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
 					sprintf( 'Term attributed to %s', $source_hostname ),
 					[
-						'local_id' => $term_id,
-						'live_id'  => $term_id,
+						'old_id'   => $old_id,
+						'local_id' => $local_id,
 					] 
 				);
 				$attributed_data['terms'][] = [
-					'local_id' => $term_id,
-					'live_id'  => $term_id,
-					'taxonomy' => $existing_terms[ $term_id ],
+					'live_id'  => $old_id,
+					'local_id' => $local_id,
+					'taxonomy' => $existing_terms[ $local_id ],
 				];
 				++$terms_attributed_count;
 			}
@@ -1995,5 +2010,51 @@ class ContentDiffMigrator {
 		}
 
 		return array_unique( $ids );
+	}
+
+	/**
+	 * Parses a JSONL file containing ID pairs for attribution.
+	 *
+	 * Each line must be a JSON object with 'old_id' and 'local_id' integer fields.
+	 * Example: {"old_id": 100, "local_id": 200}
+	 *
+	 * @param string $file_path Path to the JSONL file.
+	 *
+	 * @return array Array of associative arrays with 'old_id' and 'local_id' keys.
+	 */
+	private function parse_jsonl_id_pairs( string $file_path ): array {
+		if ( ! file_exists( $file_path ) ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'JSONL file not found: %s', $file_path ) );
+			return [];
+		}
+
+		$lines = file( $file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown
+		if ( false === $lines ) {
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to read JSONL file: %s', $file_path ) );
+			return [];
+		}
+
+		$pairs       = [];
+		$line_number = 0;
+		foreach ( $lines as $line ) {
+			++$line_number;
+			$line = trim( $line );
+			if ( empty( $line ) ) {
+				continue;
+			}
+
+			$data = json_decode( $line, true );
+			if ( ! is_array( $data ) || ! isset( $data['old_id'] ) || ! isset( $data['local_id'] ) || ! is_numeric( $data['old_id'] ) || ! is_numeric( $data['local_id'] ) ) {
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::WARNING, sprintf( 'Invalid JSON on line %d: %s', $line_number, $line ) );
+				continue;
+			}
+
+			$pairs[] = [
+				'old_id'   => (int) $data['old_id'],
+				'local_id' => (int) $data['local_id'],
+			];
+		}
+
+		return $pairs;
 	}
 }

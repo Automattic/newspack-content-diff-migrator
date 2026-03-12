@@ -163,36 +163,24 @@ Manual attribution is very much an edge case, made for special ops, and "just in
 
 This command takes actual old IDs and new IDs, and simply assigns/attributes the "old ID and source hostname meta", enabling CDiff to properly compare and migrate the remaining content.
 
-**Arguments**:
+**How it works:**
+
+Once metas are set by this command, CDiff relies solely on those metas to determine what's "already migrated" vs "new" — it does **not** re-compare content fields (title, slug, date). This is intentional: external migration tools may have transformed those fields, making field-based matching impossible. The metas become the authoritative link between local and live content.
+
+**Arguments** At least one of these arguments is required:
 - `--source-hostname` (required): Source hostname (e.g., www.example.com)
 - `--data-dir` (required): Data directory for logs and reports
-- `--post-ids` (optional): Post IDs as comma-separated values or file path
-- `--attachment-ids` (optional): Attachment IDs as comma-separated values or file path
-- `--user-ids` (optional): User IDs as comma-separated values or file path
-- `--term-ids` (optional): Term IDs as comma-separated values or file path
+- `--post-ids` (optional): Path to JSONL file with post ID pairs
+- `--attachment-ids` (optional): Path to JSONL file with attachment ID pairs
+- `--user-ids` (optional): Path to JSONL file with user ID pairs
+- `--term-ids` (optional): Path to JSONL file with term ID pairs
 
 ```bash
-# Multiple types at once
 wp newspack-content-diff-migrator attribute-ids \
     --source-hostname=www.example.com \
     --data-dir=/tmp/migration_data \
-    --post-ids=123,456,789 \
-    --user-ids=10,20,30 \
-    --term-ids=5,15,25
-
-# Or via files with IDs (one ID per line)
-wp newspack-content-diff-migrator attribute-ids \
-    --source-hostname=www.example.com \
-    --data-dir=/tmp/migration_data \
-    --post-ids=/tmp/post_ids.txt \
-    --user-ids=/tmp/user_ids.txt
-```
-
-**ID file format**:
-```
-123
-456
-789
+    --post-ids=/tmp/post_ids.jsonl \
+    --user-ids=/tmp/user_ids.jsonl
 ```
 
 ---
