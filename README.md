@@ -69,6 +69,14 @@ The two migration commands **must be executed in sequence**: first `search-new-c
 
 Searches for new and modified posts in the live site tables and notes the IDs which should be migrated. This command must be run before `migrate-live-content`.
 
+**How the search command works:**
+
+1. **Auto-attribution**: Before checking for new/modified content, the command scans for unattributed local content (content without `newspackcontentdiff_oldid_*` metas) and automatically matches it against live tables using ID fields comparison (like title, slug, date, type, etc.). This handles scenarios like cloned sites where content exists locally but hasn't been attributed yet. It will prompt the user to attribute the remaining unattributed content to the source hostname, or continue without attribution.
+
+2. **New content detection**: The command determines "new" content by checking if each live content object is referenced in the local `newspackcontentdiff_oldid_*` metas. If a live ID is not in this local meta mapping, it's considered new and queued for import.
+
+3. **Modified content detection**: Following the Newspack Migration Data Consistency Standard, specific fields are examined for changes (like post_modified date, post_status, post_author, featured image, and taxonomies). If any of these fields have changed, the content is considered modified and queued for update (either full reimport for posts, or individual field updates, depending on the object type).
+
 ```bash
 wp newspack-content-diff-migrator search-new-content-on-live \
     --live-table-prefix=<prefix> \          // Prefix of the imported live site tables (e.g., `cdiff_`)
