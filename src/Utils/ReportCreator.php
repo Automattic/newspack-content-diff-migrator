@@ -204,6 +204,8 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_terms_csv( string $file_path ): int {
+		global $wpdb;
+
 		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
@@ -212,7 +214,7 @@ class ReportCreator {
 
 		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'status', 'term_id_old', 'term_id_new', 'taxonomy' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+		fputcsv( $handle, [ 'status', 'term_id_old', 'term_id_new', 'taxonomy', 'term_name' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 
 		// Track unique terms by term_id_new to handle deduplication.
 		// Status priority: merged > imported.
@@ -234,11 +236,23 @@ class ReportCreator {
 			}
 		}
 
+		// Batch fetch term names.
+		$term_names = [];
+		if ( ! empty( $terms_by_id_new ) ) {
+			$term_ids     = array_keys( $terms_by_id_new );
+			$placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$results    = $wpdb->get_results( $wpdb->prepare( "SELECT term_id, name FROM {$wpdb->terms} WHERE term_id IN ( {$placeholders} )", $term_ids ), ARRAY_A );
+			// phpcs:enable
+			// Create a map of term_id => name, e.g values would be like: [ 123 => 'Technology', 456 => 'Sports', 789 => 'Breaking News' ].
+			$term_names = array_column( $results, 'name', 'term_id' );
+		}
+
 		// Write rows.
 		$count = 0;
 		foreach ( $terms_by_id_new as $row ) {
 			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-			fputcsv( $handle, [ $row['status'], $row['term_id_old'], $row['term_id_new'], $row['taxonomy'] ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+			fputcsv( $handle, [ $row['status'], $row['term_id_old'], $row['term_id_new'], $row['taxonomy'], $term_names[ $row['term_id_new'] ] ?? '' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 			$count++;
 		}
 
@@ -404,15 +418,29 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_attributed_terms_csv( string $file_path, array $terms_data, string $source_hostname ): int {
+		global $wpdb;
+
 		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
 			return 0;
 		}
 
-		// Write header: local_id,live_id,taxonomy,source_hostname.
+		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'local_id', 'live_id', 'taxonomy', 'source_hostname' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+		fputcsv( $handle, [ 'local_id', 'live_id', 'taxonomy', 'term_name', 'source_hostname' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+
+		// Batch fetch term names.
+		$term_names = [];
+		if ( ! empty( $terms_data ) ) {
+			$term_ids     = array_column( $terms_data, 'local_id' );
+			$placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$results    = $wpdb->get_results( $wpdb->prepare( "SELECT term_id, name FROM {$wpdb->terms} WHERE term_id IN ( {$placeholders} )", $term_ids ), ARRAY_A );
+			// phpcs:enable
+			// Create a map of term_id => name, e.g values would be like: [ 123 => 'Technology', 456 => 'Sports', 789 => 'Breaking News' ].
+			$term_names = array_column( $results, 'name', 'term_id' );
+		}
 
 		$count = 0;
 		foreach ( $terms_data as $record ) {
@@ -423,6 +451,7 @@ class ReportCreator {
 					$record['local_id'],
 					$record['live_id'],
 					$record['taxonomy'] ?? '',
+					$term_names[ $record['local_id'] ] ?? '',
 					$source_hostname,
 				],
 				',',

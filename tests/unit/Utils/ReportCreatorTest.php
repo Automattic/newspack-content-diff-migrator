@@ -187,7 +187,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 		$this->report_creator->create_all_csvs( $reports_dir );
 
 		$headers = $this->get_csv_headers( $reports_dir . '/' . ReportCreator::REPORT_TERMS );
-		$this->assertEquals( [ 'status', 'term_id_old', 'term_id_new', 'taxonomy' ], $headers );
+		$this->assertEquals( [ 'status', 'term_id_old', 'term_id_new', 'taxonomy', 'term_name' ], $headers );
 	}
 
 	// =========================================================================
