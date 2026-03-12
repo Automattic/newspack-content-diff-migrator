@@ -1967,52 +1967,6 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Parses IDs from CLI input arguments which can be either comma-separated integers or a file path with one ID per line.
-	 * 
-	 * Auto-detects: if input is an existing file, reads IDs from it (one per line);
-	 * otherwise parses as comma-separated integers.
-	 *
-	 * @param string|null $input Comma-separated IDs or file path.
-	 *
-	 * @return array Array of integer IDs.
-	 */
-	private function parse_argument_integer_ids_or_file( ?string $input ): array {
-		if ( empty( $input ) ) {
-			return [];
-		}
-
-		$ids = [];
-
-		// If file exists, read IDs from file.
-		if ( file_exists( $input ) ) {
-			$lines = file( $input, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ); // phpcs:ignore -- WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown
-			if ( false === $lines ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'Failed to read argument input file: %s', $input ) );
-				return [];
-			}
-			foreach ( $lines as $line ) {
-				$line = trim( $line );
-				if ( is_numeric( $line ) ) {
-					$ids[] = (int) $line;
-				}
-			}
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Loaded %d IDs from file: %s', count( $ids ), $input ) );
-			return array_unique( $ids );
-		}
-
-		// Otherwise parse as CSV.
-		$parts = explode( ',', $input );
-		foreach ( $parts as $part ) {
-			$part = trim( $part );
-			if ( is_numeric( $part ) ) {
-				$ids[] = (int) $part;
-			}
-		}
-
-		return array_unique( $ids );
-	}
-
-	/**
 	 * Parses a JSONL file containing ID pairs for attribution.
 	 *
 	 * Each line must be a JSON object with 'old_id' and 'local_id' integer fields.
