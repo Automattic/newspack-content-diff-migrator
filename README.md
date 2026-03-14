@@ -501,38 +501,10 @@ git push origin $(git symbolic-ref --short HEAD)
 
 ## Troubleshooting and Common Issues
 
-- Memory Exhaustion: Increase PHP memory limits or reduce batch size
-- CLI Timeout Issues: Consider running migrations in smaller batches, or simply rerun to resume the migration from the last successful step
 - Check the log files in the `--data-dir` directory
 - Review the error log for specific error messages
-
-## Multiple Source Hostnames
-
-Importing content from multiple source hostnames is fully supported. Content of each site is treated independently from the other, and the plugin will not overwrite or merge any content from other sites.
-
-Each source is identified by a unique `--source-hostname` parameter that must be provided to all commands.
-
-### Workflow for Multiple Sources
-
-```bash
-# Import from Site A
-wp newspack-content-diff-migrator search-new-content-on-live \
-    --live-table-prefix=cdiff_ --source-hostname=www.example-1.com --data-dir=/tmp/cdiff_eg1
-wp newspack-content-diff-migrator migrate-live-content \
-    --live-table-prefix=cdiff_ --source-hostname=www.example-1.com --data-dir=/tmp/cdiff_eg1
-
-# Import from Site B
-wp newspack-content-diff-migrator search-new-content-on-live \
-    --live-table-prefix=eg2_ --source-hostname=www.example-2.com --data-dir=/tmp/cdiff_eg2
-wp newspack-content-diff-migrator migrate-live-content \
-    --live-table-prefix=eg2_ --source-hostname=www.example-2.com --data-dir=/tmp/cdiff_eg2
-```
-
-Use `list-previously-migrated-source-hostnames` to see which sources have been previously migrated.
-
-### Attributing Cloned Content
-
-If your local site was cloned from the live site, you must first attribute that existing local content to the source hostname before running the content diff migration. See [Attribution Commands](#attribution-commands) for details.
+- CLI Timeout Issues: Consider running migrations in smaller batches, or simply rerun to resume the migration from the last successful step
+- Memory Exhaustion: Increase PHP memory limits or reduce batch size
 
 ---
 
