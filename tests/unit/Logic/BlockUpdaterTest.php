@@ -421,6 +421,75 @@ HTML;
 		);
 	}
 
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
+	 *
+	 * Tests that when an ID is not in the known_ids map AND the URL resolver
+	 * returns null (attachment not found by URL), the block remains unchanged.
+	 * This is the "fallback" scenario where neither map nor URL lookup can resolve the ID.
+	 */
+	public function image_block_remains_unchanged_when_resolver_returns_null(): void {
+		// Create a resolver that always returns null (attachment not found).
+		$this->updater->set_attachment_url_to_postid_resolver(
+			function ( string $url ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.Found.
+				return null;
+			}
+		);
+
+		$content = <<<'HTML'
+<!-- wp:image {"id":1000} -->
+<figure class="wp-block-image"><img src="https://example.com/unfound-image.jpg" class="wp-image-1000"/></figure>
+<!-- /wp:image -->
+HTML;
+
+		// No known IDs in map, and resolver returns null.
+		$known_ids              = [];
+		$local_hostname_aliases = [ 'example.com' ];
+		$result                 = $this->updater->update_image_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+
+		// Content should remain unchanged.
+		$this->assertEquals( $content, $result );
+
+		// Known IDs should still be empty (no new mappings discovered).
+		$this->assertEmpty( $known_ids, 'Known IDs should remain empty when resolver returns null.' );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_image_blocks_ids
+	 *
+	 * Tests that when URL is not a local hostname alias, the resolver is not called
+	 * and the block remains unchanged (even if the resolver would return a value).
+	 */
+	public function image_block_skips_resolver_for_non_local_hostname(): void {
+		$resolver_called = false;
+
+		$this->updater->set_attachment_url_to_postid_resolver(
+			function ( string $url ) use ( &$resolver_called ) { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.Found.
+				$resolver_called = true;
+				return 99999; // Would return a value if called.
+			}
+		);
+
+		$content = <<<'HTML'
+<!-- wp:image {"id":1000} -->
+<figure class="wp-block-image"><img src="https://external-site.com/external-image.jpg" class="wp-image-1000"/></figure>
+<!-- /wp:image -->
+HTML;
+
+		// No known IDs, and external-site.com is NOT in local_hostname_aliases.
+		$known_ids              = [];
+		$local_hostname_aliases = [ 'example.com' ]; // Does not include external-site.com.
+		$result                 = $this->updater->update_image_blocks_ids( $content, $known_ids, $local_hostname_aliases );
+
+		// Content should remain unchanged.
+		$this->assertEquals( $content, $result );
+
+		// Resolver should NOT have been called.
+		$this->assertFalse( $resolver_called, 'Resolver should not be called for non-local hostnames.' );
+	}
+
 	// =========================================================================
 	// CORE GALLERY BLOCK TESTS
 	// =========================================================================

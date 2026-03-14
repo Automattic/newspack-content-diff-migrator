@@ -531,6 +531,171 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	}
 
 	// =========================================================================
+	// MODIFIED POST DELETION FAILURE + RESUME TESTS
+	// =========================================================================
+
+	/**
+	 * Tests that when wp_delete_post fails for a modified post, the post is:
+	 * - Logged as error
+	 * - NOT saved to run-state as deleted
+	 * - Skipped during reimport (not duplicated)
+	 *
+	 * Uses the pre_delete_post filter to simulate deletion failure.
+	 *
+	 * @group run-state
+	 * @group deletion-failure
+	 */
+	public function test_should_handle_modified_post_deletion_failure(): void {
+		global $wpdb;
+
+		// Create and import a post.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 40001,
+				'post_title'    => 'Deletable Post',
+				'post_modified' => '2024-01-01 10:00:00',
+				'post_parent'   => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$original_local_id = $this->logic->get_current_post_id_by_old_id( 40001, $this->source_hostname );
+		$this->assertNotNull( $original_local_id, 'Post should be imported.' );
+
+		// Modify the post in live DB.
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Modified Deletable Post',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 40001 ]
+		);
+
+		// Create new run-state for the update cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+
+		// Verify post was detected as modified.
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayHasKey( 40001, $modified_ids, 'Post should be detected as modified.' );
+
+		// Add a filter to block deletion of this specific post.
+		$block_deletion_filter = function ( $delete, $post ) use ( $original_local_id ) {
+			if ( (int) $post->ID === (int) $original_local_id ) {
+				return false; // Block deletion - returning non-null short-circuits wp_delete_post.
+			}
+			return $delete;
+		};
+		add_filter( 'pre_delete_post', $block_deletion_filter, 10, 3 );
+
+		// Run migrate - deletion should fail.
+		$this->run_migrate_command();
+
+		// Remove the filter.
+		remove_filter( 'pre_delete_post', $block_deletion_filter, 10 );
+
+		// Verify post still exists (deletion failed).
+		$post_after_migrate = get_post( $original_local_id );
+		$this->assertNotNull( $post_after_migrate, 'Post should still exist after failed deletion.' );
+
+		// Verify the post was NOT saved to run-state as deleted.
+		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
+		$this->assertArrayNotHasKey( 40001, $deleted_map, 'Failed deletion should NOT be recorded in run-state.' );
+
+		// Verify the post title was NOT updated (reimport was skipped due to failed deletion).
+		$this->assertEquals( 'Deletable Post', $post_after_migrate->post_title, 'Post should retain original title since deletion failed.' );
+	}
+
+	/**
+	 * Tests that on resume after deletion failure, the system retries deletion.
+	 *
+	 * @group run-state
+	 * @group deletion-failure
+	 */
+	public function test_should_retry_deletion_on_resume_after_failure(): void {
+		global $wpdb;
+
+		// Create and import a post.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 40002,
+				'post_title'    => 'Retry Deletable Post',
+				'post_modified' => '2024-01-01 10:00:00',
+				'post_parent'   => 0,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$original_local_id = $this->logic->get_current_post_id_by_old_id( 40002, $this->source_hostname );
+		$this->assertNotNull( $original_local_id, 'Post should be imported.' );
+
+		// Modify the post in live DB.
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_title'        => 'Retry Modified Post',
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 40002 ]
+		);
+
+		// Create new run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+
+		// First migrate attempt - block deletion.
+		$deletion_attempt_count = 0;
+		$block_first_deletion   = function ( $delete, $post ) use ( $original_local_id, &$deletion_attempt_count ) {
+			if ( (int) $post->ID === (int) $original_local_id ) {
+				$deletion_attempt_count++;
+				if ( 1 === $deletion_attempt_count ) {
+					return false; // Block first attempt - returning non-null short-circuits wp_delete_post.
+				}
+			}
+			return $delete;
+		};
+		add_filter( 'pre_delete_post', $block_first_deletion, 10, 3 );
+
+		// First migrate - deletion fails.
+		$this->run_migrate_command();
+
+		// Verify post still exists.
+		$post_after_first = get_post( $original_local_id );
+		$this->assertNotNull( $post_after_first, 'Post should exist after first failed deletion.' );
+
+		// Second migrate (resume) - deletion should succeed now.
+		$this->run_migrate_command();
+
+		remove_filter( 'pre_delete_post', $block_first_deletion, 10 );
+
+		// After second attempt, the post should be deleted and reimported.
+		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
+		$this->assertArrayHasKey( 40002, $deleted_map, 'Successful deletion on retry should be recorded.' );
+
+		// Verify the post was reimported with new title.
+		$new_local_id = $this->logic->get_current_post_id_by_old_id( 40002, $this->source_hostname );
+		$this->assertNotNull( $new_local_id, 'Post should be reimported.' );
+
+		$reimported_post = get_post( $new_local_id );
+		$this->assertEquals( 'Retry Modified Post', $reimported_post->post_title, 'Reimported post should have updated title.' );
+	}
+
+	// =========================================================================
 	// TRACKING TESTS - USERS
 	// =========================================================================
 

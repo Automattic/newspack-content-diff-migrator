@@ -717,7 +717,7 @@ class ContentDiffMigrator {
 			// Delete modified posts so they can be re-imported.
 			foreach ( $local_ids_to_delete as $id ) {
 				$deleted = wp_delete_post( $id, true );
-				if ( false === $deleted && null === $deleted ) {
+				if ( false === $deleted || null === $deleted ) {
 					$context = [
 						'local_id' => $id,
 						'live_id'  => array_search( $id, $modified_ids_map ),

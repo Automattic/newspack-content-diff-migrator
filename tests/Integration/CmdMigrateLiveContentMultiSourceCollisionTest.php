@@ -724,6 +724,130 @@ class CmdMigrateLiveContentMultiSourceCollisionTest extends IntegrationTestCase 
 	}
 
 	/**
+	 * Tests that a local term already attributed to source 1 is NOT auto-attributed
+	 * to source 2 during search, preventing incorrect cross-source merging.
+	 *
+	 * This tests the fix for a previously known multi-source ID collision bug where
+	 * auto-attribution during search might incorrectly attribute already attributed terms.
+	 *
+	 * @group multi-source-collision
+	 * @group auto-attribution
+	 */
+	public function test_term_attributed_to_source1_not_autoattributed_to_source2(): void {
+		global $wpdb;
+
+		// Create local term and attribute it to source 1.
+		$term_result      = wp_insert_term( 'CrossSourceTerm', 'category' );
+		$local_term_id    = $term_result['term_id'];
+		$meta_key_source1 = ContentDiffLogic::get_old_id_meta_key( $this->source_hostname );
+		update_term_meta( $local_term_id, $meta_key_source1, 9001 );
+
+		// Create matching live term in source 2's tables.
+		$live_term = $this->create_term_fixture(
+			[
+				'term_id' => 9002,
+				'name'    => 'CrossSourceTerm',
+				'slug'    => 'crosssourceterm',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'terms', $live_term ); // phpcs:ignore
+		$wpdb->insert( // phpcs:ignore
+			$this->live_table_prefix . 'term_taxonomy',
+			[
+				'term_taxonomy_id' => 9002,
+				'term_id'          => 9002,
+				'taxonomy'         => 'category',
+				'description'      => '',
+				'parent'           => 0,
+				'count'            => 0,
+			]
+		);
+
+		// Create a live post (needed to trigger search).
+		$live_post = $this->create_post_fixture( [ 'ID' => 9003 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $live_post ); // phpcs:ignore
+
+		// Run search for source 2 (different from source 1 where term is already attributed).
+		$this->run_search_command( [ 'source-hostname' => $this->source_hostname_2 ] );
+
+		// Verify source 2 meta was NOT auto-attributed (term already belongs to source 1).
+		$meta_key_source2 = ContentDiffLogic::get_old_id_meta_key( $this->source_hostname_2 );
+		$old_id_source2   = get_term_meta( $local_term_id, $meta_key_source2, true );
+		$this->assertEmpty( $old_id_source2, 'Term already attributed to source 1 should NOT be auto-attributed to source 2.' );
+
+		// Verify source 1 meta is still intact.
+		$old_id_source1 = get_term_meta( $local_term_id, $meta_key_source1, true );
+		$this->assertEquals( 9001, (int) $old_id_source1, 'Source 1 attribution should remain unchanged.' );
+	}
+
+	/**
+	 * Tests that terms with same name but different taxonomy from two sources
+	 * are handled correctly (not merged across taxonomies).
+	 *
+	 * @group multi-source-collision
+	 */
+	public function test_same_term_name_different_taxonomy_from_two_sources(): void {
+		global $wpdb;
+
+		// Source 1: "featured" as a category.
+		$cat_term = [
+			'term_id'    => 308,
+			'name'       => 'featured',
+			'slug'       => 'featured',
+			'term_group' => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'terms', $cat_term ); // phpcs:ignore
+		$wpdb->insert( // phpcs:ignore
+			$this->live_table_prefix . 'term_taxonomy',
+			[
+				'term_taxonomy_id' => 308,
+				'term_id'          => 308,
+				'taxonomy'         => 'category',
+				'description'      => '',
+				'parent'           => 0,
+				'count'            => 0,
+			]
+		);
+
+		// Source 1: "featured" as a tag (same name, different taxonomy).
+		$tag_term = [
+			'term_id'    => 309,
+			'name'       => 'featured',
+			'slug'       => 'featured-tag',
+			'term_group' => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'terms', $tag_term ); // phpcs:ignore
+		$wpdb->insert( // phpcs:ignore
+			$this->live_table_prefix . 'term_taxonomy',
+			[
+				'term_taxonomy_id' => 309,
+				'term_id'          => 309,
+				'taxonomy'         => 'post_tag',
+				'description'      => '',
+				'parent'           => 0,
+				'count'            => 0,
+			]
+		);
+
+		// Post with both terms.
+		$post = $this->create_post_fixture( [ 'ID' => 20901 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 20901, 'term_taxonomy_id' => 308, 'term_order' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 20901, 'term_taxonomy_id' => 309, 'term_order' => 0 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify both terms exist as separate entities (different taxonomies).
+		$featured_category = get_term_by( 'name', 'featured', 'category' );
+		$featured_tag      = get_term_by( 'name', 'featured', 'post_tag' );
+
+		$this->assertInstanceOf( \WP_Term::class, $featured_category, 'Featured category should exist.' );
+		$this->assertInstanceOf( \WP_Term::class, $featured_tag, 'Featured tag should exist.' );
+		$this->assertNotEquals( $featured_category->term_id, $featured_tag->term_id, 'Category and tag should have different term IDs.' );
+	}
+
+	/**
 	 * Tests that attachments with same filename from two sources import as separate.
 	 *
 	 * @group multi-source-collision

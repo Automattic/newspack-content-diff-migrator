@@ -325,6 +325,55 @@ class CmdMigrateLiveContentPostsTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Tests that parent ID is set to 0 when parent exists in live DB but was excluded
+	 * from import due to post-type filtering (parent is a different CPT not being migrated).
+	 *
+	 * @group posts
+	 */
+	public function test_should_set_parent_to_zero_when_parent_excluded_by_post_type_filter(): void {
+		global $wpdb;
+
+		// Register a custom post type for the parent.
+		register_post_type( 'excluded_cpt', [ 'public' => true ] );
+
+		// Create parent as a CPT that will NOT be migrated.
+		$parent = $this->create_post_fixture(
+			[
+				'ID'          => 8401,
+				'post_parent' => 0,
+				'post_type'   => 'excluded_cpt',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $parent ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+
+		// Create child page referencing the excluded parent.
+		$child = $this->create_post_fixture(
+			[
+				'ID'          => 8402,
+				'post_parent' => 8401, // References excluded_cpt parent.
+				'post_type'   => 'page',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $child ); // phpcs:ignore -- WordPress.DB.DirectDatabaseQuery.DirectQuery.
+
+		// Only import 'page' post type, excluding 'excluded_cpt'.
+		$this->run_search_command( [ 'post-types-csv' => 'page' ] );
+		$this->run_migrate_command();
+
+		$new_child_id = $this->logic->get_current_post_id_by_old_id( 8402, $this->source_hostname );
+		$this->assertNotNull( $new_child_id, 'Child page should be imported.' );
+
+		$child_post = get_post( $new_child_id );
+
+		// Parent should be 0 since the parent CPT was excluded from migration.
+		$this->assertEquals( 0, $child_post->post_parent, 'Parent should be 0 when parent CPT was excluded from migration.' );
+
+		// Verify the parent was NOT imported.
+		$parent_local_id = $this->logic->get_current_post_id_by_old_id( 8401, $this->source_hostname );
+		$this->assertNull( $parent_local_id, 'Excluded parent CPT should not be imported.' );
+	}
+
+	/**
 	 * @group posts
 	 */
 	public function test_should_import_custom_post_type_correctly(): void {
