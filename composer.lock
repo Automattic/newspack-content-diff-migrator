@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "dc6a36b361fc2ea59051120181203c5f",
+    "content-hash": "2018866626cf953722bbbcbdc05c7e4d",
     "packages": [
         {
             "name": "automattic/newspack-content-converter",
@@ -55,19 +55,20 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Automattic/newspack-migration-tools.git",
-                "reference": "9f62b779abf0fcd64f4a10ca899e21fe06e0ddea"
+                "reference": "2c17b0df3df5dcc66bc89f90fa4a3a79d9f77de3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/9f62b779abf0fcd64f4a10ca899e21fe06e0ddea",
-                "reference": "9f62b779abf0fcd64f4a10ca899e21fe06e0ddea",
+                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/2c17b0df3df5dcc66bc89f90fa4a3a79d9f77de3",
+                "reference": "2c17b0df3df5dcc66bc89f90fa4a3a79d9f77de3",
                 "shasum": ""
             },
             "require": {
                 "bramus/monolog-colored-line-formatter": "^3.1",
                 "halaxa/json-machine": "^1.1.5",
                 "monolog/monolog": "^3.7",
-                "php": ">=8.1"
+                "php": ">=8.1",
+                "simplehtmldom/simplehtmldom": "2.0-RC2"
             },
             "require-dev": {
                 "automattic/vipwpcs": "^3.0",
@@ -88,10 +89,10 @@
             },
             "scripts": {
                 "phpcs": [
-                    "./vendor/bin/phpcs"
+                    "./vendor/bin/phpcs --standard=phpcs.xml"
                 ],
                 "phpcbf": [
-                    "./vendor/bin/phpcbf"
+                    "./vendor/bin/phpcbf --standard=phpcs.xml"
                 ],
                 "phpunit": [
                     "./vendor/bin/phpunit"
@@ -118,7 +119,7 @@
                 "source": "https://github.com/Automattic/newspack-migration-tools/tree/trunk",
                 "issues": "https://github.com/Automattic/newspack-migration-tools/issues"
             },
-            "time": "2025-11-14T14:04:59+00:00"
+            "time": "2026-03-11T17:38:35+00:00"
         },
         {
             "name": "bramus/ansi-php",
@@ -576,6 +577,81 @@
                 "source": "https://github.com/php-fig/log/tree/3.0.2"
             },
             "time": "2024-09-11T13:17:53+00:00"
+        },
+        {
+            "name": "simplehtmldom/simplehtmldom",
+            "version": "2.0-RC2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/simplehtmldom/simplehtmldom.git",
+                "reference": "3c87726400e59d8e1bc4709cfe82353abeb0f4d1"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/simplehtmldom/simplehtmldom/zipball/3c87726400e59d8e1bc4709cfe82353abeb0f4d1",
+                "reference": "3c87726400e59d8e1bc4709cfe82353abeb0f4d1",
+                "shasum": ""
+            },
+            "require": {
+                "ext-iconv": "*",
+                "php": ">=5.6"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^6 || ^7"
+            },
+            "suggest": {
+                "ext-curl": "Needed to support cURL downloads in class HtmlWeb",
+                "ext-mbstring": "Allows better decoding for multi-byte documents",
+                "ext-openssl": "Allows loading HTTPS pages when using cURL"
+            },
+            "type": "library",
+            "autoload": {
+                "classmap": [
+                    "./"
+                ],
+                "exclude-from-classmap": [
+                    "/example/",
+                    "/manual/",
+                    "/testcase/",
+                    "/tests/",
+                    "simple_html_dom.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "S.C. Chen",
+                    "role": "Developer"
+                },
+                {
+                    "name": "John Schlick",
+                    "role": "Developer"
+                },
+                {
+                    "name": "logmanoriginal",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A fast, simple and reliable HTML document parser for PHP.",
+            "homepage": "https://simplehtmldom.sourceforge.io/",
+            "keywords": [
+                "Simple",
+                "dom",
+                "html",
+                "parser",
+                "php",
+                "simplehtmldom"
+            ],
+            "support": {
+                "issues": "https://sourceforge.net/p/simplehtmldom/bugs/",
+                "rss": "https://sourceforge.net/p/simplehtmldom/news/feed.rss",
+                "source": "https://sourceforge.net/p/simplehtmldom/repository/",
+                "wiki": "https://simplehtmldom.sourceforge.io/docs/"
+            },
+            "time": "2019-11-09T15:42:50+00:00"
         }
     ],
     "packages-dev": [
@@ -3222,7 +3298,8 @@
     "minimum-stability": "stable",
     "stability-flags": {
         "automattic/newspack-content-converter": 20,
-        "automattic/newspack-migration-tools": 20
+        "automattic/newspack-migration-tools": 20,
+        "simplehtmldom/simplehtmldom": 5
     },
     "prefer-stable": false,
     "prefer-lowest": false,

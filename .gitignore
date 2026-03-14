@@ -23,3 +23,9 @@ yarn-error.log*
 release
 # for symlinking from the vendor folder
 dev/
+
+# Claude Code local files
+.env
+.claude
+.claude/settings.local.json
+CLAUDE.local.md

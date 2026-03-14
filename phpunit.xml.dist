@@ -7,10 +7,17 @@
 	convertNoticesToExceptions="true"
 	convertWarningsToExceptions="true"
 	>
+	<coverage>
+	    <include>
+	        <directory suffix=".php">src/</directory>
+	    </include>
+	</coverage>
 	<testsuites>
-		<testsuite name="All Tests">
-			<directory prefix="test-" suffix=".php">./tests/</directory>
-			<exclude>./tests/test-sample.php</exclude>
+		<testsuite name="Unit Tests">
+			<directory suffix="Test.php">./tests/unit/</directory>
+		</testsuite>
+		<testsuite name="Integration Tests">
+			<directory suffix="Test.php">./tests/Integration/</directory>
 		</testsuite>
 	</testsuites>
 </phpunit>

@@ -18,7 +18,10 @@
   ],
   "require": {
     "automattic/newspack-content-converter": "dev-master",
-    "automattic/newspack-migration-tools": "dev-trunk"
+    "automattic/newspack-migration-tools": "dev-trunk",
+    "monolog/monolog": "^3.7",
+    "bramus/monolog-colored-line-formatter": "^3.1",
+    "simplehtmldom/simplehtmldom": "2.0-RC2"
   },
   "require-dev": {
     "automattic/vipwpcs": "^3.0",
@@ -61,9 +64,20 @@
     ]
   },
   "scripts": {
-    "release": [
-      "composer install --no-dev --optimize-autoloader",
-      "composer archive --format=zip --dir=release --file=newspack-content-diff-migrator"
+    "phpcs": "./vendor/bin/phpcs",
+    "phpcbf": "./vendor/bin/phpcbf",
+    "phpunit": "./vendor/bin/phpunit",
+    "code-coverage-clover": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-clover build/coverage_clover/clover.xml",
+    "code-coverage-html": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-html build/coverage_html",
+    "build-release": [
+        "rm -rf vendor",
+        "rm -rf release",
+        "composer install --no-dev --optimize-autoloader",
+        "composer archive --format=zip --dir=release --file=newspack-content-diff-migrator"
+    ],
+    "gh-release": [
+        "@build-release",
+        "./.github/scripts/gh-release.sh"
     ],
     "update-with-nmt-symlinked": [
       "rm -rf  vendor/automattic/newspack-migration-tools",

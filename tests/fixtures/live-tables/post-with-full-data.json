@@ -1,0 +1,198 @@
+{
+  "_description": "Complete post with author, comments (various user scenarios), categories, tags, and metadata",
+  "post": {
+    "ID": 123,
+    "post_author": 21,
+    "post_date": "2024-01-15 11:43:56",
+    "post_date_gmt": "2024-01-15 11:43:56",
+    "post_content": "<p>Test post content with some text.</p>\n<!-- wp:image {\"id\":500,\"sizeSlug\":\"large\"} -->\n<figure class=\"wp-block-image size-large\"><img src=\"http://test.local/wp-content/uploads/2024/01/test-image.jpg\" alt=\"\" class=\"wp-image-500\"/></figure>\n<!-- /wp:image -->",
+    "post_title": "Test Post Title",
+    "post_excerpt": "",
+    "post_status": "publish",
+    "comment_status": "open",
+    "ping_status": "open",
+    "post_password": "",
+    "post_name": "test-post-title",
+    "to_ping": "",
+    "pinged": "",
+    "post_modified": "2024-01-15 11:43:56",
+    "post_modified_gmt": "2024-01-15 11:43:56",
+    "post_content_filtered": "",
+    "post_parent": 0,
+    "guid": "http://test.local/?p=123",
+    "menu_order": 0,
+    "post_type": "post",
+    "post_mime_type": "",
+    "comment_count": 3
+  },
+  "postmeta": [
+    {
+      "meta_id": 21,
+      "post_id": 123,
+      "meta_key": "_wp_page_template",
+      "meta_value": "default"
+    },
+    {
+      "meta_id": 22,
+      "post_id": 123,
+      "meta_key": "custom_meta",
+      "meta_value": "custom_value"
+    },
+    {
+      "meta_id": 23,
+      "post_id": 123,
+      "meta_key": "_thumbnail_id",
+      "meta_value": "500"
+    }
+  ],
+  "users": [
+    {
+      "_description": "Post author - new user to be created",
+      "ID": 21,
+      "user_login": "postauthor",
+      "user_pass": "$P$BJTe8iBJUuOui0O.A4JDRkLMfqqraF.",
+      "user_nicename": "postauthor",
+      "user_email": "postauthor@test.local",
+      "user_url": "http://test.local",
+      "user_registered": "2024-01-01 09:43:56",
+      "user_activation_key": "",
+      "user_status": 0,
+      "display_name": "Post Author"
+    },
+    {
+      "_description": "Comment 2 user - existing user (will be created in test setup)",
+      "ID": 22,
+      "user_login": "existing_commenter",
+      "user_pass": "$P$BJTe8iBJUuOui0O.A4JDRkLMfqqraF.",
+      "user_nicename": "existing_commenter",
+      "user_email": "existing@test.local",
+      "user_url": "http://test.local",
+      "user_registered": "2024-01-01 09:43:56",
+      "user_activation_key": "",
+      "user_status": 0,
+      "display_name": "Existing Commenter"
+    },
+    {
+      "_description": "Comment 3 user - new user to be created",
+      "ID": 23,
+      "user_login": "new_commenter",
+      "user_pass": "$P$BJTe8iBJUuOui0O.A4JDRkLMfqqraF.",
+      "user_nicename": "new_commenter",
+      "user_email": "newcommenter@test.local",
+      "user_url": "http://test.local",
+      "user_registered": "2024-01-01 09:43:56",
+      "user_activation_key": "",
+      "user_status": 0,
+      "display_name": "New Commenter"
+    }
+  ],
+  "usermeta": [
+    { "umeta_id": 1, "user_id": 21, "meta_key": "nickname", "meta_value": "postauthor" },
+    { "umeta_id": 2, "user_id": 21, "meta_key": "first_name", "meta_value": "Post" },
+    { "umeta_id": 3, "user_id": 21, "meta_key": "last_name", "meta_value": "Author" },
+    { "umeta_id": 4, "user_id": 22, "meta_key": "nickname", "meta_value": "existing_commenter" },
+    { "umeta_id": 5, "user_id": 22, "meta_key": "first_name", "meta_value": "Existing" },
+    { "umeta_id": 6, "user_id": 22, "meta_key": "last_name", "meta_value": "Commenter" },
+    { "umeta_id": 7, "user_id": 23, "meta_key": "nickname", "meta_value": "new_commenter" },
+    { "umeta_id": 8, "user_id": 23, "meta_key": "first_name", "meta_value": "New" }
+  ],
+  "comments": [
+    {
+      "_description": "Comment with no user (anonymous)",
+      "comment_ID": 11,
+      "comment_post_ID": 123,
+      "comment_author": "Anonymous Commenter",
+      "comment_author_email": "anon@example.com",
+      "comment_author_url": "https://example.org/",
+      "comment_author_IP": "127.0.0.1",
+      "comment_date": "2024-01-15 09:43:56",
+      "comment_date_gmt": "2024-01-15 09:43:56",
+      "comment_content": "This is an anonymous comment",
+      "comment_karma": 0,
+      "comment_approved": "1",
+      "comment_agent": "",
+      "comment_type": "comment",
+      "comment_parent": 0,
+      "user_id": 0
+    },
+    {
+      "_description": "Comment with existing user",
+      "comment_ID": 12,
+      "comment_post_ID": 123,
+      "comment_author": "Existing Commenter",
+      "comment_author_email": "existing@test.local",
+      "comment_author_url": "http://test.local",
+      "comment_author_IP": "127.0.0.1",
+      "comment_date": "2024-01-15 10:00:00",
+      "comment_date_gmt": "2024-01-15 10:00:00",
+      "comment_content": "Comment from existing user",
+      "comment_karma": 0,
+      "comment_approved": "1",
+      "comment_agent": "",
+      "comment_type": "comment",
+      "comment_parent": 0,
+      "user_id": 22
+    },
+    {
+      "_description": "Reply comment with new user",
+      "comment_ID": 13,
+      "comment_post_ID": 123,
+      "comment_author": "New Commenter",
+      "comment_author_email": "newcommenter@test.local",
+      "comment_author_url": "http://test.local",
+      "comment_author_IP": "127.0.0.1",
+      "comment_date": "2024-01-15 10:30:00",
+      "comment_date_gmt": "2024-01-15 10:30:00",
+      "comment_content": "This is a reply to comment 12",
+      "comment_karma": 0,
+      "comment_approved": "1",
+      "comment_agent": "",
+      "comment_type": "comment",
+      "comment_parent": 12,
+      "user_id": 23
+    }
+  ],
+  "commentmeta": [
+    { "meta_id": 1, "comment_id": 11, "meta_key": "comment_meta_key", "meta_value": "comment_meta_value" }
+  ],
+  "term_relationships": [
+    { "object_id": 123, "term_taxonomy_id": 1, "term_order": 0 },
+    { "object_id": 123, "term_taxonomy_id": 2, "term_order": 0 },
+    { "object_id": 123, "term_taxonomy_id": 3, "term_order": 0 }
+  ],
+  "term_taxonomy": [
+    {
+      "term_taxonomy_id": 1,
+      "term_id": 41,
+      "taxonomy": "category",
+      "description": "",
+      "parent": 0,
+      "count": 5
+    },
+    {
+      "term_taxonomy_id": 2,
+      "term_id": 42,
+      "taxonomy": "category",
+      "description": "A child category",
+      "parent": 41,
+      "count": 3
+    },
+    {
+      "term_taxonomy_id": 3,
+      "term_id": 50,
+      "taxonomy": "post_tag",
+      "description": "",
+      "parent": 0,
+      "count": 2
+    }
+  ],
+  "terms": [
+    { "term_id": 41, "name": "News", "slug": "news", "term_group": 0 },
+    { "term_id": 42, "name": "Local News", "slug": "local-news", "term_group": 0 },
+    { "term_id": 50, "name": "Featured", "slug": "featured", "term_group": 0 }
+  ],
+  "termmeta": [
+    { "meta_id": 1, "term_id": 42, "meta_key": "category_color", "meta_value": "#ff0000" }
+  ]
+}
+

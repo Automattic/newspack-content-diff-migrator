@@ -5,7 +5,7 @@
  * Plugin URI:  https://newspack.com
  * Author:      Automattic
  * Author URI:  https://newspack.com
- * Version:     1.0.3
+ * Version:     2.0.0
  *
  * @package  Newspack_Content_Diff_Migrator
  */
@@ -14,6 +14,8 @@ namespace Newspack\ContentDiffMigrator;
 
 use Newspack\ContentDiffMigrator\PluginSetup;
 use Newspack\ContentDiffMigrator\Command\ContentDiffMigrator;
+use Newspack\ContentDiffMigrator\Command\ContentDiffMigratorIndex;
+use Newspack\ContentDiffMigrator\Utils\Logger;
 
 // Don't do anything outside WP CLI.
 if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
@@ -27,4 +29,7 @@ $error_reporting_level = false !== defined( 'NEWSPACK_CUSTOM_CONTENT_MIGRATOR_ER
 PluginSetup::configure_error_reporting( $error_reporting_level );
 PluginSetup::register_ticker();
 
+Logger::configure( true );
+
 ContentDiffMigrator::register_commands();
+ContentDiffMigratorIndex::register_command();
