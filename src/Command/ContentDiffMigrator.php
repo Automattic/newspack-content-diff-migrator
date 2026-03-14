@@ -399,7 +399,7 @@ class ContentDiffMigrator {
 				$post_types,
 				function ( $v ) use ( $cpts_live ) {
 					if ( ! in_array( $v, $cpts_live, true ) ) {
-						Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'The selected Post Type `%s` is not found in live DB and will not be migrated.', $v ) );
+						Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'The selected Post Type `%s` is not found in live DB and will not be migrated.', $v ) );
 						return false;
 					}
 					return true;
@@ -408,12 +408,12 @@ class ContentDiffMigrator {
 		);
 
 		// Notify which CPTs are being migrated.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Post Types: %s', "\n- " . implode( "\n- ", $post_types ) ) );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Proceeding to migrate Post Types: %s', implode( ', ', $post_types ) ) );
 
 		// Show remaining post types found in live DB that won't be migrated.
 		$unmigrated_post_types = array_diff( $cpts_live, $post_types );
 		if ( ! empty( $unmigrated_post_types ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Post Types found in live DB which will not be migrated: %s', "\n- " . implode( "\n- ", $unmigrated_post_types ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Post Types found in live DB which will not be migrated: %s', implode( ', ', $unmigrated_post_types ) ) );
 		}
 
 		// Check for unattributed content and automatically attribute it by matching local content to live tables and assigning metas.
@@ -422,7 +422,7 @@ class ContentDiffMigrator {
 
 		if ( $unattributed_count > 0 ) {
 			// Auto-match unattributed content to live tables and attribute matches.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Auto-attributing matching content to live tables...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Trying to automatically attribute and set "old ID and source hostname" metas to unattributed local content by matching it with live tables...' );
 			$attribution_counts = $this->do_attribution_match_to_live_tables(
 				$live_table_prefix,
 				$source_hostname,
@@ -451,14 +451,10 @@ class ContentDiffMigrator {
 			if ( $remaining_count > 0 && ! $this->test_env ) {
 				WP_CLI::confirm(
 					sprintf(
-						'There are still %d unattributed objects (no `newspackcontentdiff_oldid_%s` metas) and without matches in live tables. ' .
-						'These may be just new local content (from Newspackification), or if this content was migrated by other migration tools it may need running the `attribute-ids` command (see README and the `attribute-ids` for an example). ' .
-						'Continuing may create duplicates if this content belongs to %s. ' .
-						'If this content does not belong to %s, then it is perfectly safe to continue. ' .
+						'This remaining unattributed content may just be new local content (e.g. from Newspackification). ' .
+						'But if this content belongs to the same source hostname, and was migrated by another migration tool, use `attribute-ids` command before proceeding to set the "old ID and source hostname" metas to it. ' .
+						'If this content does not belong to %s, it is perfectly safe to continue; if it does, continuing may create duplicates. ' .
 						'Continue?',
-						$remaining_count,
-						$source_hostname,
-						$source_hostname,
 						$source_hostname
 					)
 				);
@@ -562,7 +558,7 @@ class ContentDiffMigrator {
 
 		// Write new IDs to run-state file -- even if there are no new IDs, write the empty list -- migrate command will continue to allow other data to be migrated (users, modified IDs, etc.).
 		$this->run_state->write_new_ids( $new_live_ids );
-		if ( 0 === count( $new_live_ids ) ) {
+		if ( count( $new_live_ids ) > 0 ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of new IDs to migrate stored to run-state file %s', RunState::FILE_NEW_IDS ) );
 		}
 
@@ -681,7 +677,7 @@ class ContentDiffMigrator {
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 		if ( ! empty( $taxonomies_to_migrate ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Taxonomies: %s', "\n- " . implode( "\n- ", $taxonomies_to_migrate ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Taxonomies: %s', implode( ', ', $taxonomies_to_migrate ) ) );
 		} else {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'No taxonomies to migrate found. Proceeding with migration to allow for edge cases, however please double-check whether this was intended.' );
 		}
@@ -689,7 +685,7 @@ class ContentDiffMigrator {
 		// Show remaining taxonomies found in live DB that won't be migrated.
 		$unmigrated_taxonomies = array_diff( $live_taxonomies, $taxonomies_to_migrate );
 		if ( ! empty( $unmigrated_taxonomies ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Taxonomies found in live DB which will not be migrated: %s', "\n- " . implode( "\n- ", $unmigrated_taxonomies ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Taxonomies found in live DB which will not be migrated: %s', implode( ', ', $unmigrated_taxonomies ) ) );
 		}
 
 		// Migrate all WP_Users (for WooComm data).
@@ -1140,7 +1136,8 @@ class ContentDiffMigrator {
 		$created_files   = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
 
 		// Re-count and display remaining unattributed content.
-		$this->attribute_recount_unattributed( self::DEFAULT_POST_TYPES );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Re-counting/validating remaining unattributed content...' );
+		$this->check_and_warn_if_there_is_unattributed_content( self::DEFAULT_POST_TYPES );
 
 		// Display summary.
 		$this->attribute_display_summary( $reports_dir, $timestamp, $created_files );
@@ -1295,7 +1292,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::WARNING,
 				sprintf(
-					"There are %d total objects on local not belonging to any migrated source hostname (no `%s*` metas). See %s for full IDs, and here are some quick samples for you:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
+					"There are %d total objects on local without any `%s*` metas. See %s for their full IDs, and here are some quick samples for you:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
 					$total,
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$file_path,
@@ -1745,11 +1742,10 @@ class ContentDiffMigrator {
 		 */
 		$post_types_non_attachments = array_filter( $post_types, fn( $post_type ) => 'attachment' !== $post_type );
 		if ( ! empty( $post_types_non_attachments ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Querying %s types...', implode( ',', $post_types_non_attachments ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing %s types...', implode( ',', $post_types_non_attachments ) ) );
 			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching with live tables...', count( $results_local_posts ), count( $results_live_posts ) ) );
 			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
@@ -1800,11 +1796,10 @@ class ContentDiffMigrator {
 		/**
 		 * Match and attribute attachments.
 		 */
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying attachments...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Attributing attachments...' );
 		$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 		$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching with live tables...', count( $results_local_attachments ), count( $results_live_attachments ) ) );
 		$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
@@ -1838,11 +1833,10 @@ class ContentDiffMigrator {
 		/**
 		 * Match and attribute users.
 		 */
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying users...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Attributing users...' );
 		$results_local_users = $this->logic->get_users_rows_for_attribution( $wpdb->prefix );
 		$results_live_users  = $this->logic->get_users_rows_for_attribution( $live_table_prefix );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching with live tables...', count( $results_local_users ), count( $results_live_users ) ) );
 		$matched_users = $this->logic->match_local_to_live_users( $results_local_users, $results_live_users );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
@@ -1876,16 +1870,15 @@ class ContentDiffMigrator {
 		/**
 		 * Match and attribute terms.
 		 */
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Querying terms...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Attributing terms...' );
 		$results_local_terms = $this->logic->get_terms_rows_for_attribution( $wpdb->prefix );
 		$results_live_terms  = $this->logic->get_terms_rows_for_attribution( $live_table_prefix );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		
+
 		// Filter by specified taxonomies.
 		$results_local_terms = array_filter( $results_local_terms, fn( $term ) => in_array( $term['taxonomy'], $taxonomies, true ) );
 		$results_live_terms  = array_filter( $results_live_terms, fn( $term ) => in_array( $term['taxonomy'], $taxonomies, true ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %d local, %d live. Matching with live tables...', count( $results_local_terms ), count( $results_live_terms ) ) );
-		$matched_terms = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
+		$matched_terms       = $this->logic->match_local_to_live_terms( $results_local_terms, $results_live_terms );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Fetch taxonomies for matched terms.
@@ -1938,16 +1931,6 @@ class ContentDiffMigrator {
 			'users'       => $users_attributed_count,
 			'terms'       => $terms_attributed_count,
 		];
-	}
-
-	/**
-	 * Re-counts and displays remaining unattributed content.
-	 *
-	 * @param array $post_types Post types to check.
-	 */
-	private function attribute_recount_unattributed( array $post_types ): void {
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Re-counting/validating remaining unattributed content...' );
-		$this->check_and_warn_if_there_is_unattributed_content( $post_types );
 	}
 
 	/**
