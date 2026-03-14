@@ -399,7 +399,7 @@ class ContentDiffMigrator {
 				$post_types,
 				function ( $v ) use ( $cpts_live ) {
 					if ( ! in_array( $v, $cpts_live, true ) ) {
-						Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'The selected Post Type `%s` is not found in live DB and will not be migrated.', $v ) );
+						Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'The selected Post Type `%s` is not found in live DB and will not be migrated.', $v ) );
 						return false;
 					}
 					return true;
@@ -418,11 +418,11 @@ class ContentDiffMigrator {
 
 		// Check for unattributed content and automatically attribute it by matching local content to live tables and assigning metas.
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for unattributed content...' );
-		$unattributed_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
+		$unattributed = $this->check_unattributed_content( $post_types );
 
-		if ( $unattributed_count > 0 ) {
+		if ( $unattributed['count'] > 0 ) {
 			// Auto-match unattributed content to live tables and attribute matches.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Trying to automatically attribute and set "old ID and source hostname" metas to unattributed local content by matching it with live tables...' );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'There are %d total objects on local without any `%s*` metas. Trying to automatically attribute this content by matching it with live tables...', $unattributed['count'], ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX ) );
 			$attribution_counts = $this->do_attribution_match_to_live_tables(
 				$live_table_prefix,
 				$source_hostname,
@@ -444,18 +444,17 @@ class ContentDiffMigrator {
 				)
 			);
 
-			// Re-check for remaining unattributed content.
-			$remaining_count = $this->check_and_warn_if_there_is_unattributed_content( $post_types );
-
-			// Prompt user if remaining unattributed content exists.
-			if ( $remaining_count > 0 && ! $this->test_env ) {
-				WP_CLI::confirm(
+			// Check for remaining unattributed content.
+			$remaining = $this->check_unattributed_content( $post_types );
+			if ( $remaining['count'] > 0 ) {
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::DEBUG,
 					sprintf(
-						'This remaining unattributed content may just be new local content (e.g. from Newspackification). ' .
-						'But if this content belongs to the same source hostname, and was migrated by another migration tool, use `attribute-ids` command before proceeding to set the "old ID and source hostname" metas to it. ' .
-						'If this content does not belong to %s, it is perfectly safe to continue; if it does, continuing may create duplicates. ' .
-						'Continue?',
-						$source_hostname
+						'There are %d total objects remaining on local without any `%s*` metas. See %s for full IDs. If this is new local content from Newspackification, it is perfectly safe to continue. Otherwise see README and the `attribute-ids` command to set the "old ID and source hostname" metas if this content belongs to the same source hostname (e.g. was migrated by some other migration tool).',
+						$remaining['count'],
+						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
+						$remaining['file_path']
 					)
 				);
 			}
@@ -677,7 +676,7 @@ class ContentDiffMigrator {
 		// Validate hierarchical taxonomies have valid parents. If they don't they should be fixed first.
 		$taxonomies_to_migrate = $this->validate_and_fix_hierarchical_taxonomies( $taxonomies_to_migrate, $live_taxonomies );
 		if ( ! empty( $taxonomies_to_migrate ) ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'Proceeding to migrate Taxonomies: %s', implode( ', ', $taxonomies_to_migrate ) ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Proceeding to migrate Taxonomies: %s', implode( ', ', $taxonomies_to_migrate ) ) );
 		} else {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, 'No taxonomies to migrate found. Proceeding with migration to allow for edge cases, however please double-check whether this was intended.' );
 		}
@@ -1136,8 +1135,20 @@ class ContentDiffMigrator {
 		$created_files   = $report_creator->create_attributed_csvs( $reports_dir, $attributed_data, $source_hostname, $timestamp );
 
 		// Re-count and display remaining unattributed content.
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Re-counting/validating remaining unattributed content...' );
-		$this->check_and_warn_if_there_is_unattributed_content( self::DEFAULT_POST_TYPES );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Checking for remaining unattributed content...' );
+		$remaining = $this->check_unattributed_content( self::DEFAULT_POST_TYPES );
+		if ( $remaining['count'] > 0 ) {
+			Logger::instance()->log(
+				Logger::OUTPUT_BOTH,
+				LogLevel::DEBUG,
+				sprintf(
+					'There are %d total objects on local without any `%s*` metas. See %s for full IDs.',
+					$remaining['count'],
+					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
+					$remaining['file_path']
+				)
+			);
+		}
 
 		// Display summary.
 		$this->attribute_display_summary( $reports_dir, $timestamp, $created_files );
@@ -1227,7 +1238,7 @@ class ContentDiffMigrator {
 		// Check if any of the taxonomies does not exist in the live DB.
 		foreach ( $taxonomies_to_migrate as $key_taxonomy_to_migrate => $taxonomy_to_migrate ) {
 			if ( ! in_array( $taxonomy_to_migrate, $live_taxonomies ) ) {
-				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'The selected Taxonomy `%s` is not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'The selected Taxonomy `%s` is not found in live DB and will not be migrated.', $taxonomy_to_migrate ) );
 				unset( $taxonomies_to_migrate[ $key_taxonomy_to_migrate ] );
 			}
 		}
@@ -1252,20 +1263,13 @@ class ContentDiffMigrator {
 	}
 
 	/**
-	 * Checks for unattributed content and logs a warning if found. Checks for:
-	 *   - posts and CPTs,
-	 *   - attachments,
-	 *   - users, and
-	 *   - terms
-	 * that don't have old_id meta attribution.
-	 * 
-	 * If any unattributed content is found, it logs a warning. The caller is responsible for
-	 * handling the confirmation/flow based on the returned count.
+	 * Checks for unattributed content (posts/CPTs, attachments, users, terms without old_id meta).
+	 * If any found, writes them to a JSONL file in run-state.
 	 *
-	 * @param array $post_types      Post types to check for unattributed content.
-	 * @return int Total count of unattributed objects.
+	 * @param array $post_types Post types to check for unattributed content.
+	 * @return array{count: int, file_path: string|null} Count and file path (null if count is 0).
 	 */
-	private function check_and_warn_if_there_is_unattributed_content( array $post_types ): int {
+	private function check_unattributed_content( array $post_types ): array {
 		$post_types_without_attachments = array_filter( $post_types, fn( $pt ) => 'attachment' !== $pt );
 		$posts                          = $this->logic->get_unattributed_post_ids( $post_types_without_attachments );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
@@ -1277,7 +1281,8 @@ class ContentDiffMigrator {
 		$term_ids = $this->logic->get_unattributed_term_ids();
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		$total = count( $posts ) + count( $attachment_ids ) + count( $user_ids ) + count( $term_ids );
+		$total     = count( $posts ) + count( $attachment_ids ) + count( $user_ids ) + count( $term_ids );
+		$file_path = null;
 		if ( $total > 0 ) {
 			// Save all unattributed IDs to a JSONL file.
 			$file_path = $this->run_state->write_unattributed_content(
@@ -1286,45 +1291,12 @@ class ContentDiffMigrator {
 				$user_ids,
 				$term_ids
 			);
-			// Extract IDs for log sample message.
-			$post_ids_flat = array_column( $posts, 'ID' );
-			Logger::instance()->log(
-				Logger::OUTPUT_BOTH,
-				LogLevel::WARNING,
-				sprintf(
-					"There are %d total objects on local without any `%s*` metas. See %s for their full IDs, and here are some quick samples for you:\n- posts/CPTs: %s\n- attachments: %s\n- users: %s\n- terms: %s",
-					$total,
-					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
-					$file_path,
-					$this->format_log_message_count_with_sample_ids( $post_ids_flat ),
-					$this->format_log_message_count_with_sample_ids( $attachment_ids ),
-					$this->format_log_message_count_with_sample_ids( $user_ids ),
-					$this->format_log_message_count_with_sample_ids( $term_ids )
-				)
-			);
 		}
 
-		return $total;
-	}
-
-	/**
-	 * Formats a count with sample IDs for display (shows up to 10 IDs).
-	 *
-	 * @param array $ids Array of IDs.
-	 *
-	 * @return string Formatted message like, "5 total (sample IDs: 1,2,3,4,5)", or "15 total (sample IDs: 1,2,...,10,...)" or "0".
-	 */
-	private function format_log_message_count_with_sample_ids( array $ids ): string {
-		$count = count( $ids );
-		if ( 0 === $count ) {
-			return '0';
-		}
-		$sample_ids = array_slice( $ids, 0, 10 );
-		$ids_str    = implode( ',', $sample_ids );
-		if ( $count > count( $sample_ids ) ) {
-			$ids_str .= ',...';
-		}
-		return sprintf( '%d total (sample IDs: %s)', $count, $ids_str );
+		return [
+			'count'     => $total,
+			'file_path' => $file_path,
+		];
 	}
 
 	/**
