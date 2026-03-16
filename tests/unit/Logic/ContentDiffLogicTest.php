@@ -686,6 +686,213 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Test that the filter_modified_live_ids() method correctly compares post's taxonomy terms using a direct DB query.
+	 *
+	 * This test verifies that local terms are correctly fetched for custom taxonomies (e.g., Co-Authors Plus "author")
+	 * which may not not registered at WP CLI runtime.
+	 */
+	public function test_filter_modified_live_ids_should_not_flag_modified_when_taxonomy_terms_match(): void {
+		global $wpdb;
+
+		// Create a local post with a term relationship.
+		$local_post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$local_term    = wp_insert_term( 'Test Term For Taxonomy Match', 'category' );
+		$local_term_id = $local_term['term_id'];
+		wp_set_object_terms( $local_post_id, [ $local_term_id ], 'category' );
+
+		// Simulate "live" post and term with different IDs but same relationship.
+		$live_post_id = 9001;
+		$live_term_id = 9501;
+
+		// Create the "live" tables (cdiff_ prefix).
+		$live_prefix = 'cdiff_';
+
+		// Create live tables if they don't exist (mirror structure from local).
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}posts" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}posts LIKE {$wpdb->posts}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}postmeta" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}postmeta LIKE {$wpdb->postmeta}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}terms" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}terms LIKE {$wpdb->terms}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_taxonomy" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}term_taxonomy LIKE {$wpdb->term_taxonomy}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_relationships" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}term_relationships LIKE {$wpdb->term_relationships}" ); // phpcs:ignore
+
+		// Insert live post.
+		$wpdb->insert( // phpcs:ignore
+			$live_prefix . 'posts',
+			[
+				'ID'            => $live_post_id,
+				'post_status'   => 'publish',
+				'post_type'     => 'post',
+				'post_author'   => 1,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_title'    => 'Live Post',
+				'post_name'     => 'live-post',
+				'post_date'     => '2025-01-01 12:00:00',
+			]
+		);
+
+		// Insert live term and term_taxonomy.
+		$wpdb->insert( $live_prefix . 'terms', [ 'term_id' => $live_term_id, 'name' => 'Test Term For Taxonomy Match', 'slug' => 'test-term-for-taxonomy-match' ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $live_term_id, 'term_id' => $live_term_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_relationships', [ 'object_id' => $live_post_id, 'term_taxonomy_id' => $live_term_id ] ); // phpcs:ignore
+
+		// Build the input arrays.
+		$live_posts  = [
+			[
+				'ID'            => (string) $live_post_id,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => '1',
+				'comment_count' => '0',
+			],
+		];
+		$local_posts = [
+			[
+				'ID'            => (string) $local_post_id,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => '1',
+				'comment_count' => '0',
+			],
+		];
+
+		// old_id_map: live_post_id => local_post_id.
+		$old_id_map = [ $live_post_id => $local_post_id ];
+
+		// term_old_id_map: live_term_id => local_term_id (method flips it internally).
+		$term_old_id_map = [ $live_term_id => $local_term_id ];
+
+		$result = $this->logic->filter_modified_live_ids(
+			$live_posts,
+			$local_posts,
+			$old_id_map,
+			$live_prefix,
+			[], // user_old_id_map
+			[], // attachment_old_id_map
+			$term_old_id_map
+		);
+
+		// Clean up live tables.
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}posts" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}postmeta" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}terms" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_taxonomy" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_relationships" ); // phpcs:ignore
+
+		$this->assertEmpty( $result, 'Post should NOT be flagged as modified when taxonomy terms match.' );
+	}
+
+	/**
+	 * Tests that filter_modified_live_ids detects taxonomy changes when terms differ.
+	 *
+	 * Scenario: Local post has 1 term, live post has 2 terms (shared + extra).
+	 * The extra term on live should trigger a "modified" detection.
+	 */
+	public function test_filter_modified_live_ids_should_flag_modified_when_taxonomy_terms_differ(): void {
+		global $wpdb;
+
+		// Create a local post with ONE term.
+		$local_post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$local_term    = wp_insert_term( 'Shared Term For Diff', 'category' );
+		$local_term_id = $local_term['term_id'];
+		wp_set_object_terms( $local_post_id, [ $local_term_id ], 'category' );
+
+		// Simulate "live" post with TWO terms (shared + extra).
+		$live_post_id       = 9002;
+		$live_term_id       = 9502; // Maps to local_term_id (shared).
+		$live_extra_term_id = 9503; // Extra term on live, not on local.
+
+		$live_prefix = 'cdiff_';
+
+		// Create live tables.
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}posts" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}posts LIKE {$wpdb->posts}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}postmeta" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}postmeta LIKE {$wpdb->postmeta}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}terms" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}terms LIKE {$wpdb->terms}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_taxonomy" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}term_taxonomy LIKE {$wpdb->term_taxonomy}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_relationships" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}term_relationships LIKE {$wpdb->term_relationships}" ); // phpcs:ignore
+
+		// Insert live post.
+		$wpdb->insert( // phpcs:ignore
+			$live_prefix . 'posts',
+			[
+				'ID'            => $live_post_id,
+				'post_status'   => 'publish',
+				'post_type'     => 'post',
+				'post_author'   => 1,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_title'    => 'Live Post',
+				'post_name'     => 'live-post-2',
+				'post_date'     => '2025-01-01 12:00:00',
+			]
+		);
+
+		// Insert live terms - shared term + extra term.
+		$wpdb->insert( $live_prefix . 'terms', [ 'term_id' => $live_term_id, 'name' => 'Shared Term For Diff', 'slug' => 'shared-term-for-diff' ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $live_term_id, 'term_id' => $live_term_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_relationships', [ 'object_id' => $live_post_id, 'term_taxonomy_id' => $live_term_id ] ); // phpcs:ignore
+
+		$wpdb->insert( $live_prefix . 'terms', [ 'term_id' => $live_extra_term_id, 'name' => 'Extra Live Term', 'slug' => 'extra-live-term' ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $live_extra_term_id, 'term_id' => $live_extra_term_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_relationships', [ 'object_id' => $live_post_id, 'term_taxonomy_id' => $live_extra_term_id ] ); // phpcs:ignore
+
+		$live_posts  = [
+			[
+				'ID'            => (string) $live_post_id,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => '1',
+				'comment_count' => '0',
+			],
+		];
+		$local_posts = [
+			[
+				'ID'            => (string) $local_post_id,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => '1',
+				'comment_count' => '0',
+			],
+		];
+
+		$old_id_map = [ $live_post_id => $local_post_id ];
+
+		// term_old_id_map: live_term_id => local_term_id (method flips it internally).
+		// The extra live term (9503) has no local counterpart.
+		// Expected: live_term_ids = [9502, 9503], local_term_ids_as_live = [9502]
+		// Difference: 9503 is on live but not on local -> should flag as modified.
+		$term_old_id_map = [ $live_term_id => $local_term_id ];
+
+		$result = $this->logic->filter_modified_live_ids(
+			$live_posts,
+			$local_posts,
+			$old_id_map,
+			$live_prefix,
+			[], // user_old_id_map
+			[], // attachment_old_id_map
+			$term_old_id_map
+		);
+
+		// Clean up.
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}posts" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}postmeta" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}terms" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_taxonomy" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_relationships" ); // phpcs:ignore
+
+		$this->assertCount( 1, $result, 'Post should be flagged as modified when taxonomy terms differ.' );
+		$this->assertArrayHasKey( 'changes', $result[0] );
+		$this->assertArrayHasKey( 'taxonomies', $result[0]['changes'], 'Changes should include taxonomies.' );
+	}
+
+	/**
 	 * =========================================================================
 	 * match_local_to_live_posts Tests
 	 * =========================================================================

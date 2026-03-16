@@ -907,15 +907,20 @@ class ContentDiffLogic {
 				}
 				sort( $live_term_ids );
 
-				// Get local term IDs translated/mapped to live IDs.
-				$local_terms            = wp_get_object_terms( $local_id, get_taxonomies(), [ 'fields' => 'ids' ] );
+				// Get local term IDs mapped to live IDs (fetching directly from DB instead of using wp_get_object_terms() to avoid dependency on taxonomy registration e.g., CAP's "author" taxonomy).
+				$local_term_relationships = $this->select_term_relationships_rows( $this->wpdb->prefix, $local_id );
+				$local_terms              = [];
+				foreach ( $local_term_relationships as $relationship ) {
+					$term_taxonomy = $this->select_term_taxonomy_row( $this->wpdb->prefix, $relationship['term_taxonomy_id'] );
+					if ( $term_taxonomy ) {
+						$local_terms[] = (int) $term_taxonomy['term_id'];
+					}
+				}
 				$local_term_ids_as_live = [];
-				if ( ! is_wp_error( $local_terms ) ) {
-					foreach ( $local_terms as $local_term_id ) {
-						$live_term_id = $local_to_live_term_map[ (int) $local_term_id ] ?? null;
-						if ( null !== $live_term_id ) {
-							$local_term_ids_as_live[] = (int) $live_term_id;
-						}
+				foreach ( $local_terms as $local_term_id ) {
+					$live_term_id = $local_to_live_term_map[ (int) $local_term_id ] ?? null;
+					if ( null !== $live_term_id ) {
+						$local_term_ids_as_live[] = (int) $live_term_id;
 					}
 				}
 				sort( $local_term_ids_as_live );
