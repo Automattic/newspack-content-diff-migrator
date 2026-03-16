@@ -347,28 +347,53 @@ class ContentDiffMigrator {
 		Logger::instance()->init( rtrim( $data_dir, '/' ) . '/' . __FUNCTION__ . '.log' );
 		Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::DEBUG, 'Starting command content-diff-search-new-content-on-live...' );
 
-		// Check if previous run-state exists. Warn and exit to protect previous logs and run-state data (useful for debugging and backtracking migrations).
-		// Skip in test environment to allow testing of multiple search cycles.
+		// Check if the run-state and a manifest exist from a previous interrupted command run and handle.
 		$existing_manifest = $this->run_state->get_manifest();
 		if ( ! $this->test_env && $existing_manifest ) {
 			$existing_source = $existing_manifest['source_hostname'] ?? 'unknown';
 			$existing_date   = $existing_manifest['created_at'] ?? 'unknown';
+			$search_status   = $existing_manifest['search_status'] ?? null;
 
+			// Case 1: Different hostname - always refuse to proceed.
 			if ( $existing_source !== $source_hostname ) {
 				Logger::instance()->log(
 					Logger::OUTPUT_BOTH,
 					LogLevel::ERROR,
 					sprintf( 'This --data-dir contains run-state from a DIFFERENT source hostname (%s, created %s). Please use a new --data-dir.', $existing_source, $existing_date ) 
 				);
-			} else {
+				return;
+			}
+
+			// Case 2: Search already completed - nothing left to do.
+			if ( RunState::STATUS_COMPLETED === $search_status ) {
 				Logger::instance()->log(
 					Logger::OUTPUT_BOTH,
-					LogLevel::ERROR,
-					sprintf( 'This --data-dir contains run-state from a previous migration run (created %s). Please use a new --data-dir to preserve previous logs for debugging.', $existing_date ) 
+					LogLevel::INFO,
+					sprintf( 'Search already completed for this --data-dir (created %s). Nothing left to do.', $existing_date ) 
 				);
+				return;
 			}
-			return; // Exit early (a return is friendly to both CLI and test environments).
+
+			// Case 3: Same hostname, search not completed - allow re-run, begin by deleting previous partial state to start fresh.
+			Logger::instance()->log(
+				Logger::OUTPUT_BOTH,
+				LogLevel::DEBUG,
+				sprintf( 'Incomplete search detected (created %s). Deleting previous run-state and re-running...', $existing_date )
+			);
+			$this->run_state->delete_run_state();
 		}
+
+		// Write initial manifest with "started" status.
+		$this->run_state->write_manifest(
+			[
+				'created_at'        => gmdate( 'Y-m-d H:i:s' ),
+				'source_hostname'   => $source_hostname,
+				'search_status'     => RunState::STATUS_STARTED,
+				'live_table_prefix' => $live_table_prefix,
+				'post_types'        => $post_types,
+				// --custom-taxonomies-csv are used for auto-attribution in the search command. The migrate command uses --custom-taxonomies-csv to actually migrate defined taxonomies, which is where the "taxonomies" field will be recorded.
+			]
+		);
 
 		try {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
@@ -567,16 +592,12 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( 'List of modified IDs to reimport stored to run-state file %s', RunState::FILE_MODIFIED_IDS ) );
 		}
 
-		// Save manifest.json with migration TOC.
-		$manifest = [
-			'created_at'        => gmdate( 'Y-m-d H:i:s' ),
-			'source_hostname'   => $source_hostname,
-			'live_table_prefix' => $live_table_prefix,
-			'post_types'        => $post_types,
-			'counts'            => [
-				'new_ids'      => count( $new_live_ids ),
-				'modified_ids' => count( $modified_live_ids ),
-			],
+		// Update manifest with completed status and counts.
+		$manifest                  = $this->run_state->get_manifest() ?? [];
+		$manifest['search_status'] = RunState::STATUS_COMPLETED;
+		$manifest['counts']        = [
+			'new_ids'      => count( $new_live_ids ),
+			'modified_ids' => count( $modified_live_ids ),
 		];
 		$this->run_state->write_manifest( $manifest );
 
@@ -623,6 +644,43 @@ class ContentDiffMigrator {
 		// Set RunState on DataImporter for tracking users/terms.
 		$this->data_importer->set_run_state( $this->run_state );
 
+		// Read manifest (written by search command).
+		$manifest = $this->run_state->get_manifest();
+		if ( is_null( $manifest ) ) {
+			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s). Run search-new-content-on-live first.', RunState::FILE_MANIFEST ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
+		}
+
+		// Check manifest for hostname mismatch or already completed status.
+		if ( ! $this->test_env ) {
+			$existing_source = $manifest['source_hostname'] ?? 'unknown';
+			$existing_date   = $manifest['created_at'] ?? 'unknown';
+			$migrate_status  = $manifest['migrate_status'] ?? null;
+
+			// Case 1: Different hostname - always refuse to proceed.
+			if ( $existing_source !== $source_hostname ) {
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::ERROR,
+					sprintf( 'This --data-dir contains run-state from a DIFFERENT source hostname (%s, created %s). Please use a new --data-dir.', $existing_source, $existing_date )
+				);
+				return;
+			}
+
+			// Case 2: Migrate already completed - nothing left to do.
+			if ( RunState::STATUS_COMPLETED === $migrate_status ) {
+				Logger::instance()->log(
+					Logger::OUTPUT_BOTH,
+					LogLevel::INFO,
+					sprintf( 'Migration already completed for this --data-dir (created %s). Nothing left to do.', $existing_date )
+				);
+				return;
+			}
+		}
+
+		// Set migrate_status to "started".
+		$manifest['migrate_status'] = RunState::STATUS_STARTED;
+		$this->run_state->write_manifest( $manifest );
+
 		// In case custom taxonomies were explicitly provided, but category/post_tag/author were not among those, warn the user that they won't be migrated and ask for confirmation to continue.
 		if ( isset( $assoc_args['custom-taxonomies-csv'] ) ) {
 			if ( ! in_array( 'category', $taxonomies_to_migrate ) ) {
@@ -661,14 +719,7 @@ class ContentDiffMigrator {
 		$this->cmd_list_migrated_source_hostnames( [], [] );
 		$this->warn_if_similar_hostname_exists( $source_hostname );
 
-		// Read post_types from manifest (saved by search command).
-		$manifest = $this->run_state->get_manifest();
-		if ( is_null( $manifest ) ) {
-			throw new \RuntimeException( sprintf( 'Can not find manifest file (%s).', RunState::FILE_MANIFEST ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
-		}
-
 		// Get all taxonomies which exist in Live DB.
-		// Prepare and validate table name.
 		$table_live_term_taxonomy = $live_table_prefix . 'term_taxonomy';
 		DB::validate_table_name( $table_live_term_taxonomy );
 		$live_taxonomies = $wpdb->get_col( "SELECT DISTINCT( taxonomy ) FROM {$table_live_term_taxonomy} ;" ); // phpcs:ignore -- table name was properly validated.
@@ -818,6 +869,12 @@ class ContentDiffMigrator {
 		if ( ! empty( $summary['users']['merged'] ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::INFO, sprintf( '- total merged users: %s', number_format( $summary['users']['merged'] ) ) );
 		}
+
+		// Mark migrate as completed and record taxonomies.
+		$manifest                   = $this->run_state->get_manifest() ?? [];
+		$manifest['taxonomies']     = $taxonomies_to_migrate;
+		$manifest['migrate_status'] = RunState::STATUS_COMPLETED;
+		$this->run_state->write_manifest( $manifest );
 
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'All done migrating content from %s! 🙌 ', $source_hostname ) );
 		wp_cache_flush();

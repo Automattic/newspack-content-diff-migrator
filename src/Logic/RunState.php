@@ -9,6 +9,8 @@ namespace Newspack\ContentDiffMigrator\Logic;
 
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Psr\Log\LogLevel;
+use RecursiveIteratorIterator;
+use RecursiveDirectoryIterator;
 
 /**
  * RunState keeps track of IDs/objects which need to be migrated, and progress of the migration.
@@ -16,6 +18,10 @@ use Psr\Log\LogLevel;
  * This data is persisted in JSON/JSONL files in the $run_state_dir path.
  */
 class RunState {
+
+	// Status constants.
+	public const STATUS_STARTED   = 'started';
+	public const STATUS_COMPLETED = 'completed';
 
 	// Run-state filenames.
 	public const FILE_MANIFEST             = 'manifest.json';
@@ -69,6 +75,91 @@ class RunState {
 	 */
 	public function get_manifest(): ?array {
 		return $this->read_json( self::FILE_MANIFEST );
+	}
+
+	/**
+	 * Deletes the entire run-state directory and recreates it as empty.
+	 *
+	 * @return void
+	 */
+	public function delete_run_state(): void {
+		if ( ! is_dir( $this->run_state_dir ) ) {
+			return;
+		}
+
+		$files = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $this->run_state_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::CHILD_FIRST
+		);
+
+		foreach ( $files as $file ) {
+			$path = $file->getRealPath();
+			if ( false === $path ) {
+				continue;
+			}
+			$file->isDir() ? rmdir( $path ) : unlink( $path ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.directory_rmdir.
+		}
+
+		rmdir( $this->run_state_dir ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.directory_rmdir.
+
+		// Recreate empty directory for fresh start.
+		wp_mkdir_p( $this->run_state_dir );
+	}
+
+	/**
+	 * Updates the search_status field in the manifest.
+	 *
+	 * @param string $status Status value (use STATUS_STARTED or STATUS_COMPLETED constants).
+	 *
+	 * @return bool Success.
+	 *
+	 * @throws \InvalidArgumentException If status is not a valid value.
+	 */
+	public function update_search_status( string $status ): bool {
+		if ( self::STATUS_STARTED !== $status && self::STATUS_COMPLETED !== $status ) {
+			throw new \InvalidArgumentException( sprintf( 'Invalid status: %s', $status ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
+		}
+		$manifest                  = $this->get_manifest() ?? [];
+		$manifest['search_status'] = $status;
+		return $this->write_manifest( $manifest );
+	}
+
+	/**
+	 * Updates the migrate_status field in the manifest.
+	 *
+	 * @param string $status Status value (use STATUS_STARTED or STATUS_COMPLETED constants).
+	 *
+	 * @return bool Success.
+	 *
+	 * @throws \InvalidArgumentException If status is not a valid value.
+	 */
+	public function update_migrate_status( string $status ): bool {
+		if ( self::STATUS_STARTED !== $status && self::STATUS_COMPLETED !== $status ) {
+			throw new \InvalidArgumentException( sprintf( 'Invalid status: %s', $status ) ); // phpcs:ignore -- exception message is for internal logging/debugging WordPress.Security.EscapeOutput.ExceptionNotEscaped.
+		}
+		$manifest                   = $this->get_manifest() ?? [];
+		$manifest['migrate_status'] = $status;
+		return $this->write_manifest( $manifest );
+	}
+
+	/**
+	 * Gets the search_status from the manifest.
+	 *
+	 * @return string|null Status value, or null if not set.
+	 */
+	public function get_search_status(): ?string {
+		$manifest = $this->get_manifest();
+		return $manifest['search_status'] ?? null;
+	}
+
+	/**
+	 * Gets the migrate_status from the manifest.
+	 *
+	 * @return string|null Status value, or null if not set.
+	 */
+	public function get_migrate_status(): ?string {
+		$manifest = $this->get_manifest();
+		return $manifest['migrate_status'] ?? null;
 	}
 
 	/**
