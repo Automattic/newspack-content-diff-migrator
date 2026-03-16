@@ -1,10 +1,10 @@
 # Newspack Content Diff Migrator
 
-This plugin is a content migration tool that migrates the content differential from one or more remote WordPress sites on top of the destination site while keeping the existing local content intact.
+This is a content migration tool which migrates the content differential from one or more remote WordPress sites on top of the destination site, while keeping the existing destination site's content intact.
 
 ## Overview
 
-The Newspack Content Diff Migrator is designed to synchronize content between remote sites (also addressed as "live site", after Newspack's own migration workflow) and a local site (also addressed as "staging site") by importing only the new or modified content from the remote site. This is particularly useful for maintaining staging environments that need to stay current with production content without overwriting staging-specific changes.
+The Newspack Content Diff Migrator is designed to synchronize content between remote sites (also addressed as "live site", after Newspack's own migration workflow) and a target destination site (also addressed as "staging site", or "local site") by importing only the new and modified content from the remote site. This is useful for maintaining staging environments which need to stay current with production content without overwriting staging-specific changes.
 
 The plugin migrates all the database content, while files synchronization should be done additionally.
 
@@ -14,8 +14,8 @@ The plugin migrates all the database content, while files synchronization should
 - **Preserves Local Content**: Keeps existing local content intact during migration
 - **Multi-Source Migration**: Supports importing content from multiple source hostnames, each with its own database tables and content, all the while preserving the integrity of the local content
 - **Selective Import**: Only imports new or modified content from the live site
-- **Content Coverage**: Handles posts, pages, attachments, users, comments, and basic taxonomies (category,post_tag,author) as well as custom taxonomies and custom post types, all the while preserving the integrity of the local content
-- **Error Handling, Logging and Graceful Degradation**: Comprehensive error logging and recovery mechanisms, provides detailed logging for troubleshooting, and continues processing even when individual items fail
+- **Content Coverage**: Handles posts, pages, attachments, users, comments, basic taxonomies (category,post_tag,author) as well as custom taxonomies and custom post types, all the while preserving the integrity of the local content
+- **Error Handling, Logging, CSV user friendly reports and Graceful Degradation**: Comprehensive error logging and recovery mechanisms, provides detailed logging for troubleshooting, and continues processing even when individual items fail
 - **Side-by-side Tables**: Works with remote site's database tables temporarily imported alongside local tables with a different table prefix
 
 ## Installation
@@ -28,21 +28,10 @@ Use latest release from the [Newspack Plugins Repository](https://github.com/new
 
 ## Usage
 
-### Interactive Mode (Easiest)
-
-New to the plugin or prefer a guided interactive mode? Use the `index` command:
-
-```bash
-wp newspack-content-diff-migrator index
-```
-
-This launches an interactive menu that guides you through selecting any of the available commands, with their descriptions, and prompts you for all required arguments step-by-step. Perfect for learning the plugin or running commands without memorizing syntax.
-
 ### Quick Start
 
 1. **Import Live Tables**: Import live site database tables with a specific prefix (e.g., `cdiff_`)
-2. **Attribute Existing Content** (optional): If local site already contains some content from source(s) (e.g. cloned from live)), see [Attribution Commands](#attribution-commands) to attribute it to the source hostname before migrating. Needs to be run only once per source to attribute existing content, and it lets the plugin know that this existing local content came from these source hostnames, so it can properly match it to that site and properlycompare during subsequent migrations.
-3. **Run Migration** (two commands, run in sequence):
+2. **Run Migration** (two commands, run in sequence):
 ```bash
 # Step 1: Search for new/modified content
 wp newspack-content-diff-migrator search-new-content-on-live \
@@ -57,9 +46,25 @@ wp newspack-content-diff-migrator migrate-live-content \
     --data-dir=/tmp/cdiff_data
 ```
 
+> **⚠️ Important:**
+
+- Always run `search-new-content-on-live` before `migrate-live-content` for each migration cycle, it's a prerequisite -- unless when resuming a previously interrupted migration, then re-run the migrate command which has been interrupted using that same `--data-dir`
+- Always use the **same** `--data-dir` for search and migrate commands in the same migration cycle, it's used to store the migration run-state data and logs. See recommendation below
+- Always use a **new** `--data-dir` for a new migration cycle, to keep separate records and preserve previous logs for debugging or resuming a previous migration which was interrupted
+
+### Interactive Mode (Easiest)
+
+New to the plugin or prefer a guided interactive mode? Use the `index` command:
+
+```bash
+wp newspack-content-diff-migrator index
+```
+
+This launches an interactive menu that guides you through selecting any of the available commands (such as `search-new-content-on-live` and `migrate-live-content`), with their descriptions, and prompts you for all required arguments step-by-step. Perfect for learning the plugin or running commands without memorizing syntax.
+
 ---
 
-## Full Commands Reference
+## Commands Reference
 
 ### Migration Commands
 
@@ -67,23 +72,43 @@ The two migration commands **must be executed in sequence**: first `search-new-c
 
 #### `search-new-content-on-live`
 
-Searches for new and modified posts in the live site tables and notes the IDs which should be migrated. This command must be run before `migrate-live-content`.
+Searches and identifies for new and modified posts in the live site tables, and notes their IDs to be migrated/updated by the migrate command. This command must be run before `migrate-live-content`.
 
 **How the search command works:**
 
-1. **Auto-attribution**: Before checking for new/modified content, the command scans for unattributed local content (content without `newspackcontentdiff_oldid_*` metas) and automatically matches it against live tables using ID fields comparison (like title, slug, date, type, etc.). This handles scenarios like cloned sites where content exists locally but hasn't been attributed yet. It will prompt the user to attribute the remaining unattributed content to the source hostname, or continue without attribution.
+1. **Auto-attribution**: Before checking for new/modified content, the command scans for unattributed local content (i.e. local content without `newspackcontentdiff_oldid_*` metas, which serve as labels for migration, and contain original content's ID and source hostname) and automatically matches it against live tables using ID fields comparison (like title, slug, date, type, etc.). This handles scenarios like cloned sites where content exists locally but hasn't been attributed yet. It works automatically, with brief message prompts to CLI and detailed logs about auto-attribution ops. Content is matched against live tables in this way:
+
+- **Posts/CPTs**: Matched by title + slug + date + type
+- **Attachments**: Matched by title + slug + date
+- **Users**: Matched by user_login
+- **Terms**: Matched by slug + taxonomy
 
 2. **New content detection**: The command determines "new" content by checking if each live content object is referenced in the local `newspackcontentdiff_oldid_*` metas. If a live ID is not in this local meta mapping, it's considered new and queued for import.
 
-3. **Modified content detection**: Following the Newspack Migration Data Consistency Standard, specific fields are examined for changes (like post_modified date, post_status, post_author, featured image, and taxonomies). If any of these fields have changed, the content is considered modified and queued for update (either full reimport for posts, or individual field updates, depending on the object type).
+3. **Modified content detection**: Following the Newspack Migration Data Consistency Standard (described in detail below), specific objects and fields are examined for changes (like post_modified date, post_status, post_author, featured image, and taxonomies). If any of these fields have changed, the content is considered modified and queued for update (either by a full reimport such as for posts, or individual field updates, depending on the object type).
 
 ```bash
 wp newspack-content-diff-migrator search-new-content-on-live \
-    --live-table-prefix=<prefix> \          // Prefix of the imported live site tables (e.g., `cdiff_`)
-    --source-hostname=<hostname> \          // e.g. www.example-1.com
-    --data-dir=<path> \                     // Directory to store migration run-state data and logs
-    [--post-types-csv]                      // Optionally include `guest-author` for CAP's Guest Authors.
+    --live-table-prefix=<prefix> \  // Prefix of the live site tables in DB (e.g., `cdiff_`)
+    --source-hostname=<hostname> \  // e.g. www.example-1.com
+    --data-dir=<path> \             // Directory to store migration run-state data, progress and logs
+    [--post-types-csv]              // Optionally include extend default values with `guest-author` for CAP's Guest Authors
 ```
+
+**Reviewing "modified" posts:**
+
+After running the search command, and before running the migrate command, you can review which posts were flagged as modified. The file `<data-dir>/run-state/modified_ids.json` contains all "modified" posts which will be deleted and fully reimported by the migrate command (and they will preserve the same local ID on this reimport, to ensure any references to that reimported local post ID remain valid). Example of the file contents:
+
+```json
+[
+  {"live_id": 123, "local_id": 456, "changes": {"post_modified": {"live": "2025-03-10 12:00:00", "local": "2025-01-15 08:30:00"}}},
+  {"live_id": 789, "local_id": 101, "changes": {"post_status": {"live": "publish", "local": "draft"}}}
+]
+```
+
+To **exclude specific "modified" posts** from being reimported, simply remove the entries from `modified_ids.json` before running `migrate-live-content`. This is useful when content was manually attributed via `attribute-ids` and field differences are expected (e.g., timezone-shifted dates, transformed slugs from external migration tools).
+
+> **Note:** Excluding posts from `modified_ids.json` only prevents the full post reimport. Other objects (users, attachments, terms) and their fields are still checked against Newspack Migration Data Consistency Standard (MDCS) during the migrate command — those per-field updates are presently not ovrerridable (but could be with a custom flag in the future, if needed) and will still be applied if their field values differ. See the [Migration Data Consistency Standard](#migration-data-consistency-standard) for which fields are updated on each object type.
 
 #### `migrate-live-content`
 
@@ -91,81 +116,51 @@ Imports the content differential identified by `search-new-content-on-live`. Mus
 
 ```bash
 wp newspack-content-diff-migrator migrate-live-content \
-    --live-table-prefix=<prefix> \    // Prefix of the imported live site tables (e.g., `cdiff_`)
-    --source-hostname=<hostname> \    // e.g. www.example-1.com
-    --data-dir=<path> \               // Same directory used in the search command
-    [--custom-taxonomies-csv]         // List of optional custom taxonomies to migrate.
+    --live-table-prefix=<prefix> \  // Prefix of the live site tables in DB (e.g., `cdiff_`)
+    --source-hostname=<hostname> \  // e.g. www.example-1.com
+    --data-dir=<path> \             // Same directory used in the search command
+    [--custom-taxonomies-csv]       // List of optional custom taxonomies to migrate
 ```
-> **⚠️ Important:**
 
-- Always run `search-new-content-on-live` before `migrate-live-content` for each migration cycle, it's a prerequisite -- unless when resuming a previously interrupted migration, then re-run the migrate command which has been interrupted using that same `--data-dir`
-- Always use the **same** `--data-dir` for search and migrate commands in the same migration cycle, it's used to store the migration run-state data and logs. See recommendation below
-- Always use a **new** `--data-dir` for a new migration cycle, to keep separate records and preserve previous logs for debugging or resuming a previous migration which was interrupted
+**Generated Reports**
 
----
+At the end of each migration import run, CSV reports are created in the `reports/` subfolder within your `--data-dir`. These CSVs are human-friendly summaries of all the key migration activity, and they are derived from (duplicated from) the run-state JSONL files for your easy review.
+
+| File | Description | Columns |
+|------|-------------|---------|
+| `reports/posts.csv` | All migrated or reimported posts, pages, attachments, and custom post types | `status`, `post_type`, `id_old`, `id_new` |
+| `reports/users.csv` | All imported, merged, or modified users | `status`, `id_old`, `id_new` |
+| `reports/terms.csv` | All imported or merged terms (categories, tags, custom taxonomies) | `status`, `term_id_old`, `term_id_new`, `taxonomy` |
+
+`status` column possible values:
+
+- **imported**: Record was newly created during this migration
+- **modified**: Record was deleted and reimported, or had fields updated
+- **merged**: Record with the same unique identifier already existed locally and was merged/reused
+
+> **Note:** The ID update operations (post parent, featured image, block attachment IDs) process all previously imported content from the source hostname, not just the current batch. This serves as a self-healing mechanism if an attachment import failed in a previous run, but succeeds in a later run, all posts that reference that attachment will have their IDs correctly updated.
 
 ### Utility Commands
 
 #### `list-previously-migrated-source-hostnames`
 
-Lists all previously migrated source hostnames. Useful for checking what sources have already been migrated.
+Simply lists all previously migrated source hostnames (by looking up metas `newspackcontentdiff_oldid_{hostname}` in local postmeta, usermeta, and termmeta tables). Useful for quickly checking what sources have already been migrated.
 
 ```bash
 wp newspack-content-diff-migrator list-previously-migrated-source-hostnames
 ```
 
-### Attribution
+#### `attribute-ids`
 
-When you run a CDiff migration, the imported content gets the "old ID and hostname meta" assigned to it. The following WP data objects can have this meta assigned to them, stored in the corresponding WP metas tables:
-- Posts/Pages/Attachments/CPTs (stored in `wp_postmeta`)
-- Users (stored in `wp_usermeta`)
-- Terms (stored in `wp_termmeta`)
+This command was created for custom migration scenarios, where multiple migration tools are used for same source site, and it's used to "attribute" (i.e. label, set metas) the content to a source hostname, so that the CDiff can properly work with it.
 
-To **"attribute content to a source hostname"** simply means to assign "old ID and hostname metas" to that content -- so that CDiff can track that content to the original source hostname, properly compare it to live tables, and do content refreshes. These metas are what makes multi-source migrations work.
-
-#### Automatic Attribution
-
-The `search-new-content-on-live` command now **automatically attributes** matching content when it detects unattributed local content:
-
-1. **Checks for unattributed content** - Content without source hostname meta
-2. **Auto-matches to live tables** - Compares local content against live DB tables
-3. **Attributes matches** - Assigns source hostname meta to matching content
-4. **Warns about remaining** - If content couldn't be matched, prompts whether to continue
-
-This eliminates the need to manually run attribution commands before searching in most scenarios. The auto-attribution matches content using:
-- **Posts/CPTs**: Matched by title + slug + date + type
-- **Attachments**: Matched by title + slug + date
-- **Users**: Matched by user_login
-- **Terms**: Matched by slug + taxonomy
-
-#### How Source Hostname Metas Work Per Type of Object
-
-Some object types rely on the source hostname meta to be properly compared/cdiff-ed against the live tables, and this meta does affect whether they're being imported, while some other objects have it purely for tracking of origin purpose.
-
-| Entity | Meta Table | Meta used for import decision? | What happens WITHOUT the meta? |
-|--------|------------|---------------------------|---------------------------|
-| **Posts** (all CPTs) | `wp_postmeta` | **YES** | Object is considered "new" → **DUPLICATE CREATED** |
-| **Attachments** | `wp_postmeta` | **YES** | Object is considered "new" → **DUPLICATE CREATED** |
-| **Users** | `wp_usermeta` | No | Matched by `user_login` → merged/reused existing object |
-| **Terms** | `wp_termmeta` | No | Matched by name+taxonomy+parent → merged/reused existing object |
-
-**Posts and Attachments** — The source hostname meta is **critical** for these. During migration, the plugin builds a mapping of `live_id => local_id` from the metas. If a live post's ID is not in this map, it's considered "new" and will be imported — potentially creating a duplicate if that content already exists locally but wasn't attributed.
-
-**Users** — The meta is for tracking/mapping only. User lookup during import is done by `user_login` match, not by meta, and if a user with the same login exists locally, it will be reused regardless of whether it has the source hostname meta (with an appropriate warning in the log), while the meta is added for internal reference.
-
-**Terms (Categories, Tags, etc.)** — The meta is for tracking/mapping only. Term lookup during import is done by **name + taxonomy + parent**, not by meta. And if a term with the same name exists with the same taxonomy, and under the same parent, it will be reused regardless of whether it has the source hostname meta, while the meta is added for internal reference.
-
-#### Manual Attribution: `attribute-ids`
-
-Manual attribution is very much an edge case, made for special ops, and "just in case" scenarios where automatic attribution won't work.
-
-**Use case**: Content from a source hostname was migrated with different parallel migration tools. For example, the first part of content was migrated by an external tool (Ghost CMS migrator, WP Importer, etc.) which transformed the content identifiers (different slugs, dates, etc.), and then for some reason you need to use the CDiff to migrate the second part of the content. If you have the ID mappings from the external tool (old IDs => new IDs), in order to use CDiff on the second part, you need to "attribute" i.e. set "old IDs and source hostname" metas to the first part of the content, so that CDiff doesn't create duplicates.
-
-This command takes actual old IDs and new IDs, and simply assigns/attributes the "old ID and source hostname meta", enabling CDiff to properly compare and migrate the remaining content.
+**Use case**: Let's say that some content from a source hostname was migrated by using a different migration tool (for example the Ghost CMS migrator, a custom migrator, WP Importer, etc.) which might have transformed some of the content identifier fields (e.g. it got different slugs, dates, etc.). And let's say that then for some reason you also wish to use the CDiff to migrate the second part of this same source hostname site's content. If you have the ID mappings from the external tool (old IDs => new IDs), you just need to run this command to "attribute" (i.e. set the "old the IDs and source hostname" metas) to the custom-migrated content, and the CDiff will be able to migrate the rest, without creating duplicates.
 
 **How it works:**
 
-Once metas are set by this command, CDiff relies solely on those metas to determine what's "already migrated" vs "new" — it does **not** re-compare content fields (title, slug, date). This is intentional: external migration tools may have transformed those fields, making field-based matching impossible. The metas become the authoritative link between local and live content.
+- **New content**. New content is determined solely by whether local content ID has the "old ID meta" with the live content. If a live content ID is present in local meta, it is not new; if a live ID is not present in local meta, it will be marked as new by the search command, and imported by the migrate command. It does **not** re-compare content fields for new content (title, slug, date). This is intentional: as mentioned, external migration tools may have transformed those fields, making field-based matching impossible.
+
+- **Modified content**. Modified content is determined by comparing the local content ID with the live content ID, and if they differ, the content is marked as modified and will be deleted and reimported by the migrate command. See **"Reviewing "modified" posts"** above for more details.
 
 **Arguments** At least one of these arguments is required:
 - `--source-hostname` (required): Source hostname (e.g., www.example.com)
@@ -182,12 +177,6 @@ wp newspack-content-diff-migrator attribute-ids \
     --post-ids=/tmp/post_ids.jsonl \
     --user-ids=/tmp/user_ids.jsonl
 ```
-
----
-
-### Database Utility Commands
-
-These commands help diagnose and equalize database differences between live and local tables.
 
 #### `display-collations-comparison`
 
@@ -211,42 +200,6 @@ wp newspack-content-diff-migrator correct-collations-for-live-wp-tables \
 ```
 
 > **Note:** The migration commands (search and migrate) automatically run collation fixes when needed, so you typically don't need to run this manually.
-
----
-
-## Reports
-
-At the end of each migration run, CSV reports are created in the `reports/` subfolder within your `--data-dir`. These CSVs are human-friendly summaries of all the key migration activity, and they are derived from (duplicated from) the run-state JSONL files for your easy review.
-
-### Generated Reports
-
-| File | Description | Columns |
-|------|-------------|---------|
-| `reports/posts.csv` | All migrated or reimported posts, pages, attachments, and custom post types | `status`, `post_type`, `id_old`, `id_new` |
-| `reports/users.csv` | All imported, merged, or modified users | `status`, `id_old`, `id_new` |
-| `reports/terms.csv` | All imported or merged terms (categories, tags, custom taxonomies) | `status`, `term_id_old`, `term_id_new`, `taxonomy` |
-
-`status` column possible values:
-
-- **imported**: Record was newly created during this migration
-- **modified**: Record was deleted and reimported, or had fields updated
-- **merged**: Record with the same unique identifier already existed locally and was merged/reused
-
-Tracked in the reports:
-
-- Posts (all types) that were imported or reimported
-- Attachments that were imported or had MDCS field updates
-- Users that were imported, merged, or had MDCS field updates
-- Terms that were imported, merged, or had MDCS field updates
-
-Not tracked in the reports:
-
-- Post parent ID corrections (internal plumbing, not content changes)
-- Featured image ID corrections (internal plumbing)
-- Block attachment ID corrections (internal plumbing)
-- Comments and comment metadata
-
-> **Note:** The ID correction operations (post parent, featured image, block attachment IDs) process all previously imported content from the source hostname, not just the current batch. This serves as a self-healing mechanism if an attachment import failed in a previous run, but succeeds in a later run, all posts that reference that attachment will have their IDs correctly updated.
 
 ---
 
@@ -473,10 +426,33 @@ When importing from multiple sources, certain entities with the same unique iden
 - **Posts** — different sources = different posts (even with same title/slug)
 - **Attachments** — different sources = different attachments (even with same filename)
 
+---
+
+## How Source Hostname Metas Work Per Type of Object
+
+Some object types rely on the source hostname meta to be properly compared/cdiff-ed against the live tables, and this meta does affect whether they're being imported, while some other objects have it purely for tracking of origin purpose.
+
+| Entity | Meta Table | Meta used for import decision? | What happens WITHOUT the meta? |
+|--------|------------|---------------------------|---------------------------|
+| **Posts** (all CPTs) | `wp_postmeta` | **YES** | Object is considered "new" → **DUPLICATE CREATED** |
+| **Attachments** | `wp_postmeta` | **YES** | Object is considered "new" → **DUPLICATE CREATED** |
+| **Users** | `wp_usermeta` | No | Matched by `user_login` → merged/reused existing object |
+| **Terms** | `wp_termmeta` | No | Matched by name+taxonomy+parent → merged/reused existing object |
+
+**Posts and Attachments** — The source hostname meta is **critical** for these. During migration, the plugin builds a mapping of `live_id => local_id` from the metas. If a live post's ID is not in this map, it's considered "new" and will be imported — potentially creating a duplicate if that content already exists locally but wasn't attributed.
+
+**Users** — The meta is for tracking/mapping only. User lookup during import is done by `user_login` match, not by meta, and if a user with the same login exists locally, it will be reused regardless of whether it has the source hostname meta (with an appropriate warning in the log), while the meta is added for internal reference.
+
+**Terms (Categories, Tags, etc.)** — The meta is for tracking/mapping only. Term lookup during import is done by **name + taxonomy + parent**, not by meta. And if a term with the same name exists with the same taxonomy, and under the same parent, it will be reused regardless of whether it has the source hostname meta, while the meta is added for internal reference.
+
+---
+
 ## Best Practices
 
 1. **Backup First**: Always backup your local staging site before running migrations
 2. **Monitor Logs**: Check log files for any issues or warnings
+
+---
 
 ## Development
 
@@ -498,6 +474,8 @@ git add composer.lock && \
 git commit -m 'Updating NMT composer pointer' && \
 git push origin $(git symbolic-ref --short HEAD)
 ```
+
+---
 
 ## Troubleshooting and Common Issues
 
