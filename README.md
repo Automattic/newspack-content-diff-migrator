@@ -208,14 +208,29 @@ wp newspack-content-diff-migrator correct-collations-for-live-wp-tables \
 The `--data-dir` parameter stores logs and run-state data in a `run-state` subfolder (e.g., `/tmp/cdiff_data/run-state/`).
 
 The run-state data includes:
-- **`manifest.json`** — Migration summary with
-  - timestamp
-  - source hostname
-  - post types
-  - counts of new/modified IDs
-  - Useful for quickly reviewing what was migrated.
+- **`manifest.json`** — Migration summary (see fields below)
 - **`new_ids.json`** / **`modified_ids.json`** — IDs to be imported or reimported
 - **`imported_posts.jsonl`**, **`updated_*.jsonl`** — Progress tracking files for resume capability
+
+### Manifest Fields
+
+Example `manifest.json`:
+
+```json
+{
+    "created_at": "2025-03-15 14:30:00",
+    "source_hostname": "www.example.com",
+    "search_status": "completed",
+    "migrate_status": "completed",
+    "live_table_prefix": "cdiff_",
+    "post_types": ["post", "page", "attachment", "wp_block"],
+    "taxonomies": ["category", "post_tag", "author", "brand"],
+    "counts": {
+        "new_ids": 150,
+        "modified_ids": 25
+    }
+}
+```
 
 ### Resuming an Interrupted Migration
 

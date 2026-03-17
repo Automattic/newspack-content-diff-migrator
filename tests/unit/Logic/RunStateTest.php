@@ -899,4 +899,250 @@ class RunStateTest extends WP_UnitTestCase {
 
 		$this->assertEquals( $manifest, $result );
 	}
+
+	// =========================================================================
+	// STATUS HELPER TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_search_status
+	 */
+	public function test_update_search_status_should_set_started_status(): void {
+		$result = $this->run_state->update_search_status( RunState::STATUS_STARTED );
+
+		$this->assertTrue( $result );
+		$manifest = $this->run_state->get_manifest();
+		$this->assertEquals( RunState::STATUS_STARTED, $manifest['search_status'] );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_search_status
+	 */
+	public function test_update_search_status_should_set_completed_status(): void {
+		$result = $this->run_state->update_search_status( RunState::STATUS_COMPLETED );
+
+		$this->assertTrue( $result );
+		$manifest = $this->run_state->get_manifest();
+		$this->assertEquals( RunState::STATUS_COMPLETED, $manifest['search_status'] );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_search_status
+	 */
+	public function test_update_search_status_should_throw_exception_for_invalid_status(): void {
+		$this->expectException( \InvalidArgumentException::class );
+
+		$this->run_state->update_search_status( 'invalid_status' );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_migrate_status
+	 */
+	public function test_update_migrate_status_should_set_started_status(): void {
+		$result = $this->run_state->update_migrate_status( RunState::STATUS_STARTED );
+
+		$this->assertTrue( $result );
+		$manifest = $this->run_state->get_manifest();
+		$this->assertEquals( RunState::STATUS_STARTED, $manifest['migrate_status'] );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_migrate_status
+	 */
+	public function test_update_migrate_status_should_set_completed_status(): void {
+		$result = $this->run_state->update_migrate_status( RunState::STATUS_COMPLETED );
+
+		$this->assertTrue( $result );
+		$manifest = $this->run_state->get_manifest();
+		$this->assertEquals( RunState::STATUS_COMPLETED, $manifest['migrate_status'] );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_migrate_status
+	 */
+	public function test_update_migrate_status_should_throw_exception_for_invalid_status(): void {
+		$this->expectException( \InvalidArgumentException::class );
+
+		$this->run_state->update_migrate_status( 'invalid_status' );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_search_status
+	 */
+	public function test_get_search_status_should_return_null_when_not_set(): void {
+		$result = $this->run_state->get_search_status();
+
+		$this->assertNull( $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_search_status
+	 */
+	public function test_get_search_status_should_return_status_when_set(): void {
+		$this->run_state->update_search_status( RunState::STATUS_COMPLETED );
+
+		$result = $this->run_state->get_search_status();
+
+		$this->assertEquals( RunState::STATUS_COMPLETED, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_migrate_status
+	 */
+	public function test_get_migrate_status_should_return_null_when_not_set(): void {
+		$result = $this->run_state->get_migrate_status();
+
+		$this->assertNull( $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::get_migrate_status
+	 */
+	public function test_get_migrate_status_should_return_status_when_set(): void {
+		$this->run_state->update_migrate_status( RunState::STATUS_COMPLETED );
+
+		$result = $this->run_state->get_migrate_status();
+
+		$this->assertEquals( RunState::STATUS_COMPLETED, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_search_status
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::update_migrate_status
+	 */
+	public function test_status_updates_should_preserve_existing_manifest_data(): void {
+		// Write initial manifest data.
+		$this->run_state->write_manifest(
+			[
+				'created_at'        => '2024-01-01 12:00:00',
+				'source_hostname'   => 'example.com',
+				'live_table_prefix' => 'live_',
+			]
+		);
+
+		// Update statuses.
+		$this->run_state->update_search_status( RunState::STATUS_COMPLETED );
+		$this->run_state->update_migrate_status( RunState::STATUS_STARTED );
+
+		// Verify original data is preserved.
+		$manifest = $this->run_state->get_manifest();
+		$this->assertEquals( '2024-01-01 12:00:00', $manifest['created_at'] );
+		$this->assertEquals( 'example.com', $manifest['source_hostname'] );
+		$this->assertEquals( 'live_', $manifest['live_table_prefix'] );
+		$this->assertEquals( RunState::STATUS_COMPLETED, $manifest['search_status'] );
+		$this->assertEquals( RunState::STATUS_STARTED, $manifest['migrate_status'] );
+	}
+
+	// =========================================================================
+	// DELETE RUN-STATE TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::delete_run_state
+	 */
+	public function test_delete_run_state_should_remove_all_files(): void {
+		// Create some run-state files.
+		$this->run_state->write_manifest( [ 'test' => 'data' ] );
+		$this->run_state->write_new_ids( [ 1, 2, 3 ] );
+		$this->run_state->append_imported_post(
+			[
+				'post_type' => 'post',
+				'id_old'    => 1,
+				'id_new'    => 10,
+			]
+		);
+
+		// Verify files exist.
+		$this->assertFileExists( $this->temp_dir . '/run-state/' . RunState::FILE_MANIFEST );
+		$this->assertFileExists( $this->temp_dir . '/run-state/' . RunState::FILE_NEW_IDS );
+		$this->assertFileExists( $this->temp_dir . '/run-state/' . RunState::FILE_IMPORTED_POSTS );
+
+		// Delete run-state.
+		$this->run_state->delete_run_state();
+
+		// Verify files are deleted but directory still exists (recreated empty).
+		$this->assertDirectoryExists( $this->temp_dir . '/run-state' );
+		$this->assertFileDoesNotExist( $this->temp_dir . '/run-state/' . RunState::FILE_MANIFEST );
+		$this->assertFileDoesNotExist( $this->temp_dir . '/run-state/' . RunState::FILE_NEW_IDS );
+		$this->assertFileDoesNotExist( $this->temp_dir . '/run-state/' . RunState::FILE_IMPORTED_POSTS );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::delete_run_state
+	 */
+	public function test_delete_run_state_should_handle_nonexistent_directory(): void {
+		// Create RunState with a directory that doesn't exist.
+		$nonexistent_dir = $this->temp_dir . '/nonexistent/run-state';
+
+		// Remove the directory if it was auto-created.
+		if ( is_dir( $nonexistent_dir ) ) {
+			rmdir( $nonexistent_dir ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.directory_rmdir.
+		}
+		if ( is_dir( dirname( $nonexistent_dir ) ) ) {
+			rmdir( dirname( $nonexistent_dir ) ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.directory_rmdir.
+		}
+
+		// Create new RunState which creates the directory.
+		$run_state = new RunState( $nonexistent_dir );
+		// Remove it again for testing.
+		rmdir( $nonexistent_dir ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.directory_rmdir.
+
+		// Should not throw exception for nonexistent directory.
+		$run_state->delete_run_state();
+
+		$this->assertTrue( true ); // If we got here without exception, test passed.
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::delete_run_state
+	 */
+	public function test_delete_run_state_should_handle_nested_directories(): void {
+		// Create a nested directory structure within run-state.
+		$nested_dir = $this->temp_dir . '/run-state/nested/deep';
+		wp_mkdir_p( $nested_dir );
+		file_put_contents( $nested_dir . '/file.txt', 'test content' );
+		file_put_contents( $this->temp_dir . '/run-state/nested/another.txt', 'more content' );
+
+		// Delete run-state.
+		$this->run_state->delete_run_state();
+
+		// Verify all nested content is deleted.
+		$this->assertDirectoryExists( $this->temp_dir . '/run-state' );
+		$this->assertDirectoryDoesNotExist( $nested_dir );
+		$this->assertDirectoryDoesNotExist( $this->temp_dir . '/run-state/nested' );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\RunState::delete_run_state
+	 */
+	public function test_delete_run_state_should_allow_fresh_start(): void {
+		// Create initial data.
+		$this->run_state->write_manifest( [ 'old' => 'data' ] );
+
+		// Delete and start fresh.
+		$this->run_state->delete_run_state();
+
+		// Write new data.
+		$this->run_state->write_manifest( [ 'new' => 'data' ] );
+
+		// Verify new data is written correctly.
+		$manifest = $this->run_state->get_manifest();
+		$this->assertEquals( [ 'new' => 'data' ], $manifest );
+		$this->assertArrayNotHasKey( 'old', $manifest );
+	}
 }

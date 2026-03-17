@@ -55,12 +55,14 @@
       ".travis.yml",
       ".git*",
       ".git/*",
+      ".github/*",
       ".distignore",
       ".DS_Store",
       ".env*",
       ".idea",
       "*.log*",
-      "release"
+      "release",
+      "pull_request_template.md"
     ]
   },
   "scripts": {
@@ -70,7 +72,7 @@
     "code-coverage-clover": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-clover build/coverage_clover/clover.xml",
     "code-coverage-html": "export XDEBUG_MODE=coverage && ./vendor/bin/phpunit --coverage-html build/coverage_html",
     "build-release": [
-        "rm -rf vendor",
+        "rm -rf vendor 2>/dev/null || true",
         "rm -rf release",
         "composer install --no-dev --optimize-autoloader",
         "composer archive --format=zip --dir=release --file=newspack-content-diff-migrator"
