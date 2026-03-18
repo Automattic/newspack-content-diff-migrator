@@ -87,7 +87,7 @@ class ReportCreator {
 
 		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'status', 'post_type', 'id_old', 'id_new' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+		fputcsv( $handle, [ 'status', 'post_type', 'id_old', 'id_new', 'post_name' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 
 		// Track unique posts by id_new to handle deduplication.
 		// A post might be imported then later modified - we want final status.
@@ -135,11 +135,22 @@ class ReportCreator {
 			];
 		}
 
+		// Fetch post_name for id_new.
+		$post_names = [];
+		if ( ! empty( $posts_by_id_new ) ) {
+			$ids          = array_keys( $posts_by_id_new );
+			$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$results    = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_name FROM {$wpdb->posts} WHERE ID IN ( {$placeholders} )", $ids ), ARRAY_A );
+			// phpcs:enable
+			$post_names = array_column( $results ?? [], 'post_name', 'ID' );
+		}
+
 		// Write rows.
 		$count = 0;
 		foreach ( $posts_by_id_new as $row ) {
 			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-			fputcsv( $handle, [ $row['status'], $row['post_type'], $row['id_old'], $row['id_new'] ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+			fputcsv( $handle, [ $row['status'], $row['post_type'], $row['id_old'], $row['id_new'], $post_names[ $row['id_new'] ] ?? '' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 			$count++;
 		}
 
@@ -155,6 +166,8 @@ class ReportCreator {
 	 * @return int Number of rows written.
 	 */
 	private function create_users_csv( string $file_path ): int {
+		global $wpdb;
+
 		$handle = fopen( $file_path, 'w' ); // phpcs:ignore -- WordPress.WP.AlternativeFunctions.file_system_operations_fopen.
 		if ( ! $handle ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, sprintf( 'ReportCreator: Failed to open %s for writing', $file_path ) );
@@ -163,7 +176,7 @@ class ReportCreator {
 
 		// Write header.
 		// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-		fputcsv( $handle, [ 'status', 'id_old', 'id_new' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+		fputcsv( $handle, [ 'status', 'id_old', 'id_new', 'user_login' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 
 		// Track unique users by id_new to handle deduplication.
 		// Status priority: modified > merged > imported.
@@ -184,11 +197,22 @@ class ReportCreator {
 			}
 		}
 
+		// Fetch user_login for id_new.
+		$user_logins = [];
+		if ( ! empty( $users_by_id_new ) ) {
+			$ids          = array_keys( $users_by_id_new );
+			$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+			// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+			$results     = $wpdb->get_results( $wpdb->prepare( "SELECT ID, user_login FROM {$wpdb->users} WHERE ID IN ( {$placeholders} )", $ids ), ARRAY_A );
+			// phpcs:enable
+			$user_logins = array_column( $results ?? [], 'user_login', 'ID' );
+		}
+
 		// Write rows.
 		$count = 0;
 		foreach ( $users_by_id_new as $row ) {
 			// Escape='' for RFC 4180 compliance (@see https://www.php.net/manual/en/function.fputcsv.php).
-			fputcsv( $handle, [ $row['status'], $row['id_old'], $row['id_new'] ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
+			fputcsv( $handle, [ $row['status'], $row['id_old'], $row['id_new'], $user_logins[ $row['id_new'] ] ?? '' ], ',', '"', '' ); // phpcs:ignore -- WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_fputcsv.
 			$count++;
 		}
 

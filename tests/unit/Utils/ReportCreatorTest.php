@@ -161,7 +161,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 		$this->report_creator->create_all_csvs( $reports_dir );
 
 		$headers = $this->get_csv_headers( $reports_dir . '/' . ReportCreator::REPORT_POSTS );
-		$this->assertEquals( [ 'status', 'post_type', 'id_old', 'id_new' ], $headers );
+		$this->assertEquals( [ 'status', 'post_type', 'id_old', 'id_new', 'post_name' ], $headers );
 	}
 
 	/**
@@ -174,7 +174,7 @@ class ReportCreatorTest extends WP_UnitTestCase {
 		$this->report_creator->create_all_csvs( $reports_dir );
 
 		$headers = $this->get_csv_headers( $reports_dir . '/' . ReportCreator::REPORT_USERS );
-		$this->assertEquals( [ 'status', 'id_old', 'id_new' ], $headers );
+		$this->assertEquals( [ 'status', 'id_old', 'id_new', 'user_login' ], $headers );
 	}
 
 	/**
