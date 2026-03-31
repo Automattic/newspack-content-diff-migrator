@@ -12,6 +12,7 @@ use Newspack\ContentDiffMigrator\Utils\DB;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
 use Newspack\ContentDiffMigrator\Utils\SLAHelper;
+use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
 use Psr\Log\LogLevel;
 use RuntimeException;
 use WP_User;
@@ -828,6 +829,9 @@ class ContentDiffLogic {
 			if ( $progress_milestone ) {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
+
+			// Periodic memory cleanup to prevent OOM from accumulated DB queries.
+			MemoryCleanupHook::cleanup( 0, $key_live_post, 1000 );
 
 			$live_id = (int) $live_post['ID'];
 
