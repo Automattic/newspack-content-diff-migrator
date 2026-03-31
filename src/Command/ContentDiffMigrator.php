@@ -39,6 +39,13 @@ class ContentDiffMigrator {
 	const DEFAULT_TAXONOMIES = [ 'category', 'post_tag', 'author', 'brand' ];
 
 	/**
+	 * Number of post objects processed in a batch which is memory-safe for large datasets.
+	 *
+	 * @var int
+	 */
+	const MEMORY_SAFE_BATCH_SIZE = 20000;
+
+	/**
 	 * Content Diff logic class.
 	 *
 	 * @var ContentDiffLogic Logic.
@@ -566,7 +573,7 @@ class ContentDiffMigrator {
 
 			// Query live DB for attachments in batches.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Searching live DB for attachments ...' );
-			$batch_size              = 20000;
+			$batch_size              = self::MEMORY_SAFE_BATCH_SIZE;
 			$total_live_attachments  = $this->logic->count_posts_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
 			$new_live_attachment_ids = [];
 			$total_batches           = (int) ceil( $total_live_attachments / $batch_size );
@@ -1803,7 +1810,7 @@ class ContentDiffMigrator {
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Process local posts in batches, reusing the live lookup.
-			$batch_size    = 20000;
+			$batch_size    = self::MEMORY_SAFE_BATCH_SIZE;
 			$total_local   = $this->logic->count_posts_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
 			$total_batches = (int) ceil( $total_local / $batch_size );
 			$current_batch = 0;
@@ -1883,7 +1890,7 @@ class ContentDiffMigrator {
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Process local attachments in batches, reusing the live lookup.
-		$batch_size    = 20000;
+		$batch_size    = self::MEMORY_SAFE_BATCH_SIZE;
 		$total_local   = $this->logic->count_posts_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
 		$total_batches = (int) ceil( $total_local / $batch_size );
 		$current_batch = 0;
