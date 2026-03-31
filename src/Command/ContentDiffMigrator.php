@@ -786,9 +786,13 @@ class ContentDiffMigrator {
 			// Get modified IDs which were already deleted, and skip them.
 			$already_deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
 			$local_ids_to_delete              = array_values( array_diff( array_values( $modified_ids_map ), array_values( $already_deleted_modified_ids_map ) ) );
+			$already_deleted_count            = count( $already_deleted_modified_ids_map );
+			if ( $already_deleted_count > 0 ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d posts were already deleted, continuing from there...', $already_deleted_count ) );
+			}
 			
 			// Delete modified posts so they can be re-imported.
-			foreach ( $local_ids_to_delete as $id ) {
+			foreach ( $local_ids_to_delete as $key_delete => $id ) {
 				$deleted = wp_delete_post( $id, true );
 				if ( false === $deleted || null === $deleted ) {
 					$context = [
@@ -799,6 +803,7 @@ class ContentDiffMigrator {
 					// Don't continue and save to run-state if deletion failed.
 					continue;
 				}
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_delete, 300 );
 
 				// Save run-state info that this modified ID was deleted.
 				$this->run_state->append_deleted_modified_id(
