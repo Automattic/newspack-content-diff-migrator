@@ -605,9 +605,9 @@ class DataImporter {
 	 * Ensures a taxonomy is registered if it doesn't exist.
 	 *
 	 * @param string $taxonomy_name          Taxonomy name.
-	 * @param array  $live_term_taxonomy_row Live term taxonomy row (used to determine if hierarchical).
+	 * @param array  $live_term_taxonomy_row Optional. Live term taxonomy row (used to determine if hierarchical).
 	 */
-	private function ensure_taxonomy_registered( string $taxonomy_name, array $live_term_taxonomy_row ): void {
+	public function ensure_taxonomy_registered( string $taxonomy_name, array $live_term_taxonomy_row = [] ): void {
 		if ( taxonomy_exists( $taxonomy_name ) ) {
 			return;
 		}

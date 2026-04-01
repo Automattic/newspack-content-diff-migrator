@@ -760,6 +760,11 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Taxonomies found in live DB which will not be migrated: %s', implode( ', ', $unmigrated_taxonomies ) ) );
 		}
 
+		// Register taxonomies (before deletion and reimport of modified, so wp_delete_post() properly cleans up term relationships).
+		foreach ( $taxonomies_to_migrate as $taxonomy_name ) {
+			$this->data_importer->ensure_taxonomy_registered( $taxonomy_name );
+		}
+
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
 		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
