@@ -576,7 +576,7 @@ class DataImporter {
 				// Log DEBUG info to CLI only once with the first example.
 				static $cli_warned_term_merge = false;
 				if ( false === $cli_warned_term_merge ) {
-					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_term: Some terms already exist on local and are being merged/reused, and an additional meta is set for those terms. See %s for full list (first example: term_name `%s`, taxonomy `%s`, live_term_id=%d, local_term_id=%d).', Logger::instance()->get_log_file_path(), $term_name, $taxonomy_name, $live_term_id, $local_term_id ) );
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_term FYI: Some terms already exist on local and are being merged/reused, and an additional meta is set for those terms. See %s for full list (first example: term_name `%s`, taxonomy `%s`, live_term_id=%d, local_term_id=%d).', Logger::instance()->get_log_file_path(), $term_name, $taxonomy_name, $live_term_id, $local_term_id ) );
 					$cli_warned_term_merge = true;
 				}
 			}
@@ -773,7 +773,7 @@ class DataImporter {
 				// Log DEBUG info to CLI only once with the first example.
 				static $cli_warned_user_merge = false;
 				if ( false === $cli_warned_user_merge ) {
-					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_user: Some users already exist on local (same login) and are being merged/reused, and an additional meta is set for those users. See %s for full list (first example: user_login=`%s`, live_user_id=%d, local_user_id=%d).', Logger::instance()->get_log_file_path(), $user_row['user_login'], $user_row['ID'], $local_user_id ) );
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( '- merge_user FYI: Some users already exist on local (same login) and are being merged/reused, and an additional meta is set for those users. See %s for full list (first example: user_login=`%s`, live_user_id=%d, local_user_id=%d).', Logger::instance()->get_log_file_path(), $user_row['user_login'], $user_row['ID'], $local_user_id ) );
 					$cli_warned_user_merge = true;
 				}
 
