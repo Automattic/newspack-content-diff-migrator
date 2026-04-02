@@ -289,6 +289,157 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$this->assertArrayHasKey( 'post_modified', $first );
 	}
 
+	public function test_get_posts_rows_for_content_diff_with_limit_should_return_limited_results(): void {
+		global $wpdb;
+
+		// Create 5 posts.
+		for ( $i = 0; $i < 5; $i++ ) {
+			self::factory()->post->create(
+				[
+					'post_type'   => 'post',
+					'post_status' => 'publish',
+				]
+			);
+		}
+
+		$result = $this->logic->get_posts_rows_for_content_diff(
+			$wpdb->posts,
+			[ 'post' ],
+			[ 'publish' ],
+			2 // Limit to 2.
+		);
+
+		$this->assertCount( 2, $result );
+	}
+
+	public function test_get_posts_rows_for_content_diff_with_offset_should_skip_rows(): void {
+		global $wpdb;
+
+		// Create 5 posts with predictable titles.
+		$post_ids = [];
+		for ( $i = 1; $i <= 5; $i++ ) {
+			$post_ids[] = self::factory()->post->create(
+				[
+					'post_type'   => 'post',
+					'post_status' => 'publish',
+					'post_title'  => "Post {$i}",
+				]
+			);
+		}
+		sort( $post_ids ); // IDs in ascending order.
+
+		// Get posts with offset 2, limit 2.
+		$result = $this->logic->get_posts_rows_for_content_diff(
+			$wpdb->posts,
+			[ 'post' ],
+			[ 'publish' ],
+			2,
+			2
+		);
+
+		$this->assertCount( 2, $result );
+		// Results should be ordered by ID ASC, so offset 2 should skip first 2 IDs.
+		$result_ids = array_column( $result, 'ID' );
+		$this->assertContains( (string) $post_ids[2], $result_ids );
+		$this->assertContains( (string) $post_ids[3], $result_ids );
+	}
+
+	public function test_get_posts_rows_for_content_diff_batching_should_cover_all_rows(): void {
+		global $wpdb;
+
+		// Create 5 posts.
+		$created_ids = [];
+		for ( $i = 0; $i < 5; $i++ ) {
+			$created_ids[] = self::factory()->post->create(
+				[
+					'post_type'   => 'post',
+					'post_status' => 'publish',
+				]
+			);
+		}
+
+		// Fetch in batches of 2.
+		$all_results = [];
+		$batch_size  = 2;
+		$offset      = 0;
+		do {
+			$batch       = $this->logic->get_posts_rows_for_content_diff(
+				$wpdb->posts,
+				[ 'post' ],
+				[ 'publish' ],
+				$batch_size,
+				$offset
+			);
+			$all_results = array_merge( $all_results, $batch );
+			$batch_count = count( $batch );
+			$offset     += $batch_size;
+		} while ( $batch_count === $batch_size );
+
+		// Should have fetched all 5 posts.
+		$fetched_ids = array_map( 'intval', array_column( $all_results, 'ID' ) );
+		foreach ( $created_ids as $id ) {
+			$this->assertContains( $id, $fetched_ids );
+		}
+	}
+
+	/**
+	 * =========================================================================
+	 * count_posts_for_content_diff Tests
+	 * =========================================================================
+	 */
+	public function test_count_posts_for_content_diff_should_return_correct_count(): void {
+		global $wpdb;
+
+		// Create 3 posts.
+		for ( $i = 0; $i < 3; $i++ ) {
+			self::factory()->post->create(
+				[
+					'post_type'   => 'post',
+					'post_status' => 'publish',
+				]
+			);
+		}
+
+		$count = $this->logic->count_posts_for_content_diff(
+			$wpdb->posts,
+			[ 'post' ],
+			[ 'publish' ]
+		);
+
+		$this->assertGreaterThanOrEqual( 3, $count );
+	}
+
+	public function test_count_posts_for_content_diff_should_return_zero_for_no_matches(): void {
+		global $wpdb;
+
+		$count = $this->logic->count_posts_for_content_diff(
+			$wpdb->posts,
+			[ 'nonexistent_type' ],
+			[ 'publish' ]
+		);
+
+		$this->assertSame( 0, $count );
+	}
+
+	public function test_count_posts_for_content_diff_should_match_get_posts_count(): void {
+		global $wpdb;
+
+		// Create some posts.
+		for ( $i = 0; $i < 4; $i++ ) {
+			self::factory()->post->create(
+				[
+					'post_type'   => 'post',
+					'post_status' => 'publish',
+				]
+			);
+		}
+
+		$count  = $this->logic->count_posts_for_content_diff( $wpdb->posts, [ 'post' ], [ 'publish' ] );
+		$result = $this->logic->get_posts_rows_for_content_diff( $wpdb->posts, [ 'post' ], [ 'publish' ] );
+
+		$this->assertSame( $count, count( $result ) );
+	}
+
 	/**
 	 * =========================================================================
 	 * get_imported_post_id_mapping_from_db Tests (Attachments)
@@ -1007,6 +1158,127 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 		$this->assertSame( 10, $result[0]['local_id'] );
 		$this->assertSame( 1, $result[0]['live_id'] );
+	}
+
+	public function test_match_local_to_live_posts_with_prebuilt_lookup_should_reuse_lookup(): void {
+		$live_posts = [
+			[
+				'ID'          => '1',
+				'post_name'   => 'post-a',
+				'post_title'  => 'Post A',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-01',
+			],
+			[
+				'ID'          => '2',
+				'post_name'   => 'post-b',
+				'post_title'  => 'Post B',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-02',
+			],
+		];
+
+		// Build lookup from live posts (first call with empty local posts).
+		$lookup = null;
+		$result = $this->logic->match_local_to_live_posts( [], $live_posts, $lookup );
+
+		// Verify lookup was built.
+		$this->assertIsArray( $lookup );
+		$this->assertNotEmpty( $lookup );
+		$this->assertEmpty( $result, 'No matches expected with empty local posts.' );
+
+		// Now use the pre-built lookup with local posts (empty live posts array).
+		$local_posts_batch1 = [
+			[
+				'ID'          => '10',
+				'post_name'   => 'post-a',
+				'post_title'  => 'Post A',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-01',
+			],
+		];
+
+		$result1 = $this->logic->match_local_to_live_posts( $local_posts_batch1, [], $lookup );
+
+		$this->assertCount( 1, $result1 );
+		$this->assertSame( 10, $result1[0]['local_id'] );
+		$this->assertSame( 1, $result1[0]['live_id'] );
+
+		// Second batch reusing the same lookup.
+		$local_posts_batch2 = [
+			[
+				'ID'          => '20',
+				'post_name'   => 'post-b',
+				'post_title'  => 'Post B',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-02',
+			],
+		];
+
+		$result2 = $this->logic->match_local_to_live_posts( $local_posts_batch2, [], $lookup );
+
+		$this->assertCount( 1, $result2 );
+		$this->assertSame( 20, $result2[0]['local_id'] );
+		$this->assertSame( 2, $result2[0]['live_id'] );
+	}
+
+	public function test_match_local_to_live_posts_with_prebuilt_lookup_should_not_rebuild(): void {
+		$live_posts = [
+			[
+				'ID'          => '1',
+				'post_name'   => 'original',
+				'post_title'  => 'Original',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-01',
+			],
+		];
+
+		// Build lookup.
+		$lookup = null;
+		$this->logic->match_local_to_live_posts( [], $live_posts, $lookup );
+		$lookup_count_after_build = count( $lookup );
+
+		// Call again with different live posts — lookup should NOT be rebuilt.
+		$different_live_posts = [
+			[
+				'ID'          => '999',
+				'post_name'   => 'different',
+				'post_title'  => 'Different',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-01',
+			],
+		];
+
+		$this->logic->match_local_to_live_posts( [], $different_live_posts, $lookup );
+
+		// Lookup should still have original count (not rebuilt with different_live_posts).
+		$this->assertCount( $lookup_count_after_build, $lookup );
+	}
+
+	public function test_match_local_to_live_posts_with_empty_prebuilt_lookup_finds_no_matches(): void {
+		// Pre-built empty lookup (simulating no live posts).
+		$lookup = [];
+
+		$local_posts = [
+			[
+				'ID'          => '10',
+				'post_name'   => 'some-post',
+				'post_title'  => 'Some Post',
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_date'   => '2025-01-01',
+			],
+		];
+
+		$result = $this->logic->match_local_to_live_posts( $local_posts, [], $lookup );
+
+		$this->assertEmpty( $result );
 	}
 
 	/**

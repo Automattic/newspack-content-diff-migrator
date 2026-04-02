@@ -12,6 +12,7 @@ use Newspack\ContentDiffMigrator\Utils\DB;
 use Newspack\ContentDiffMigrator\Utils\Logger;
 use Newspack\ContentDiffMigrator\Utils\Progress;
 use Newspack\ContentDiffMigrator\Utils\SLAHelper;
+use Newspack\MigrationTools\Hooks\MemoryCleanupHook;
 use Psr\Log\LogLevel;
 use RuntimeException;
 use WP_User;
@@ -171,13 +172,15 @@ class ContentDiffLogic {
 	 * Gets records from the $posts_table, $post_types, returns the minimal set of columns needed to determine whether a post
 	 * doesn't exist in DB and needs to be inserted, or has been modified and needs to be updated.
 	 *
-	 * @param string $posts_table   Name of posts table.
-	 * @param array  $post_types    Post types to fetch.
-	 * @param array  $post_statuses Post statuses to fetch.
+	 * @param string   $posts_table   Name of posts table.
+	 * @param array    $post_types    Post types to fetch.
+	 * @param array    $post_statuses Post statuses to fetch.
+	 * @param int|null $limit         Optional limit for batching. If null, returns all results.
+	 * @param int|null $offset        Optional offset for batching. Only used when $limit is set. Defaults to 0.
 	 *
 	 * @return array Associative array with columns specified in used query.
 	 */
-	public function get_posts_rows_for_content_diff( string $posts_table, array $post_types, array $post_statuses ): array {
+	public function get_posts_rows_for_content_diff( string $posts_table, array $post_types, array $post_statuses, ?int $limit = null, ?int $offset = null ): array {
 		// Validate table name.
 		DB::validate_table_name( $posts_table );
 		
@@ -187,13 +190,16 @@ class ContentDiffLogic {
 		$post_statuses_placeholders     = array_fill( 0, count( $post_statuses ), '%s' );
 		$post_statuses_placeholders_csv = implode( ',', $post_statuses_placeholders );
 
+		// Build limit clause for batching, which also requires ORDER BY for consistent results.
+		$limit_clause = null !== $limit ? ' ORDER BY ID ASC LIMIT ' . ( $offset ?? 0 ) . ", {$limit}" : '';
+
 		// $wpdb->prepare can't handle table names, so we'll additionally str_replace {TABLE}.
-		// phpcs:disable
+		// phpcs:disable -- table name was properly validated WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
 		$sql_replace_table = $this->wpdb->prepare(
 			"SELECT ID, post_author, post_name, post_title, post_status, post_type, post_date, post_modified, comment_count
 				FROM {TABLE}
 				WHERE post_type IN ( $post_types_placeholders_csv )
-				AND post_status IN ( $post_statuses_placeholders_csv );",
+				AND post_status IN ( $post_statuses_placeholders_csv ){$limit_clause};",
 			array_merge( $post_types, $post_statuses )
 		);
 		$results = $this->wpdb->get_results( str_replace( '{TABLE}', $posts_table, $sql_replace_table ), ARRAY_A );
@@ -203,6 +209,36 @@ class ContentDiffLogic {
 		$results = is_null( $results ) ? [] : $results;
 
 		return $results;
+	}
+
+	/**
+	 * Counts posts matching the given criteria. Used with batched get_posts_rows_for_content_diff().
+	 *
+	 * @param string $posts_table   Name of posts table.
+	 * @param array  $post_types    Post types to count.
+	 * @param array  $post_statuses Post statuses to count.
+	 *
+	 * @return int Count of matching posts.
+	 */
+	public function count_posts_for_content_diff( string $posts_table, array $post_types, array $post_statuses ): int {
+		DB::validate_table_name( $posts_table );
+
+		$post_types_placeholders        = array_fill( 0, count( $post_types ), '%s' );
+		$post_types_placeholders_csv    = implode( ',', $post_types_placeholders );
+		$post_statuses_placeholders     = array_fill( 0, count( $post_statuses ), '%s' );
+		$post_statuses_placeholders_csv = implode( ',', $post_statuses_placeholders );
+
+		// phpcs:disable -- table name was properly validated WordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+		$sql_replace_table = $this->wpdb->prepare(
+			"SELECT COUNT(*) FROM {TABLE}
+				WHERE post_type IN ( $post_types_placeholders_csv )
+				AND post_status IN ( $post_statuses_placeholders_csv );",
+			array_merge( $post_types, $post_statuses )
+		);
+		$count = $this->wpdb->get_var( str_replace( '{TABLE}', $posts_table, $sql_replace_table ) );
+		// phpcs:enable
+
+		return (int) $count;
 	}
 
 	/**
@@ -708,8 +744,6 @@ class ContentDiffLogic {
 	 * Finds unique records in live posts table which don't exist in local posts table.
 	 * Uses old_id meta mapping for efficient O(1) lookup per post.
 	 *
-	 * Outputs progress by 10% increments to the CLI.
-	 *
 	 * @param array $results_live_posts Rows from live posts table.
 	 * @param array $local_old_id_map   Map of live_id => local_id from old_id postmeta.
 	 *
@@ -718,23 +752,12 @@ class ContentDiffLogic {
 	public function filter_new_live_ids( array $results_live_posts, array $local_old_id_map ): array {
 		$ids = [];
 
-		$progress = new Progress( count( $results_live_posts ), 20 );
-		foreach ( $results_live_posts as $key_live_post => $live_post ) {
-
-			// Output progress by 10%.
-			$progress_milestone = $progress->tick( $key_live_post + 1 );
-			if ( $progress_milestone ) {
-				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
-			}
-
+		foreach ( $results_live_posts as $live_post ) {
 			// O(1) lookup: if live ID is not in the old_id mapping, it's a new post.
 			$live_id = (int) $live_post['ID'];
 			if ( ! isset( $local_old_id_map[ $live_id ] ) ) {
 				$ids[] = $live_id;
 			}
-		}
-		if ( $progress->finish() ) {
-			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
 
 		return $ids;
@@ -806,6 +829,9 @@ class ContentDiffLogic {
 			if ( $progress_milestone ) {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
+
+			// Periodic memory cleanup to prevent OOM from accumulated DB queries.
+			MemoryCleanupHook::cleanup( 0, $key_live_post, 1000 );
 
 			$live_id = (int) $live_post['ID'];
 
@@ -1264,6 +1290,8 @@ class ContentDiffLogic {
 				// Append modified user (avatar-only update) to run-state for reports.
 				$this->data_importer->append_user( (int) $live_id, (int) $local_id, 'modified' );
 			}
+
+			MemoryCleanupHook::cleanup( 0, $checked, 1000 );
 		}
 
 		return [
@@ -1364,6 +1392,8 @@ class ContentDiffLogic {
 				// Append modified attachment to run-state for reports.
 				$this->data_importer->append_post( (int) $live_id, (int) $local_id, 'attachment', 'modified' );
 			}
+
+			MemoryCleanupHook::cleanup( 0, $checked, 1000 );
 		}
 
 		return [
@@ -1474,6 +1504,8 @@ class ContentDiffLogic {
 				// Append modified term to run-state for reports.
 				$this->data_importer->append_term( (int) $live_id, (int) $local_id, $local_term->taxonomy, 'modified' );
 			}
+
+			MemoryCleanupHook::cleanup( 0, $checked, 1000 );
 		}
 
 		return [
@@ -1486,8 +1518,14 @@ class ContentDiffLogic {
 	 * Matches local posts to live posts using composite key hash mapping.
 	 * Similar pattern to filter_new_live_ids but returns local->live ID pairs.
 	 *
-	 * @param array $results_local_posts Rows from local posts table.
-	 * @param array $results_live_posts  Rows from live posts table.
+	 * Supports batched processing by building the $live_posts_lookup once from live posts,
+	 * then reusing it across multiple batches of local posts.
+	 *
+	 * @param array      $results_local_posts Rows from local posts table.
+	 * @param array      $results_live_posts  Rows from live posts table.
+	 * @param array|null $live_posts_lookup   Optional pre-built lookup hash (composite_key => live_id).
+	 *                                        Pass by reference to build once and reuse across batches.
+	 *                                        If null, builds from $results_live_posts.
 	 *
 	 * @return array {
 	 *     Array of matched post pairs with local_id and live_id.
@@ -1498,24 +1536,24 @@ class ContentDiffLogic {
 	 *     }
 	 * }
 	 */
-	public function match_local_to_live_posts( array $results_local_posts, array $results_live_posts ): array {
+	public function match_local_to_live_posts( array $results_local_posts, array $results_live_posts, ?array &$live_posts_lookup = null ): array {
 		$matches = [];
 
-		// Get posts composite hashes, and compare them to find matches.
-		
-		// Get hashes for live posts.
-		$live_posts_lookup = [];
-		foreach ( $results_live_posts as $live_post ) {
-			$lookup_key = $this->build_post_composite_key_for_post( $live_post );
-			
-			// Store composite key with live ID.
-			if ( ! isset( $live_posts_lookup[ $lookup_key ] ) ) {
-				$live_posts_lookup[ $lookup_key ] = (int) $live_post['ID'];
+		// Build lookup from live posts only if not already provided.
+		if ( null === $live_posts_lookup ) {
+			$live_posts_lookup = [];
+			foreach ( $results_live_posts as $live_post ) {
+				$lookup_key = $this->build_post_composite_key_for_post( $live_post );
+				
+				// Store composite key with live ID.
+				if ( ! isset( $live_posts_lookup[ $lookup_key ] ) ) {
+					$live_posts_lookup[ $lookup_key ] = (int) $live_post['ID'];
+				}
 			}
 		}
 
 		// Get hashes for local posts, and compare them to find matches.
-		foreach ( $results_local_posts as $key_local_post => $local_post ) {
+		foreach ( $results_local_posts as $local_post ) {
 			$lookup_key = $this->build_post_composite_key_for_post( $local_post );
 
 			// Found a match.

@@ -39,6 +39,13 @@ class ContentDiffMigrator {
 	const DEFAULT_TAXONOMIES = [ 'category', 'post_tag', 'author', 'brand' ];
 
 	/**
+	 * Number of post objects processed in a batch which is memory-safe for large datasets.
+	 *
+	 * @var int
+	 */
+	const MEMORY_SAFE_BATCH_SIZE = 20000;
+
+	/**
 	 * Content Diff logic class.
 	 *
 	 * @var ContentDiffLogic Logic.
@@ -564,16 +571,31 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found (see %s).', count( $modified_live_ids ), rtrim( $data_dir, '/' ) . '/run-state/' . RunState::FILE_MODIFIED_IDS ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Query live DB for attachments.
+			// Query live DB for attachments in batches.
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Searching live DB for attachments ...' );
-			$results_live_attachments = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-
-			// Check new attachments.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Fetched %s total from live site, checking for new ones...', count( $results_live_attachments ) ) );
-			$new_live_attachment_ids = $this->logic->filter_new_live_ids( $results_live_attachments, $attachment_old_id_map );
-			$new_live_ids            = array_merge( $new_live_ids, $new_live_attachment_ids );
+			$batch_size              = self::MEMORY_SAFE_BATCH_SIZE;
+			$total_live_attachments  = $this->logic->count_posts_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ] );
+			$new_live_attachment_ids = [];
+			$total_batches           = (int) ceil( $total_live_attachments / $batch_size );
+			$current_batch           = 0;
+			for ( $offset = 0; $offset < $total_live_attachments; $offset += $batch_size ) {
+				++$current_batch;
+				$live_batch = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], [ 'inherit' ], $batch_size, $offset );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'Batch %d/%d...', $current_batch, $total_batches ) );
+				// More verbose log for action/debug log file.
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Processing live attachments batch: offset=%d, limit=%d, total=%d, fetched=%d', $offset, $batch_size, $total_live_attachments, count( $live_batch ) )
+				);
+				$new_ids_batch           = $this->logic->filter_new_live_ids( $live_batch, $attachment_old_id_map );
+				$new_live_attachment_ids = array_merge( $new_live_attachment_ids, $new_ids_batch );
+				unset( $live_batch, $new_ids_batch );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
+			}
+			$new_live_ids = array_merge( $new_live_ids, $new_live_attachment_ids );
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d new attachment IDs found (see %s).', count( $new_live_attachment_ids ), rtrim( $data_dir, '/' ) . '/run-state/' . RunState::FILE_NEW_IDS ) );
+			unset( $new_live_attachment_ids );
 
 		} catch ( \Exception $e ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() );
@@ -738,6 +760,11 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Other Taxonomies found in live DB which will not be migrated: %s', implode( ', ', $unmigrated_taxonomies ) ) );
 		}
 
+		// Register taxonomies (before deletion and reimport of modified, so wp_delete_post() properly cleans up term relationships).
+		foreach ( $taxonomies_to_migrate as $taxonomy_name ) {
+			$this->data_importer->ensure_taxonomy_registered( $taxonomy_name );
+		}
+
 		// Migrate all WP_Users (for WooComm data).
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Migrating all WP_Users...' );
 		$inserted_wp_users_updates = $this->logic->migrate_all_users( $live_table_prefix, $source_hostname );
@@ -764,9 +791,13 @@ class ContentDiffMigrator {
 			// Get modified IDs which were already deleted, and skip them.
 			$already_deleted_modified_ids_map = $this->run_state->get_deleted_modified_ids_map();
 			$local_ids_to_delete              = array_values( array_diff( array_values( $modified_ids_map ), array_values( $already_deleted_modified_ids_map ) ) );
+			$already_deleted_count            = count( $already_deleted_modified_ids_map );
+			if ( $already_deleted_count > 0 ) {
+				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d posts were already deleted, continuing from there...', $already_deleted_count ) );
+			}
 			
 			// Delete modified posts so they can be re-imported.
-			foreach ( $local_ids_to_delete as $id ) {
+			foreach ( $local_ids_to_delete as $key_delete => $id ) {
 				$deleted = wp_delete_post( $id, true );
 				if ( false === $deleted || null === $deleted ) {
 					$context = [
@@ -777,6 +808,7 @@ class ContentDiffMigrator {
 					// Don't continue and save to run-state if deletion failed.
 					continue;
 				}
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_delete, 300 );
 
 				// Save run-state info that this modified ID was deleted.
 				$this->run_state->append_deleted_modified_id(
@@ -1424,6 +1456,7 @@ class ContentDiffMigrator {
 					$existing_local_id
 				);
 				$imported_posts_data[] = $result;
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_live_id, 1000 );
 
 				// Append post to run-state for resume capability and reports.
 				$status = null !== $existing_local_id ? 'modified' : 'imported';
@@ -1767,96 +1800,147 @@ class ContentDiffMigrator {
 		$terms_attributed_count       = 0;
 
 		/**
-		 * Match and attribute non-attachments post_types.
+		 * Match and attribute non-attachments post_types in batches, for memory performance with large datasets.
 		 */
 		$post_types_non_attachments = array_filter( $post_types, fn( $post_type ) => 'attachment' !== $post_type );
 		if ( ! empty( $post_types_non_attachments ) ) {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Attributing %s types...', implode( ',', $post_types_non_attachments ) ) );
-			$results_local_posts = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
-			$results_live_posts  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-			$matched_posts = $this->logic->match_local_to_live_posts( $results_local_posts, $results_live_posts );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Fetch post types.
-			$post_types_map = [];
-			if ( ! empty( $matched_posts ) ) {
-				$local_ids        = array_column( $matched_posts, 'local_id' );
-				$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
-				// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
-				$post_types_results = $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_type FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $local_ids ), ARRAY_A );
-				// phpcs:enable
-				$post_types_map = array_column( $post_types_results, 'post_type', 'ID' );
-			}
+			// Build live lookup once from all live posts.
+			$results_live_posts = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', $post_types_non_attachments, $statuses_regular );
+			$live_posts_lookup  = null;
+			// Populate $live_posts_lookup (passed by reference) with the live posts.
+			$this->logic->match_local_to_live_posts( [], $results_live_posts, $live_posts_lookup );
+			unset( $results_live_posts );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 			// Get posts that are truly unattributed (no meta from ANY source).
 			$unattributed_posts     = $this->logic->get_unattributed_post_ids( $post_types_non_attachments );
 			$unattributed_posts_map = array_flip( array_column( $unattributed_posts, 'ID' ) );
+			unset( $unattributed_posts );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-			// Do the actual attribution and set the metas.
-			foreach ( $matched_posts as $key_match => $match ) {
-				// Skip if post doesn't exist in DB.
-				if ( ! isset( $post_types_map[ $match['local_id'] ] ) ) {
-					Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $match['local_id'] ) );
-					continue;
-				}
-				// Skip if already attributed to ANY source.
-				if ( ! isset( $unattributed_posts_map[ $match['local_id'] ] ) ) {
-					continue;
-				}
-				// Attribute post.
-				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
+			// Process local posts in batches, reusing the live lookup.
+			$batch_size    = self::MEMORY_SAFE_BATCH_SIZE;
+			$total_local   = $this->logic->count_posts_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular );
+			$total_batches = (int) ceil( $total_local / $batch_size );
+			$current_batch = 0;
+			for ( $offset = 0; $offset < $total_local; $offset += $batch_size ) {
+				++$current_batch;
+				$local_batch   = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', $post_types_non_attachments, $statuses_regular, $batch_size, $offset );
+				$matched_batch = $this->logic->match_local_to_live_posts( $local_batch, [], $live_posts_lookup );
+				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'Batch %d/%d...', $current_batch, $total_batches ) );
+				// More verbose log for action/debug log file.
 				Logger::instance()->log(
 					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
-					sprintf( 'Post attributed to %s', $source_hostname ),
-					[
-						'local_id' => $match['local_id'],
-						'live_id'  => $match['live_id'],
-					] 
+					sprintf( 'Processing posts batch: offset=%d, limit=%d, total=%d, fetched=%d, matched=%d', $offset, $batch_size, $total_local, count( $local_batch ), count( $matched_batch ) )
 				);
-				++$posts_attributed_count;
+				unset( $local_batch );
+
+				// Per-batch existence check: verify matched IDs exist in DB.
+				$existing_ids_map = [];
+				if ( ! empty( $matched_batch ) ) {
+					$local_ids        = array_column( $matched_batch, 'local_id' );
+					$ids_placeholders = implode( ',', array_fill( 0, count( $local_ids ), '%d' ) );
+					// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare.
+					$existing_results = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE ID IN ( {$ids_placeholders} )", $local_ids ) );
+					// phpcs:enable
+					$existing_ids_map = array_flip( array_map( 'intval', $existing_results ) );
+				}
+
+				foreach ( $matched_batch as $key_match => $match ) {
+					// Skip if post doesn't exist in DB.
+					if ( ! isset( $existing_ids_map[ $match['local_id'] ] ) ) {
+						Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, sprintf( 'Post ID %d not found in database, skipping attribution.', $match['local_id'] ) );
+						continue;
+					}
+					// Skip if already attributed to ANY source.
+					if ( ! isset( $unattributed_posts_map[ $match['local_id'] ] ) ) {
+						continue;
+					}
+					// Attribute post.
+					update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+					MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
+					Logger::instance()->log(
+						Logger::OUTPUT_FILE,
+						LogLevel::DEBUG,
+						sprintf( 'Post attributed to %s', $source_hostname ),
+						[
+							'local_id' => $match['local_id'],
+							'live_id'  => $match['live_id'],
+						]
+					);
+					++$posts_attributed_count;
+				}
+
+				unset( $matched_batch, $existing_ids_map );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			}
+			unset( $live_posts_lookup, $unattributed_posts_map );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		}
 
 		/**
-		 * Match and attribute attachments.
+		 * Match and attribute attachments in batches, for memory performance with large datasets.
 		 */
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Attributing attachments...' );
-		$results_local_attachments = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-		$results_live_attachments  = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
-		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
-		$matched_attachments = $this->logic->match_local_to_live_posts( $results_local_attachments, $results_live_attachments );
+
+		// Build live lookup once from all live attachments.
+		$results_live_attachments = $this->logic->get_posts_rows_for_content_diff( $live_table_prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+		$live_attachment_lookup   = null;
+		// Populate $live_attachment_lookup (passed by reference) with the live attachments.
+		$this->logic->match_local_to_live_posts( [], $results_live_attachments, $live_attachment_lookup );
+		unset( $results_live_attachments );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		// Get attachments that are truly unattributed (no meta from ANY source).
 		$unattributed_attachments     = $this->logic->get_unattributed_attachment_ids();
 		$unattributed_attachments_map = array_flip( $unattributed_attachments );
+		unset( $unattributed_attachments );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		// Do the actual attribution and set the metas.
-		foreach ( $matched_attachments as $key_match => $match ) {
-			// Skip if already attributed to ANY source.
-			if ( ! isset( $unattributed_attachments_map[ $match['local_id'] ] ) ) {
-				continue;
-			}
-			// Attribute attachment.
-			update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
-			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
+		// Process local attachments in batches, reusing the live lookup.
+		$batch_size    = self::MEMORY_SAFE_BATCH_SIZE;
+		$total_local   = $this->logic->count_posts_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment );
+		$total_batches = (int) ceil( $total_local / $batch_size );
+		$current_batch = 0;
+		for ( $offset = 0; $offset < $total_local; $offset += $batch_size ) {
+			++$current_batch;
+			$local_batch   = $this->logic->get_posts_rows_for_content_diff( $wpdb->prefix . 'posts', [ 'attachment' ], $statuses_attachment, $batch_size, $offset );
+			$matched_batch = $this->logic->match_local_to_live_posts( $local_batch, [], $live_attachment_lookup );
+			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, sprintf( 'Batch %d/%d...', $current_batch, $total_batches ) );
+			// More verbose log for action/debug log file.
 			Logger::instance()->log(
 				Logger::OUTPUT_FILE,
 				LogLevel::DEBUG,
-				sprintf( 'Attachment attributed to %s', $source_hostname ),
-				[
-					'local_id' => $match['local_id'],
-					'live_id'  => $match['live_id'],
-				] 
+				sprintf( 'Processing attachments batch: offset=%d, limit=%d, total=%d, fetched=%d, matched=%d', $offset, $batch_size, $total_local, count( $local_batch ), count( $matched_batch ) )
 			);
-			++$attachments_attributed_count;
+			unset( $local_batch );
+
+			foreach ( $matched_batch as $key_match => $match ) {
+				// Skip if already attributed to ANY source.
+				if ( ! isset( $unattributed_attachments_map[ $match['local_id'] ] ) ) {
+					continue;
+				}
+				update_post_meta( $match['local_id'], $meta_key, $match['live_id'] );
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_match, 1000 );
+				Logger::instance()->log(
+					Logger::OUTPUT_FILE,
+					LogLevel::DEBUG,
+					sprintf( 'Attachment attributed to %s', $source_hostname ),
+					[
+						'local_id' => $match['local_id'],
+						'live_id'  => $match['live_id'],
+					]
+				);
+				++$attachments_attributed_count;
+			}
+
+			unset( $matched_batch );
+			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 		}
+		unset( $live_attachment_lookup, $unattributed_attachments_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 		/**
