@@ -1290,6 +1290,8 @@ class ContentDiffLogic {
 				// Append modified user (avatar-only update) to run-state for reports.
 				$this->data_importer->append_user( (int) $live_id, (int) $local_id, 'modified' );
 			}
+
+			MemoryCleanupHook::cleanup( 0, $checked, 1000 );
 		}
 
 		return [
@@ -1390,6 +1392,8 @@ class ContentDiffLogic {
 				// Append modified attachment to run-state for reports.
 				$this->data_importer->append_post( (int) $live_id, (int) $local_id, 'attachment', 'modified' );
 			}
+
+			MemoryCleanupHook::cleanup( 0, $checked, 1000 );
 		}
 
 		return [
@@ -1500,6 +1504,8 @@ class ContentDiffLogic {
 				// Append modified term to run-state for reports.
 				$this->data_importer->append_term( (int) $live_id, (int) $local_id, $local_term->taxonomy, 'modified' );
 			}
+
+			MemoryCleanupHook::cleanup( 0, $checked, 1000 );
 		}
 
 		return [
