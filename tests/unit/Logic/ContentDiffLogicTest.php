@@ -370,9 +370,9 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 				$batch_size,
 				$offset
 			);
-			$all_results  = array_merge( $all_results, $batch );
-			$batch_count  = count( $batch );
-			$offset      += $batch_size;
+			$all_results = array_merge( $all_results, $batch );
+			$batch_count = count( $batch );
+			$offset     += $batch_size;
 		} while ( $batch_count === $batch_size );
 
 		// Should have fetched all 5 posts.
