@@ -1456,6 +1456,7 @@ class ContentDiffMigrator {
 					$existing_local_id
 				);
 				$imported_posts_data[] = $result;
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_live_id, 1000 );
 
 				// Append post to run-state for resume capability and reports.
 				$status = null !== $existing_local_id ? 'modified' : 'imported';
