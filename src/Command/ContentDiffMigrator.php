@@ -43,7 +43,7 @@ class ContentDiffMigrator {
 	 *
 	 * @var int
 	 */
-	const MEMORY_SAFE_BATCH_SIZE = 20000;
+	const MEMORY_SAFE_BATCH_SIZE = 10000;
 
 	/**
 	 * Content Diff logic class.
