@@ -480,13 +480,12 @@ class ContentDiffMigrator {
 			$remaining = $this->check_unattributed_content( $post_types );
 			if ( $remaining['count'] > 0 ) {
 				Logger::instance()->log(
-					Logger::OUTPUT_BOTH,
+					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
 					sprintf(
-						'There are %d total objects remaining on local without any `%s*` metas. See %s for full IDs. If this is new local content from Newspackification, it is perfectly safe to continue. Otherwise see README and the `attribute-ids` command to set the "old ID and source hostname" metas if this content belongs to the same source hostname (e.g. was migrated by some other migration tool).',
+						'There are %d total objects remaining on local without any `%s*` metas.',
 						$remaining['count'],
-						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
-						$remaining['file_path']
+						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX
 					)
 				);
 			}
