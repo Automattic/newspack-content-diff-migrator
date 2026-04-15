@@ -795,31 +795,76 @@ class ContentDiffMigrator {
 				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d posts were already deleted, continuing from there...', $already_deleted_count ) );
 			}
 			
-			// Delete modified posts so they can be re-imported.
-			foreach ( $local_ids_to_delete as $key_delete => $id ) {
-				$deleted = wp_delete_post( $id, true );
-				if ( false === $deleted || null === $deleted ) {
-					$context = [
-						'local_id' => $id,
-						'live_id'  => array_search( $id, $modified_ids_map ),
-					];
-					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to delete modified post local ID %d, this post will not be updated/reimported.', $id ), $context );
-					// Don't continue and save to run-state if deletion failed.
-					continue;
-				}
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_delete, 300 );
+			// Batch delete modified posts for speed, so they can be re-imported.
+			$batch_size        = 500;
+			$offset            = 0;
+			$total_to_delete   = count( $local_ids_to_delete );
+			$failed_delete_ids = [];
+			while ( $offset < $total_to_delete ) {
+				$batch        = array_slice( $local_ids_to_delete, $offset, $batch_size );
+				$placeholders = implode( ',', array_fill( 0, count( $batch ), '%d' ) );
 
-				// Save run-state info that this modified ID was deleted.
-				$this->run_state->append_deleted_modified_id(
-					[
-						'live_id'  => array_search( $id, $modified_ids_map ),
-						'local_id' => $id,
-					] 
-				);
+				// Uses single-table DELETE IGNORE to ensure individual row failures don't prevent other rows from being deleted.
+
+				// Delete revisions' metas and term_relationships (subquery finds revision IDs), then revisions.
+				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->postmeta} WHERE post_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision')", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->term_relationships} WHERE object_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision')", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision'", $batch ) );
+				// phpcs:enable
+				
+				// Delete commentmeta (subquery finds comment IDs), comments.
+				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->commentmeta} WHERE comment_id IN (SELECT comment_ID FROM {$wpdb->comments} WHERE comment_post_ID IN ($placeholders))", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->comments} WHERE comment_post_ID IN ($placeholders)", $batch ) );
+				// phpcs:enable
+
+				// Delete postmeta, term_relationships, posts.
+				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->postmeta} WHERE post_id IN ($placeholders)", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->term_relationships} WHERE object_id IN ($placeholders)", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->posts} WHERE ID IN ($placeholders)", $batch ) );
+				// phpcs:enable
+
+				// Check if some IDs failed to be deleted and track for exclusion from reimport.
+				$still_exist = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE ID IN ($placeholders)", $batch ) ); // phpcs:ignore -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				foreach ( $still_exist as $failed_id ) {
+					$failed_delete_ids[] = (int) $failed_id;
+					Logger::instance()->log_brief_and_verbose(
+						LogLevel::ERROR,
+						sprintf( 'Failed to delete modified post local ID %d, this post will not be updated/reimported.', $failed_id ),
+						[
+							'local_id' => $failed_id,
+							'live_id'  => array_search( $failed_id, $modified_ids_map ),
+						]
+					);
+				}
+
+				// Save run-state for successfully deleted IDs.
+				foreach ( array_diff( $batch, $still_exist ) as $deleted_id ) {
+					$this->run_state->append_deleted_modified_id(
+						[
+							'live_id'  => array_search( $deleted_id, $modified_ids_map ),
+							'local_id' => $deleted_id,
+						]
+					);
+				}
+				
+				// Update offset for next batch.
+				$offset += $batch_size;
+
+				// One cache flush per batch.
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			}
 
-			// Merge modified posts IDs with $all_live_posts_ids for reimport.
-			$new_live_ids = array_merge( $new_live_ids, array_keys( $modified_ids_map ) );
+			// Merge only successfully deleted modified posts for reimport (exclude failed).
+			$live_ids_to_reimport = [];
+			foreach ( $modified_ids_map as $live_id => $local_id ) {
+				if ( ! in_array( $local_id, $failed_delete_ids, true ) ) {
+					$live_ids_to_reimport[] = $live_id;
+				}
+			}
+			$new_live_ids = array_merge( $new_live_ids, $live_ids_to_reimport );
 		}
 
 		// If no new/modified posts to migrate, return early.
