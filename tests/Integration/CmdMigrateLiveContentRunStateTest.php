@@ -535,12 +535,13 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 	// =========================================================================
 
 	/**
-	 * Tests that when wp_delete_post fails for a modified post, the post is:
+	 * Tests that when deletion of a modified post fails, the post is:
 	 * - Logged as error
 	 * - NOT saved to run-state as deleted
 	 * - Skipped during reimport (not duplicated)
 	 *
-	 * Uses the pre_delete_post filter to simulate deletion failure.
+	 * Simulates deletion failure by intercepting DELETE queries via the 'query' filter
+	 * and modifying them to exclude the target post ID.
 	 *
 	 * @group run-state
 	 * @group deletion-failure
@@ -587,20 +588,28 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 		$modified_ids = $this->run_state->get_modified_ids_map();
 		$this->assertArrayHasKey( 40001, $modified_ids, 'Post should be detected as modified.' );
 
-		// Add a filter to block deletion of this specific post.
-		$block_deletion_filter = function ( $delete, $post ) use ( $original_local_id ) {
-			if ( (int) $post->ID === (int) $original_local_id ) {
-				return false; // Block deletion - returning non-null short-circuits wp_delete_post.
+		// Block deletion by modifying DELETE queries to exclude the target post ID.
+		$block_deletion_filter = function ( $query ) use ( $original_local_id ) {
+			// Only intercept DELETE queries targeting the posts table with our post ID.
+			if (
+				preg_match( '/DELETE IGNORE FROM.*posts.*WHERE ID IN/i', $query )
+				&& strpos( $query, (string) $original_local_id ) !== false
+			) {
+				// Remove target ID from the IN clause to simulate failed deletion.
+				$query = preg_replace( '/\b' . $original_local_id . '\b,?\s*/', '', $query );
+				// Clean up trailing comma if the ID was last in the list.
+				$query = preg_replace( '/,\s*\)/', ')', $query );
+				// If IN clause is now empty, replace with a no-op condition.
+				$query = preg_replace( '/WHERE ID IN\s*\(\s*\)/i', 'WHERE 1=0', $query );
 			}
-			return $delete;
+			return $query;
 		};
-		add_filter( 'pre_delete_post', $block_deletion_filter, 10, 3 );
+		add_filter( 'query', $block_deletion_filter );
 
-		// Run migrate - deletion should fail.
+		// Run migrate - deletion should fail for our target post.
 		$this->run_migrate_command();
 
-		// Remove the filter.
-		remove_filter( 'pre_delete_post', $block_deletion_filter, 10 );
+		remove_filter( 'query', $block_deletion_filter );
 
 		// Verify post still exists (deletion failed).
 		$post_after_migrate = get_post( $original_local_id );
@@ -616,6 +625,9 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 
 	/**
 	 * Tests that on resume after deletion failure, the system retries deletion.
+	 *
+	 * Simulates deletion failure by intercepting DELETE queries via the 'query' filter
+	 * and modifying them to exclude the target post ID on the first attempt.
 	 *
 	 * @group run-state
 	 * @group deletion-failure
@@ -658,21 +670,31 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 
 		$this->run_search_command();
 
-		// First migrate attempt - block deletion.
-		$deletion_attempt_count = 0;
-		$block_first_deletion   = function ( $delete, $post ) use ( $original_local_id, &$deletion_attempt_count ) {
-			if ( (int) $post->ID === (int) $original_local_id ) {
-				$deletion_attempt_count++;
-				if ( 1 === $deletion_attempt_count ) {
-					return false; // Block first attempt - returning non-null short-circuits wp_delete_post.
-				}
+		// First migrate attempt - block deletion by modifying DELETE queries to exclude the target post ID.
+		$migrate_attempt_count = 0;
+		$block_deletion_filter = function ( $query ) use ( $original_local_id, &$migrate_attempt_count ) {
+			// Only intercept DELETE queries targeting the posts table with our post ID.
+			if (
+				0 === $migrate_attempt_count
+				&& preg_match( '/DELETE IGNORE FROM.*posts.*WHERE ID IN/i', $query )
+				&& strpos( $query, (string) $original_local_id ) !== false
+			) {
+				// Remove target ID from the IN clause to simulate failed deletion.
+				$query = preg_replace( '/\b' . $original_local_id . '\b,?\s*/', '', $query );
+				// Clean up trailing comma if the ID was last in the list.
+				$query = preg_replace( '/,\s*\)/', ')', $query );
+				// If IN clause is now empty, replace with a no-op condition.
+				$query = preg_replace( '/WHERE ID IN\s*\(\s*\)/i', 'WHERE 1=0', $query );
 			}
-			return $delete;
+			return $query;
 		};
-		add_filter( 'pre_delete_post', $block_first_deletion, 10, 3 );
+		add_filter( 'query', $block_deletion_filter );
 
-		// First migrate - deletion fails.
+		// First migrate - deletion fails for our target post.
 		$this->run_migrate_command();
+		$migrate_attempt_count++;
+
+		remove_filter( 'query', $block_deletion_filter );
 
 		// Verify post still exists.
 		$post_after_first = get_post( $original_local_id );
@@ -680,8 +702,6 @@ class CmdMigrateLiveContentRunStateTest extends IntegrationTestCase {
 
 		// Second migrate (resume) - deletion should succeed now.
 		$this->run_migrate_command();
-
-		remove_filter( 'pre_delete_post', $block_first_deletion, 10 );
 
 		// After second attempt, the post should be deleted and reimported.
 		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
