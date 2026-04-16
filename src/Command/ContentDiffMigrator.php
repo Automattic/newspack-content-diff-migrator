@@ -483,9 +483,10 @@ class ContentDiffMigrator {
 					Logger::OUTPUT_FILE,
 					LogLevel::DEBUG,
 					sprintf(
-						'There are %d total objects remaining on local without any `%s*` metas.',
+						'There are %d total objects original to staging/local, without any `%s*` metas, see %s for their IDs.',
 						$remaining['count'],
-						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX
+						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
+						$remaining['file_path']
 					)
 				);
 			}
@@ -804,8 +805,7 @@ class ContentDiffMigrator {
 				$batch        = array_slice( $local_ids_to_delete, $offset, $batch_size );
 				$placeholders = implode( ',', array_fill( 0, count( $batch ), '%d' ) );
 
-				// Uses single-table DELETE IGNORE to ensure individual row failures don't prevent other rows from being deleted.
-
+				// Using single table DELETE IGNORE to ensure that individual row failures don't prevent other rows in the batch from being deleted.
 				// Delete revisions' metas and term_relationships (subquery finds revision IDs), then revisions.
 				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
 				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->postmeta} WHERE post_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision')", $batch ) );
@@ -1275,7 +1275,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::DEBUG,
 				sprintf(
-					'There are %d total objects on local without any `%s*` metas. See %s for full IDs.',
+					'There are %d total objects original to staging/local, without any `%s*` metas, see %s for their IDs.',
 					$remaining['count'],
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$remaining['file_path']
