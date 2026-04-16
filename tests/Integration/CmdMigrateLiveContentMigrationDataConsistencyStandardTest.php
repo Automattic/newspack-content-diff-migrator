@@ -1210,6 +1210,39 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 	}
 
 	/**
+	 * Tests that posts are detected as modified when comment_count changes (Check #3).
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_filter_modified_posts_when_comment_count_changed(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4502,
+				'comment_count' => 3,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Change comment_count in live (simulates comments added/removed on live).
+		$wpdb->update( $this->live_table_prefix . 'posts', [ 'comment_count' => 5 ], [ 'ID' => 4502 ] ); // phpcs:ignore
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayHasKey( 4502, $modified_ids, 'Post should be detected as modified when comment_count changes.' );
+	}
+
+	/**
 	 * Tests that posts are detected as modified when post_author changes.
 	 *
 	 * @group migration-data-consistency-standard
@@ -1402,6 +1435,371 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 
 		$modified_ids = $this->run_state->get_modified_ids_map();
 		$this->assertArrayHasKey( 4006, $modified_ids, 'Post should be detected as modified when a term is removed on live.' );
+	}
+
+	/**
+	 * Tests that terms in non-attributed taxonomies don't trigger false positive modified detection.
+	 *
+	 * Scenario: Live post has terms in ef_editorial_meta (Edit Flow operational metadata).
+	 * Since ef_editorial_meta is NOT in DEFAULT_TAXONOMIES, these terms are:
+	 * 1. Not imported during migrate (filtered by $taxonomies_to_migrate)
+	 * 2. Not compared during search (filtered by $taxonomies param in filter_modified_live_ids)
+	 *
+	 * Without the fix in filter_modified_live_ids, Check #6 would compare ALL taxonomies,
+	 * finding ef_editorial_meta terms on live but not on local, causing false positives.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_not_detect_modified_when_taxonomy_not_in_attribution_list(): void {
+		global $wpdb;
+
+		// Register a custom taxonomy that is NOT in DEFAULT_TAXONOMIES.
+		register_taxonomy( 'ef_editorial_meta', 'post' );
+
+		// Create post in live tables.
+		$post = $this->create_post_fixture( [ 'ID' => 4501 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create a category term (IS in DEFAULT_TAXONOMIES) - this will be imported and attributed.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4510, 'name' => 'Attributed Cat', 'slug' => 'attributed-cat', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4510, 'term_id' => 4510, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4501, 'term_taxonomy_id' => 4510 ] ); // phpcs:ignore
+
+		// Create an ef_editorial_meta term (NOT in DEFAULT_TAXONOMIES) - this will NOT be imported.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4511, 'name' => 'In Progress', 'slug' => 'in-progress', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4511, 'term_id' => 4511, 'taxonomy' => 'ef_editorial_meta', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4501, 'term_taxonomy_id' => 4511 ] ); // phpcs:ignore
+
+		// First migration: import the post with its terms.
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was imported.
+		$local_post_id = $this->logic->get_current_post_id_by_old_id( 4501, $this->source_hostname );
+		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
+
+		// Verify the category term was attributed (has oldid meta).
+		$local_cat_term_id = $this->logic->get_current_term_id_by_old_id( 4510, $this->source_hostname );
+		$this->assertNotNull( $local_cat_term_id, 'Category term should be attributed.' );
+
+		// Verify the ef_editorial_meta term was NOT imported (taxonomy not in DEFAULT_TAXONOMIES).
+		$ef_term_on_local = get_term_by( 'slug', 'in-progress', 'ef_editorial_meta' );
+		$this->assertFalse( $ef_term_on_local, 'ef_editorial_meta term should NOT exist on local (not imported).' );
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		// Second migration cycle: run search again.
+		// BUG: Without the fix, Check #6 would find ef_editorial_meta term (4511) on live
+		// but not on local, flagging the post as modified.
+		// FIX: Check #6 now filters to only compare DEFAULT_TAXONOMIES, skipping ef_editorial_meta.
+		$this->run_search_command();
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4501, $modified_ids, 'Post should NOT be detected as modified when only non-DEFAULT_TAXONOMIES terms differ.' );
+	}
+
+	/**
+	 * Tests that only taxonomies in --custom-taxonomies-csv are compared for modifications.
+	 *
+	 * Scenario: Post has terms in both 'category' and 'post_tag'.
+	 * Run with --custom-taxonomies-csv=category (excludes post_tag).
+	 * Changes in post_tag should NOT trigger modified detection.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_detect_modified_only_for_taxonomies_in_custom_taxonomies_csv(): void {
+		global $wpdb;
+
+		// Create post with category and post_tag terms.
+		$post = $this->create_post_fixture( [ 'ID' => 4508 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4520, 'name' => 'Same Cat', 'slug' => 'same-cat', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4520, 'term_id' => 4520, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4508, 'term_taxonomy_id' => 4520 ] ); // phpcs:ignore
+
+		// Create post_tag term.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4521, 'name' => 'Original Tag', 'slug' => 'original-tag', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4521, 'term_id' => 4521, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4508, 'term_taxonomy_id' => 4521 ] ); // phpcs:ignore
+
+		// First migration with only 'category' in custom-taxonomies-csv (excludes post_tag).
+		$this->run_search_command( [ 'custom-taxonomies-csv' => 'category' ] );
+		$this->run_migrate_command( [ 'custom-taxonomies-csv' => 'category' ] );
+
+		// Verify post was imported.
+		$local_post_id = $this->logic->get_current_post_id_by_old_id( 4508, $this->source_hostname );
+		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
+
+		// Verify category term was attributed.
+		$local_cat_term_id = $this->logic->get_current_term_id_by_old_id( 4520, $this->source_hostname );
+		$this->assertNotNull( $local_cat_term_id, 'Category term should be attributed.' );
+
+		// Verify post_tag was NOT imported (not in custom-taxonomies-csv).
+		$tag_on_local = get_term_by( 'slug', 'original-tag', 'post_tag' );
+		$this->assertFalse( $tag_on_local, 'post_tag term should NOT be imported when not in custom-taxonomies-csv.' );
+
+		// Now add a NEW post_tag on live (simulating tag change).
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4522, 'name' => 'New Tag', 'slug' => 'new-tag', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4522, 'term_id' => 4522, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4508, 'term_taxonomy_id' => 4522 ] ); // phpcs:ignore
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		// Run search again with same custom-taxonomies-csv.
+		$this->run_search_command( [ 'custom-taxonomies-csv' => 'category' ] );
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4508, $modified_ids, 'Post should NOT be detected as modified when only excluded taxonomy (post_tag) changes.' );
+	}
+
+	/**
+	 * Tests that locally-added terms (no attribution meta) don't cause false positives.
+	 *
+	 * Scenario: Post is imported with category term. Later, a new category is added locally
+	 * (no attribution meta because it was created locally, not migrated).
+	 * The local-only term should not cause the post to be flagged as modified.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_not_flag_modified_when_local_term_has_no_attribution_meta(): void {
+		global $wpdb;
+
+		// Create post with one category term.
+		$post = $this->create_post_fixture( [ 'ID' => 4509 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create category term on live.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 4530, 'name' => 'Live Category', 'slug' => 'live-category', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 4530, 'term_id' => 4530, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4509, 'term_taxonomy_id' => 4530 ] ); // phpcs:ignore
+
+		// First migration.
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was imported.
+		$local_post_id = $this->logic->get_current_post_id_by_old_id( 4509, $this->source_hostname );
+		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
+
+		// Verify category term was attributed.
+		$local_cat_term_id = $this->logic->get_current_term_id_by_old_id( 4530, $this->source_hostname );
+		$this->assertNotNull( $local_cat_term_id, 'Category term should be attributed.' );
+
+		// Now add a LOCAL-ONLY category to the post (simulating editorial work on staging).
+		$local_only_term    = wp_insert_term( 'Local Only Category', 'category' );
+		$local_only_term_id = $local_only_term['term_id'];
+		wp_set_object_terms( $local_post_id, [ $local_cat_term_id, $local_only_term_id ], 'category' );
+
+		// Verify local-only term has NO attribution meta.
+		$local_only_meta = get_term_meta( $local_only_term_id, $this->get_old_id_meta_key(), true );
+		$this->assertEmpty( $local_only_meta, 'Local-only term should NOT have attribution meta.' );
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		// Run search again.
+		$this->run_search_command();
+
+		// Post should NOT be flagged as modified.
+		// The local-only term doesn't exist on live, but that's expected (local addition).
+		// Only LIVE terms missing on LOCAL should trigger modified (and only for attributed taxonomies).
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4509, $modified_ids, 'Post should NOT be detected as modified when local has additional non-attributed terms.' );
+	}
+
+	/**
+	 * Tests that postmeta changes alone do NOT trigger modified detection.
+	 *
+	 * Per MDCS: postmeta changes are only detected indirectly via post_modified bump.
+	 * If post_modified hasn't changed, postmeta-only changes should not flag the post.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_not_detect_modified_when_only_postmeta_changed(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4503,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Add custom postmeta.
+		$wpdb->insert( $this->live_table_prefix . 'postmeta', [ 'meta_id' => 45031, 'post_id' => 4503, 'meta_key' => 'custom_key', 'meta_value' => 'original_value' ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Change ONLY postmeta in live (without updating post_modified).
+		$wpdb->update( $this->live_table_prefix . 'postmeta', [ 'meta_value' => 'changed_value' ], [ 'post_id' => 4503, 'meta_key' => 'custom_key' ] ); // phpcs:ignore
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4503, $modified_ids, 'Post should NOT be detected as modified when only postmeta changes (without post_modified bump).' );
+	}
+
+	/**
+	 * Tests that comment content changes alone do NOT trigger modified detection.
+	 *
+	 * Per MDCS: comment changes are only detected via comment_count changes.
+	 * If comment_count is the same, comment content/author changes should not flag the post.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_not_detect_modified_when_only_comments_changed(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4504,
+				'comment_count' => 1,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Add a comment.
+		$wpdb->insert( $this->live_table_prefix . 'comments', [ 'comment_ID' => 45041, 'comment_post_ID' => 4504, 'comment_content' => 'Original comment', 'comment_approved' => '1', 'comment_author' => 'Test', 'comment_date' => '2024-01-01 10:00:00', 'comment_date_gmt' => '2024-01-01 10:00:00' ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Change comment content in live (but keep same comment_count).
+		$wpdb->update( $this->live_table_prefix . 'comments', [ 'comment_content' => 'Modified comment text' ], [ 'comment_ID' => 45041 ] ); // phpcs:ignore
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4504, $modified_ids, 'Post should NOT be detected as modified when only comment content changes (same comment_count).' );
+	}
+
+	/**
+	 * Tests that attachments are excluded from post-style modification checks.
+	 *
+	 * Per MDCS: Attachments have field-by-field updates, not full reimport.
+	 * Changes to attachment post_status should NOT trigger modified detection.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_not_detect_attachments_as_modified_per_mdcs(): void {
+		global $wpdb;
+
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'          => 4505,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+		$this->run_migrate_command();
+
+		// Change attachment post_status (would trigger Check #2 for regular posts).
+		$wpdb->update( $this->live_table_prefix . 'posts', [ 'post_status' => 'private' ], [ 'ID' => 4505 ] ); // phpcs:ignore
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command( [ 'post-types-csv' => 'attachment' ] );
+
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4505, $modified_ids, 'Attachment should NOT be detected as modified (MDCS excludes attachments from post-style checks).' );
+	}
+
+	/**
+	 * Tests that reimporting a modified post updates block attachment IDs.
+	 *
+	 * When a post is reimported, Gutenberg blocks containing attachment IDs
+	 * (like wp:image) should have their IDs remapped to the new local attachment IDs.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_reimport_should_update_block_attachment_ids(): void {
+		global $wpdb;
+
+		// Create an attachment on live.
+		$attachment = $this->create_post_fixture(
+			[
+				'ID'          => 4506,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $attachment ); // phpcs:ignore
+
+		// Create a post with wp:image block referencing the attachment.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4507,
+				'post_content'  => '<!-- wp:image {"id":4506} --><figure class="wp-block-image"><img src="http://example.com/image.jpg" alt="" class="wp-image-4506"/></figure><!-- /wp:image -->',
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		// Get the new local attachment ID.
+		$local_attachment_id = $this->logic->get_current_post_id_by_old_id( 4506, $this->source_hostname );
+		$this->assertNotNull( $local_attachment_id, 'Attachment should be imported.' );
+
+		// Get the local post and verify block IDs were remapped.
+		$local_post_id = $this->logic->get_current_post_id_by_old_id( 4507, $this->source_hostname );
+		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
+
+		$local_post = get_post( $local_post_id );
+		$this->assertStringContainsString( '"id":' . $local_attachment_id, $local_post->post_content, 'Block attachment ID should be remapped to local ID.' );
+		$this->assertStringContainsString( 'wp-image-' . $local_attachment_id, $local_post->post_content, 'Block CSS class should reference local attachment ID.' );
+
+		// Now modify the post on live to trigger reimport.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update(
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 4507 ]
+		);
+
+		// Fresh run-state for new migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command( [ 'post-types-csv' => 'post,attachment' ] );
+		$this->run_migrate_command();
+
+		// Verify block IDs are still correctly mapped after reimport.
+		$reimported_post = get_post( $local_post_id );
+		$this->assertStringContainsString( '"id":' . $local_attachment_id, $reimported_post->post_content, 'Block attachment ID should remain correctly mapped after reimport.' );
 	}
 
 	/**
