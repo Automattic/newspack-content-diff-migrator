@@ -480,7 +480,7 @@ class ContentDiffMigrator {
 			$remaining = $this->check_unattributed_content( $post_types );
 			if ( $remaining['count'] > 0 ) {
 				Logger::instance()->log(
-					Logger::OUTPUT_FILE,
+					Logger::OUTPUT_BOTH,
 					LogLevel::DEBUG,
 					sprintf(
 						'There are %d total objects original to staging/local, without any `%s*` metas, see %s for their IDs.',
