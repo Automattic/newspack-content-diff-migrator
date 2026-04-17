@@ -2846,4 +2846,57 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 		$deleted_map = $this->run_state->get_deleted_modified_ids_map();
 		$this->assertArrayHasKey( 28001, $deleted_map, 'Reimported modified post should be in deleted_modified_ids.' );
 	}
+
+	/**
+	 * Tests that orphaned term relationships don't trigger false modified detection.
+	 *
+	 * Scenario: Live site has corrupt data where term_taxonomy row exists but
+	 * the corresponding term row in the terms table does not (orphaned data).
+	 * This should be gracefully skipped, not cause false positives.
+	 *
+	 * @group migration-data-consistency-standard
+	 */
+	public function test_should_not_detect_modified_when_live_has_orphaned_term(): void {
+		global $wpdb;
+
+		// Create a live post with a valid category term.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 4508,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Insert valid category term.
+		$valid_term_id = 4580;
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => $valid_term_id, 'name' => 'Valid Category', 'slug' => 'valid-category' ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $valid_term_id, 'term_id' => $valid_term_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4508, 'term_taxonomy_id' => $valid_term_id ] ); // phpcs:ignore
+
+		// Insert ORPHANED term relationship: term_taxonomy exists, but NO term row.
+		$orphan_term_id     = 4599;
+		$orphan_term_tax_id = 4598;
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $orphan_term_tax_id, 'term_id' => $orphan_term_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 4508, 'term_taxonomy_id' => $orphan_term_tax_id ] ); // phpcs:ignore
+		// NOTE: No insert into cdiff_terms for $orphan_term_id - this is the orphan!
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Verify post was imported with valid category.
+		$local_post_id = $this->logic->get_current_post_id_by_old_id( 4508, $this->source_hostname );
+		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
+
+		// Fresh run-state for second migration cycle.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+
+		// Post should NOT be flagged as modified due to orphaned term.
+		$modified_ids = $this->run_state->get_modified_ids_map();
+		$this->assertArrayNotHasKey( 4508, $modified_ids, 'Post should NOT be detected as modified due to orphaned term relationship on live.' );
+	}
 }

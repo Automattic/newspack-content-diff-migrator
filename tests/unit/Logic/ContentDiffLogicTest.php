@@ -1347,6 +1347,107 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that orphaned term relationships on live are skipped.
+	 * Scenario: Live has term_taxonomy row but no corresponding term row.
+	 * This orphaned data should not cause false positive modified detection.
+	 */
+	public function test_filter_modified_live_ids_should_skip_orphaned_term_relationships(): void {
+		global $wpdb;
+
+		// Create a local post with a category term.
+		$local_post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$local_cat     = wp_insert_term( 'Real Category', 'category' );
+		$local_cat_id  = $local_cat['term_id'];
+		wp_set_object_terms( $local_post_id, [ $local_cat_id ], 'category' );
+
+		// Simulate "live" post with same category PLUS an orphaned term relationship.
+		$live_post_id       = 9040;
+		$live_cat_id        = 9540;
+		$orphan_term_id     = 9999;
+		$orphan_term_tax_id = 9998;
+		$live_prefix        = 'cdiff_';
+
+		// Create live tables.
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}posts" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}posts LIKE {$wpdb->posts}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}postmeta" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}postmeta LIKE {$wpdb->postmeta}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}terms" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}terms LIKE {$wpdb->terms}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_taxonomy" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}term_taxonomy LIKE {$wpdb->term_taxonomy}" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_relationships" ); // phpcs:ignore
+		$wpdb->query( "CREATE TABLE {$live_prefix}term_relationships LIKE {$wpdb->term_relationships}" ); // phpcs:ignore
+
+		// Insert live post.
+		$wpdb->insert( // phpcs:ignore
+			$live_prefix . 'posts',
+			[
+				'ID'            => $live_post_id,
+				'post_status'   => 'publish',
+				'post_type'     => 'post',
+				'post_author'   => 1,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_title'    => 'Live Post Orphan Term',
+				'post_name'     => 'live-post-orphan-term',
+				'post_date'     => '2025-01-01 12:00:00',
+			]
+		);
+
+		// Insert live category (valid - has both term and term_taxonomy rows).
+		$wpdb->insert( $live_prefix . 'terms', [ 'term_id' => $live_cat_id, 'name' => 'Real Category', 'slug' => 'real-category' ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $live_cat_id, 'term_id' => $live_cat_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_relationships', [ 'object_id' => $live_post_id, 'term_taxonomy_id' => $live_cat_id ] ); // phpcs:ignore
+
+		// Insert ORPHANED term relationship: term_taxonomy exists but term row does NOT.
+		$wpdb->insert( $live_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => $orphan_term_tax_id, 'term_id' => $orphan_term_id, 'taxonomy' => 'category', 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $live_prefix . 'term_relationships', [ 'object_id' => $live_post_id, 'term_taxonomy_id' => $orphan_term_tax_id ] ); // phpcs:ignore
+		// NOTE: No insert into cdiff_terms for $orphan_term_id - this is the orphan!
+
+		$live_posts  = [
+			[
+				'ID'            => (string) $live_post_id,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => '1',
+				'comment_count' => '0',
+			],
+		];
+		$local_posts = [
+			[
+				'ID'            => (string) $local_post_id,
+				'post_modified' => '2025-01-01 12:00:00',
+				'post_status'   => 'publish',
+				'post_author'   => '1',
+				'comment_count' => '0',
+			],
+		];
+
+		$old_id_map      = [ $live_post_id => $local_post_id ];
+		$term_old_id_map = [ $live_cat_id => $local_cat_id ];
+
+		$result = $this->logic->filter_modified_live_ids(
+			$live_posts,
+			$local_posts,
+			$old_id_map,
+			$live_prefix,
+			[],
+			[],
+			$term_old_id_map,
+			[ 'category' ]
+		);
+
+		// Clean up.
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}posts" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}postmeta" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}terms" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_taxonomy" ); // phpcs:ignore
+		$wpdb->query( "DROP TABLE IF EXISTS {$live_prefix}term_relationships" ); // phpcs:ignore
+
+		$this->assertCount( 0, $result, 'Post should NOT be flagged as modified due to orphaned term relationship on live.' );
+	}
+
+	/**
 	 * =========================================================================
 	 * match_local_to_live_posts Tests
 	 * =========================================================================

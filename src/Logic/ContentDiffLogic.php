@@ -948,7 +948,12 @@ class ContentDiffLogic {
 						if ( ! empty( $taxonomies ) && ! in_array( $term_taxonomy['taxonomy'], $taxonomies, true ) ) {
 							continue;
 						}
-						$term_id                       = (int) $term_taxonomy['term_id'];
+						$term_id = (int) $term_taxonomy['term_id'];
+						// Skip orphaned terms on live (handle cases where term_taxonomy exists but term row doesn't).
+						$term_row = $this->select_term_row( $live_table_prefix, $term_id );
+						if ( ! $term_row ) {
+							continue;
+						}
 						$live_term_ids[]               = $term_id;
 						$live_term_details[ $term_id ] = [
 							'taxonomy' => $term_taxonomy['taxonomy'],
