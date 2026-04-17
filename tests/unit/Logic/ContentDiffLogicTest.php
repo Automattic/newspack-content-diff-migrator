@@ -615,7 +615,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		// old_id mapping: live_id 1 => local_id 10.
 		$old_id_map = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertSame( 1, $result[0]['live_id'] );
@@ -642,7 +642,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		// Live ID 1 is NOT in mapping - it's a new post, not modified.
 		$old_id_map = [];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertEmpty( $result );
 	}
@@ -666,13 +666,13 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		];
 		$old_id_map  = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertEmpty( $result );
 	}
 
 	public function test_filter_modified_live_ids_should_handle_empty_arrays(): void {
-		$this->assertEmpty( $this->logic->filter_modified_live_ids( [], [], [] ) );
+		$this->assertEmpty( $this->logic->filter_modified_live_ids( [], [], [], '', [], [], [], [] ) );
 		$this->assertEmpty(
 			$this->logic->filter_modified_live_ids(
 				[],
@@ -684,8 +684,13 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 						'post_author'   => 1,
 					],
 				],
+				[],
+				'',
+				[],
+				[],
+				[],
 				[]
-			) 
+			)
 		);
 	}
 
@@ -708,7 +713,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		];
 		$old_id_map  = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertSame( 10, $result[0]['local_id'] );
@@ -735,7 +740,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		];
 		$old_id_map  = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertSame( 1, $result[0]['live_id'] );
@@ -768,7 +773,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$old_id_map      = [ 1 => 10 ];
 		$user_old_id_map = [ 50 => 5 ]; // Local user 5 maps to live user 50, but live post has author 99.
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', $user_old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', $user_old_id_map, [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertArrayHasKey( 'changes', $result[0] );
@@ -800,7 +805,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		$old_id_map      = [ 1 => 10 ];
 		$user_old_id_map = [ 100 => 20 ]; // Different user mapping, local user 5 not in map.
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', $user_old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', $user_old_id_map, [], [], [] );
 
 		$this->assertCount( 0, $result, 'Should not detect modification when local author has no mapping.' );
 	}
@@ -826,7 +831,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		];
 		$old_id_map  = [ 1 => 10 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertArrayHasKey( 'changes', $result[0] );
@@ -923,7 +928,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 			$live_prefix,
 			[], // user_old_id_map
 			[], // attachment_old_id_map
-			$term_old_id_map
+			$term_old_id_map,
+			[ 'category' ]
 		);
 
 		// Clean up live tables.
@@ -1028,7 +1034,8 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 			$live_prefix,
 			[], // user_old_id_map
 			[], // attachment_old_id_map
-			$term_old_id_map
+			$term_old_id_map,
+			[ 'category' ]
 		);
 
 		// Clean up.
@@ -2815,7 +2822,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 		$old_id_map = [ 100 => 1 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertEquals( 100, $result[0]['live_id'] );
@@ -2845,7 +2852,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 
 		$old_id_map = [ 100 => 1 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 	}
@@ -2880,7 +2887,7 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 		// Only 100 is mapped, 101 is not imported yet.
 		$old_id_map = [ 100 => 1 ];
 
-		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map );
+		$result = $this->logic->filter_modified_live_ids( $live_posts, $local_posts, $old_id_map, '', [], [], [], [] );
 
 		$this->assertCount( 1, $result );
 		$this->assertEquals( 100, $result[0]['live_id'] );

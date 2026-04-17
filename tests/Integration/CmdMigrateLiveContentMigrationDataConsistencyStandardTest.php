@@ -1479,8 +1479,10 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
 
 		// Verify the category term was attributed (has oldid meta).
-		$local_cat_term_id = $this->logic->get_current_term_id_by_old_id( 4510, $this->source_hostname );
-		$this->assertNotNull( $local_cat_term_id, 'Category term should be attributed.' );
+		$local_cat_term = get_term_by( 'slug', 'attributed-cat', 'category' );
+		$this->assertNotFalse( $local_cat_term, 'Category term should exist on local.' );
+		$local_cat_old_id = get_term_meta( $local_cat_term->term_id, $this->get_old_id_meta_key(), true );
+		$this->assertEquals( 4510, (int) $local_cat_old_id, 'Category term should be attributed with correct old_id.' );
 
 		// Verify the ef_editorial_meta term was NOT imported (taxonomy not in DEFAULT_TAXONOMIES).
 		$ef_term_on_local = get_term_by( 'slug', 'in-progress', 'ef_editorial_meta' );
@@ -1536,8 +1538,10 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
 
 		// Verify category term was attributed.
-		$local_cat_term_id = $this->logic->get_current_term_id_by_old_id( 4520, $this->source_hostname );
-		$this->assertNotNull( $local_cat_term_id, 'Category term should be attributed.' );
+		$local_cat_term = get_term_by( 'slug', 'same-cat', 'category' );
+		$this->assertNotFalse( $local_cat_term, 'Category term should exist on local.' );
+		$local_cat_old_id = get_term_meta( $local_cat_term->term_id, $this->get_old_id_meta_key(), true );
+		$this->assertEquals( 4520, (int) $local_cat_old_id, 'Category term should be attributed with correct old_id.' );
 
 		// Verify post_tag was NOT imported (not in custom-taxonomies-csv).
 		$tag_on_local = get_term_by( 'slug', 'original-tag', 'post_tag' );
@@ -1590,8 +1594,11 @@ class CmdMigrateLiveContentMigrationDataConsistencyStandardTest extends Integrat
 		$this->assertNotNull( $local_post_id, 'Post should be imported.' );
 
 		// Verify category term was attributed.
-		$local_cat_term_id = $this->logic->get_current_term_id_by_old_id( 4530, $this->source_hostname );
-		$this->assertNotNull( $local_cat_term_id, 'Category term should be attributed.' );
+		$local_cat_term = get_term_by( 'slug', 'live-category', 'category' );
+		$this->assertNotFalse( $local_cat_term, 'Category term should exist on local.' );
+		$local_cat_term_id = $local_cat_term->term_id;
+		$local_cat_old_id  = get_term_meta( $local_cat_term_id, $this->get_old_id_meta_key(), true );
+		$this->assertEquals( 4530, (int) $local_cat_old_id, 'Category term should be attributed with correct old_id.' );
 
 		// Now add a LOCAL-ONLY category to the post (simulating editorial work on staging).
 		$local_only_term    = wp_insert_term( 'Local Only Category', 'category' );

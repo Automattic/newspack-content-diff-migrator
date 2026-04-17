@@ -566,7 +566,8 @@ class ContentDiffMigrator {
 				$live_table_prefix,
 				$user_old_id_map,
 				$attachment_old_id_map,
-				$term_old_id_map
+				$term_old_id_map,
+				$taxonomies
 			);
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found (see %s).', count( $modified_live_ids ), rtrim( $data_dir, '/' ) . '/run-state/' . RunState::FILE_MODIFIED_IDS ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );

@@ -781,9 +781,10 @@ class ContentDiffLogic {
 	 * @param array  $results_local_posts   Rows from local posts table (must include ID, post_modified, post_status, post_author).
 	 * @param array  $local_old_id_map      Map of live_id => local_id from old_id postmeta.
 	 * @param string $live_table_prefix     Live DB table prefix (for fetching additional data).
-	 * @param array  $user_old_id_map       Optional. Map of live_user_id => local_user_id.
-	 * @param array  $attachment_old_id_map Optional. Map of live_attachment_id => local_attachment_id.
-	 * @param array  $term_old_id_map       Optional. Map of live_term_id => local_term_id.
+	 * @param array  $user_old_id_map       Map of live_user_id => local_user_id. Pass empty array if not checking author changes.
+	 * @param array  $attachment_old_id_map Map of live_attachment_id => local_attachment_id. Pass empty array if not checking thumbnail changes.
+	 * @param array  $term_old_id_map       Map of live_term_id => local_term_id. Pass empty array if not checking taxonomy changes.
+	 * @param array  $taxonomies            Taxonomies to compare for modifications (e.g., DEFAULT_TAXONOMIES). Only terms in these taxonomies are compared.
 	 *
 	 * @return array {
 	 *     Array of modified post ID pairs.
@@ -799,10 +800,11 @@ class ContentDiffLogic {
 		array $results_live_posts,
 		array $results_local_posts,
 		array $local_old_id_map,
-		string $live_table_prefix = '',
-		array $user_old_id_map = [],
-		array $attachment_old_id_map = [],
-		array $term_old_id_map = []
+		string $live_table_prefix,
+		array $user_old_id_map,
+		array $attachment_old_id_map,
+		array $term_old_id_map,
+		array $taxonomies
 	): array {
 		$ids_modified = [];
 
@@ -915,6 +917,7 @@ class ContentDiffLogic {
 			}
 
 			// Check 6: taxonomies changed (compare term sets).
+			// Only compare terms in the specified taxonomies (those that were attributed).
 			if ( ! empty( $local_to_live_term_map ) && ! empty( $live_table_prefix ) ) {
 				// Get live term IDs with their details.
 				$live_term_relationships = $this->select_term_relationships_rows( $live_table_prefix, $live_id );
@@ -924,6 +927,10 @@ class ContentDiffLogic {
 					$term_taxonomy = $this->select_term_taxonomy_row( $live_table_prefix, $relationship['term_taxonomy_id'] );
 					// Get details for the live terms.
 					if ( $term_taxonomy ) {
+						// Skip comparing taxonomies which are not in the attributed list (not being migrated).
+						if ( ! empty( $taxonomies ) && ! in_array( $term_taxonomy['taxonomy'], $taxonomies, true ) ) {
+							continue;
+						}
 						$term_id                       = (int) $term_taxonomy['term_id'];
 						$live_term_ids[]               = $term_id;
 						$live_term_details[ $term_id ] = [
@@ -939,6 +946,10 @@ class ContentDiffLogic {
 				foreach ( $local_term_relationships as $relationship ) {
 					$term_taxonomy = $this->select_term_taxonomy_row( $this->wpdb->prefix, $relationship['term_taxonomy_id'] );
 					if ( $term_taxonomy ) {
+						// Skip comparing taxonomies which are not in the attributed list (not being migrated).
+						if ( ! empty( $taxonomies ) && ! in_array( $term_taxonomy['taxonomy'], $taxonomies, true ) ) {
+							continue;
+						}
 						$local_terms[] = (int) $term_taxonomy['term_id'];
 					}
 				}
