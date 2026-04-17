@@ -483,37 +483,54 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Matches local terms to live terms by slug and taxonomy.
+	 * Matches local terms to their corresponding live terms for attribution.
 	 *
-	 * @param array $results_local_terms Rows from local terms table.
-	 * @param array $results_live_terms  Rows from live terms table.
+	 * Uses priority-based matching -- based on ID, and on slug+taxonomy -- to handle edge
+	 * cases like duplicate term slugs (if live DB terms are invalid, which actually does happen IRL,
+	 * even though WP normally enforces unique slugs per taxonomy):
+	 * - Priority 1: direct term_id match, if the local term's ID exists on live
+	 * - Priority 2: {slug}|{taxonomy}, fallback for regular non-corrupt data
 	 *
-	 * @return array {
-	 *     Array of matched term pairs with local_id and live_id.
+	 * This kind of matching prevents false positive "modified" detection when duplicate term
+	 *  slugs exist, and cause the wrong live term ID to be attributed to a local term.
 	 *
-	 *     @type array $match {
-	 *         @type int $local_id Local term ID.
-	 *         @type int $live_id  Live term ID.
-	 *     }
-	 * }
+	 * @param array $results_local_terms Local terms with keys: term_id, slug, taxonomy.
+	 * @param array $results_live_terms  Live terms with keys: term_id, slug, taxonomy.
+	 *
+	 * @return array Array of ['local_id' => int, 'live_id' => int] mappings.
 	 */
 	public function match_local_to_live_terms( array $results_local_terms, array $results_live_terms ): array {
 		$matched_terms = [];
 
-		// Live terms lookup by slug + taxonomy composite key.
-		$live_terms_lookup = [];
+		// Build two lookups: by ID and by slug|taxonomy.
+		$live_terms_by_id  = [];
+		$live_terms_by_key = [];
 		foreach ( $results_live_terms as $live_term ) {
-			$lookup_key                       = $live_term['slug'] . '|' . $live_term['taxonomy'];
-			$live_terms_lookup[ $lookup_key ] = (int) $live_term['term_id'];
+			$term_id    = (int) $live_term['term_id'];
+			$lookup_key = $live_term['slug'] . '|' . $live_term['taxonomy'];
+
+			$live_terms_by_id[ $term_id ]       = true;
+			$live_terms_by_key[ $lookup_key ][] = $term_id;
 		}
 
 		foreach ( $results_local_terms as $local_term ) {
-			$lookup_key = $local_term['slug'] . '|' . $local_term['taxonomy'];
-			// Term is matched.
-			if ( isset( $live_terms_lookup[ $lookup_key ] ) ) {
+			$local_term_id = (int) $local_term['term_id'];
+			$lookup_key    = $local_term['slug'] . '|' . $local_term['taxonomy'];
+
+			// Priority 1: ID match, when local term_id exists on live.
+			if ( isset( $live_terms_by_id[ $local_term_id ] ) ) {
 				$matched_terms[] = [
-					'local_id' => (int) $local_term['term_id'],
-					'live_id'  => $live_terms_lookup[ $lookup_key ],
+					'local_id' => $local_term_id,
+					'live_id'  => $local_term_id,
+				];
+				continue;
+			}
+
+			// Priority 2: slug+taxonomy fallback.
+			if ( isset( $live_terms_by_key[ $lookup_key ] ) ) {
+				$matched_terms[] = [
+					'local_id' => $local_term_id,
+					'live_id'  => $live_terms_by_key[ $lookup_key ][0],
 				];
 			}
 		}

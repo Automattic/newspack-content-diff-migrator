@@ -3320,6 +3320,107 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests ID match takes priority over slug match when duplicate slugs exist.
+	 * Scenario: Live has duplicate slugs — ID=100 and ID=200 both have slug "same-slug".
+	 * Local has ID=100. Should match to live 100 (by ID), not live 200.
+	 */
+	public function test_match_local_to_live_terms_should_prefer_id_match_over_slug_match(): void {
+		$local_terms = [
+			[
+				'term_id'  => 100,
+				'slug'     => 'same-slug',
+				'name'     => 'Same Name',
+				'taxonomy' => 'author',
+			],
+		];
+
+		$live_terms = [
+			[
+				'term_id'  => 100,
+				'slug'     => 'same-slug',
+				'name'     => 'Same Name',
+				'taxonomy' => 'author',
+			],
+			[
+				'term_id'  => 200,
+				'slug'     => 'same-slug',
+				'name'     => 'Same Name',
+				'taxonomy' => 'author',
+			],
+		];
+
+		$result = $this->logic->match_local_to_live_terms( $local_terms, $live_terms );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 100, $result[0]['local_id'] );
+		$this->assertEquals( 100, $result[0]['live_id'] );
+	}
+
+	/**
+	 * Tests slug fallback when local ID doesn't exist on live but slug matches.
+	 * Scenario: Local ID=300, live has duplicate slugs ID=100 and ID=200.
+	 * No ID match, so falls back to first slug match.
+	 */
+	public function test_match_local_to_live_terms_should_fallback_to_slug_when_no_id_match(): void {
+		$local_terms = [
+			[
+				'term_id'  => 300,
+				'slug'     => 'same-slug',
+				'name'     => 'Same Name',
+				'taxonomy' => 'author',
+			],
+		];
+
+		$live_terms = [
+			[
+				'term_id'  => 100,
+				'slug'     => 'same-slug',
+				'name'     => 'Same Name',
+				'taxonomy' => 'author',
+			],
+			[
+				'term_id'  => 200,
+				'slug'     => 'same-slug',
+				'name'     => 'Same Name',
+				'taxonomy' => 'author',
+			],
+		];
+
+		$result = $this->logic->match_local_to_live_terms( $local_terms, $live_terms );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 300, $result[0]['local_id'] );
+		$this->assertEquals( 100, $result[0]['live_id'] );
+	}
+
+	/**
+	 * Tests no match when neither ID nor slug matches.
+	 */
+	public function test_match_local_to_live_terms_should_return_empty_when_no_match(): void {
+		$local_terms = [
+			[
+				'term_id'  => 999,
+				'slug'     => 'unique-slug',
+				'name'     => 'Unique',
+				'taxonomy' => 'category',
+			],
+		];
+
+		$live_terms = [
+			[
+				'term_id'  => 100,
+				'slug'     => 'other-slug',
+				'name'     => 'Other',
+				'taxonomy' => 'category',
+			],
+		];
+
+		$result = $this->logic->match_local_to_live_terms( $local_terms, $live_terms );
+
+		$this->assertEmpty( $result );
+	}
+
+	/**
 	 * =========================================================================
 	 * update_modified_users Tests
 	 * =========================================================================
