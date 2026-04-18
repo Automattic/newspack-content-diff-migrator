@@ -454,7 +454,7 @@ class ContentDiffMigrator {
 
 		if ( $unattributed['count'] > 0 ) {
 			// Auto-match unattributed content to live tables and attribute matches.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'There are %d total objects on local without any `%s*` metas. Trying to automatically attribute this content by matching it with live tables...', $unattributed['count'], ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'There are %d total objects on local without `%s*` metas. Trying to automatically attribute this content by matching it with live tables...', $unattributed['count'], ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX ) );
 			$attribution_counts = $this->do_attribution_match_to_live_tables(
 				$live_table_prefix,
 				$source_hostname,
@@ -483,7 +483,7 @@ class ContentDiffMigrator {
 					Logger::OUTPUT_BOTH,
 					LogLevel::DEBUG,
 					sprintf(
-						'There are %d total objects original to staging/local, without any `%s*` metas, see %s for their IDs.',
+						'There are %d original objects on staging/local without `%s*` metas, see %s for their IDs.',
 						$remaining['count'],
 						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 						$remaining['file_path']
@@ -1273,7 +1273,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::DEBUG,
 				sprintf(
-					'There are %d total objects original to staging/local, without any `%s*` metas, see %s for their IDs.',
+					'There are %d original objects on staging/local without `%s*` metas, see %s for their IDs.',
 					$remaining['count'],
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$remaining['file_path']

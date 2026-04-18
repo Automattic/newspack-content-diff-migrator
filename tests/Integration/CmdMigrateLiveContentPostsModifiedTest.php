@@ -386,6 +386,90 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Tests that when a comment has multiple commentmeta entries and one is deleted on live,
+	 * only the remaining metas exist after reimport.
+	 *
+	 * @group posts-modified
+	 */
+	public function test_should_remove_one_commentmeta_when_comment_has_multiple_metas_and_one_deleted(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 8003,
+				'post_modified' => '2024-01-01 10:00:00',
+				'comment_count' => 1,
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create a comment with three metas.
+		$comment = [
+			'comment_ID'           => 8301,
+			'comment_post_ID'      => 8003,
+			'comment_author'       => 'Commenter',
+			'comment_author_email' => 'commenter@example.com',
+			'comment_author_url'   => '',
+			'comment_author_IP'    => '127.0.0.1',
+			'comment_date'         => '2024-01-01 12:00:00',
+			'comment_date_gmt'     => '2024-01-01 12:00:00',
+			'comment_content'      => 'Test comment with metas',
+			'comment_karma'        => 0,
+			'comment_approved'     => '1',
+			'comment_agent'        => '',
+			'comment_type'         => 'comment',
+			'comment_parent'       => 0,
+			'user_id'              => 0,
+		];
+		$wpdb->insert( $this->live_table_prefix . 'comments', $comment ); // phpcs:ignore
+
+		// Add three commentmeta entries.
+		$wpdb->insert( $this->live_table_prefix . 'commentmeta', [ 'meta_id' => 8401, 'comment_id' => 8301, 'meta_key' => 'cmeta_alpha', 'meta_value' => 'Alpha Value' ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'commentmeta', [ 'meta_id' => 8402, 'comment_id' => 8301, 'meta_key' => 'cmeta_beta', 'meta_value' => 'Beta Value' ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'commentmeta', [ 'meta_id' => 8403, 'comment_id' => 8301, 'meta_key' => 'cmeta_gamma', 'meta_value' => 'Gamma Value' ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 8003, $this->source_hostname );
+		$comments    = get_comments( [ 'post_id' => $new_post_id ] );
+		$this->assertCount( 1, $comments, 'Post should have 1 comment after initial import.' );
+
+		$new_comment_id = $comments[0]->comment_ID;
+		$this->assertEquals( 'Alpha Value', get_comment_meta( $new_comment_id, 'cmeta_alpha', true ) );
+		$this->assertEquals( 'Beta Value', get_comment_meta( $new_comment_id, 'cmeta_beta', true ) );
+		$this->assertEquals( 'Gamma Value', get_comment_meta( $new_comment_id, 'cmeta_gamma', true ) );
+
+		// Delete cmeta_beta on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'commentmeta', [ 'meta_id' => 8402 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 8003 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 8003, $this->source_hostname );
+		$comments_after     = get_comments( [ 'post_id' => $reimported_post_id ] );
+		$this->assertCount( 1, $comments_after, 'Post should still have 1 comment after reimport.' );
+
+		$reimported_comment_id = $comments_after[0]->comment_ID;
+		$this->assertEquals( 'Alpha Value', get_comment_meta( $reimported_comment_id, 'cmeta_alpha', true ), 'Commentmeta Alpha should remain.' );
+		$this->assertEmpty( get_comment_meta( $reimported_comment_id, 'cmeta_beta', true ), 'Commentmeta Beta should be removed.' );
+		$this->assertEquals( 'Gamma Value', get_comment_meta( $reimported_comment_id, 'cmeta_gamma', true ), 'Commentmeta Gamma should remain.' );
+	}
+
+	/**
 	 * Tests that when a post has multiple postmeta entries and one is deleted on live,
 	 * only the remaining metas exist after reimport.
 	 *
@@ -439,5 +523,144 @@ class CmdMigrateLiveContentPostsModifiedTest extends IntegrationTestCase {
 		$this->assertEquals( 'Alpha Value', get_post_meta( $reimported_post_id, 'meta_alpha', true ), 'Meta Alpha should remain.' );
 		$this->assertEmpty( get_post_meta( $reimported_post_id, 'meta_beta', true ), 'Meta Beta should be removed.' );
 		$this->assertEquals( 'Gamma Value', get_post_meta( $reimported_post_id, 'meta_gamma', true ), 'Meta Gamma should remain.' );
+	}
+
+	/**
+	 * Tests that when a post has multiple term relationships and one is removed on live,
+	 * only the remaining terms exist after reimport.
+	 *
+	 * @group posts-modified
+	 */
+	public function test_should_remove_one_term_relationship_when_post_has_multiple_terms_and_one_removed(): void {
+		global $wpdb;
+
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 16001,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		// Create three categories and assign to post.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 16101, 'name' => 'Term Alpha', 'slug' => 'term-alpha', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 16101, 'term_id' => 16101, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 16001, 'term_taxonomy_id' => 16101, 'term_order' => 0 ] ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 16102, 'name' => 'Term Beta', 'slug' => 'term-beta', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 16102, 'term_id' => 16102, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 16001, 'term_taxonomy_id' => 16102, 'term_order' => 0 ] ); // phpcs:ignore
+
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 16103, 'name' => 'Term Gamma', 'slug' => 'term-gamma', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 16103, 'term_id' => 16103, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 16001, 'term_taxonomy_id' => 16103, 'term_order' => 0 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 16001, $this->source_hostname );
+		$terms       = wp_get_post_terms( $new_post_id, 'category', [ 'fields' => 'names' ] );
+		$this->assertCount( 3, $terms, 'Post should have 3 terms after initial import.' );
+		$this->assertContains( 'Term Alpha', $terms );
+		$this->assertContains( 'Term Beta', $terms );
+		$this->assertContains( 'Term Gamma', $terms );
+
+		// Remove Term Beta relationship on live and modify post.
+		$wpdb->delete( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 16001, 'term_taxonomy_id' => 16102 ] ); // phpcs:ignore
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 16001 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$reimported_post_id = $this->logic->get_current_post_id_by_old_id( 16001, $this->source_hostname );
+		$terms_after        = wp_get_post_terms( $reimported_post_id, 'category', [ 'fields' => 'names' ] );
+
+		$this->assertCount( 2, $terms_after, 'Post should have 2 terms after reimport.' );
+		$this->assertContains( 'Term Alpha', $terms_after, 'Term Alpha should remain.' );
+		$this->assertNotContains( 'Term Beta', $terms_after, 'Term Beta should be removed.' );
+		$this->assertContains( 'Term Gamma', $terms_after, 'Term Gamma should remain.' );
+	}
+
+	/**
+	 * Tests that when a post's author display_name changes on live, the local user is updated after reimport.
+	 *
+	 * @group posts-modified
+	 */
+	public function test_should_update_post_author_display_name_when_changed_on_live(): void {
+		global $wpdb;
+
+		// Create user on live.
+		$user = [
+			'ID'                  => 17001,
+			'user_login'          => 'testauthor17001',
+			'user_pass'           => 'hashed_pass',
+			'user_nicename'       => 'testauthor17001',
+			'user_email'          => 'testauthor17001@example.com',
+			'user_url'            => '',
+			'user_registered'     => '2024-01-01 10:00:00',
+			'user_activation_key' => '',
+			'user_status'         => 0,
+			'display_name'        => 'Original Display Name',
+		];
+		$wpdb->insert( $this->live_table_prefix . 'users', $user ); // phpcs:ignore
+
+		// Create post by this author.
+		$post = $this->create_post_fixture(
+			[
+				'ID'            => 17002,
+				'post_author'   => 17001,
+				'post_modified' => '2024-01-01 10:00:00',
+			]
+		);
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		$new_post_id = $this->logic->get_current_post_id_by_old_id( 17002, $this->source_hostname );
+		$this->assertNotNull( $new_post_id, 'Post should be imported.' );
+
+		$local_user = get_user_by( 'login', 'testauthor17001' );
+		$this->assertNotFalse( $local_user, 'User should be imported.' );
+		$this->assertEquals( 'Original Display Name', $local_user->display_name );
+
+		// Update user display_name on live and modify post.
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'users',
+			[ 'display_name' => 'Updated Display Name' ],
+			[ 'ID' => 17001 ]
+		);
+		$wpdb->update( // phpcs:ignore
+			$this->live_table_prefix . 'posts',
+			[
+				'post_modified'     => '2024-06-01 10:00:00',
+				'post_modified_gmt' => '2024-06-01 10:00:00',
+			],
+			[ 'ID' => 17002 ]
+		);
+
+		// Fresh run-state.
+		$this->cleanup_temp_dir( $this->temp_data_dir );
+		$this->run_state = new \Newspack\ContentDiffMigrator\Logic\RunState( $this->temp_data_dir . '/run-state' );
+		$this->command->set_run_state( $this->run_state );
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Refresh user object from DB.
+		$updated_user = get_user_by( 'login', 'testauthor17001' );
+		$this->assertEquals( 'Updated Display Name', $updated_user->display_name, 'User display_name should be updated after reimport.' );
 	}
 }
