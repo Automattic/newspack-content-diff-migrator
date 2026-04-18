@@ -840,6 +840,9 @@ class ContentDiffLogic {
 		// Flip term map for reverse lookup (local_id => live_id).
 		$local_to_live_term_map = ! empty( $term_old_id_map ) ? array_flip( $term_old_id_map ) : [];
 
+		// Get orphaned term_ids to be handled properly, for O(1) lookup. Orphaned terms are rare and this will not add much to memory usage.
+		$orphaned_term_ids = ! empty( $live_table_prefix ) ? $this->get_orphaned_term_ids( $live_table_prefix ) : [];
+
 		$progress = new Progress( count( $results_live_posts ), 20 );
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
 
@@ -949,9 +952,8 @@ class ContentDiffLogic {
 							continue;
 						}
 						$term_id = (int) $term_taxonomy['term_id'];
-						// Skip orphaned terms on live (handle cases where term_taxonomy exists but term row doesn't).
-						$term_row = $this->select_term_row( $live_table_prefix, $term_id );
-						if ( ! $term_row ) {
+						// Skip orphaned terms (term_taxonomy exists but term row doesn't).
+						if ( in_array( $term_id, $orphaned_term_ids, true ) ) {
 							continue;
 						}
 						$live_term_ids[]               = $term_id;
@@ -2041,6 +2043,26 @@ class ContentDiffLogic {
 	 */
 	public function select_term_row( string $table_prefix, int $term_id ): ?array {
 		return $this->select( $table_prefix . 'terms', [ 'term_id' => $term_id ], $select_just_one_row = true );
+	}
+
+	/**
+	 * Finds orphaned term_ids (term_taxonomy exists but term row doesn't) where term_taxonomy row exists but term row doesn't.
+	 *
+	 * @param string $table_prefix Table prefix (e.g., 'cdiff_').
+	 *
+	 * @return array Orphaned term_ids.
+	 */
+	public function get_orphaned_term_ids( string $table_prefix ): array {
+		// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$results = $this->wpdb->get_col(
+			"SELECT tt.term_id
+			FROM {$table_prefix}term_taxonomy tt
+			LEFT JOIN {$table_prefix}terms t ON tt.term_id = t.term_id
+			WHERE t.term_id IS NULL"
+		);
+		// phpcs:ensable
+
+		return array_map( 'intval', $results ?? [] );
 	}
 
 	/**
