@@ -1049,9 +1049,6 @@ class ContentDiffMigrator {
 			] 
 		);
 
-		// Confirm action.
-		$this->attribute_confirm_action( sprintf( 'This will attribute specified ID pairs from JSONL files to %s.', $source_hostname ) );
-
 		// Variables.
 		global $wpdb;
 		$meta_key        = $this->logic->get_old_id_meta_key( $source_hostname );
@@ -1800,18 +1797,6 @@ class ContentDiffMigrator {
 			if ( ! is_wp_error( $terms ) && $terms ) {
 				wp_update_term_count_now( $terms, $taxonomy );
 			}
-		}
-	}
-
-	/**
-	 * Confirms attribution action with user (unless test environment).
-	 *
-	 * @param string $message Confirmation message.
-	 */
-	private function attribute_confirm_action( string $message ): void {
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, $message );
-		if ( ! $this->test_env ) {
-			WP_CLI::confirm( 'Continue?' );
 		}
 	}
 
