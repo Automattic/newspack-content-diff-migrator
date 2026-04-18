@@ -2060,7 +2060,7 @@ class ContentDiffLogic {
 			LEFT JOIN {$table_prefix}terms t ON tt.term_id = t.term_id
 			WHERE t.term_id IS NULL"
 		);
-		// phpcs:ensable
+		// phpcs:enable
 
 		return array_map( 'intval', $results ?? [] );
 	}
