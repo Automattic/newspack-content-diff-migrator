@@ -405,7 +405,7 @@ class ContentDiffMigrator {
 		try {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " About to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --skip-tables=options` ..." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() . " About to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
@@ -1556,9 +1556,9 @@ class ContentDiffMigrator {
 		}
 
 		// Update parent IDs.
-		$dispayed_cli_error_get_local_id     = false;
-		$dispayed_cli_warning_update_parents = false;
-		$progress                            = new Progress( count( $live_ids_for_parents_update ), 20 );
+		$displayed_cli_warning_get_local_id   = false;
+		$displayed_cli_warning_update_parents = false;
+		$progress                             = new Progress( count( $live_ids_for_parents_update ), 20 );
 		foreach ( $live_ids_for_parents_update as $key_id_old => $id_old ) {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_id_old + 1 );
@@ -1569,10 +1569,10 @@ class ContentDiffMigrator {
 			// Get new local Post ID.
 			$id_new = $imported_ids_map[ $id_old ] ?? null;
 			if ( null === $id_new ) {
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::ERROR, sprintf( 'update_post_parent_ids: live ID %d has no local mapping, skipping.', $id_old ) );
-				if ( false === $dispayed_cli_error_get_local_id ) {
-					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::ERROR, sprintf( 'update_post_parent_ids: some live IDs have no local mapping. See %s for full list (first example: $id_old=%s).', Logger::instance()->get_log_file_path(), $id_old ) );
-					$dispayed_cli_error_get_local_id = true;
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::WARNING, sprintf( 'update_post_parent_ids: live ID %d has no local mapping, skipping.', $id_old ) );
+				if ( false === $displayed_cli_warning_get_local_id ) {
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some live IDs have no local mapping. See %s for full list (first example: $id_old=%s).', Logger::instance()->get_log_file_path(), $id_old ) );
+					$displayed_cli_warning_get_local_id = true;
 				}
 				continue;
 			}
@@ -1625,9 +1625,9 @@ class ContentDiffMigrator {
 						'parent_id_old' => $parent_id_old,
 					] 
 				);
-				if ( false === $dispayed_cli_warning_update_parents ) {
+				if ( false === $displayed_cli_warning_update_parents ) {
 					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some parent IDs not found on live. This is usually not an error (happens when parent_ids are not found on live, or are different post types that are not being migrated). See %s for full list (first example: $id_old=%s, $id_new=%s, $parent_id_old=%s; $parent_id_new set to 0).', Logger::instance()->get_log_file_path(), $id_old, $id_new, $parent_id_old ) );
-					$dispayed_cli_warning_update_parents = true;
+					$displayed_cli_warning_update_parents = true;
 				}
 			}
 
