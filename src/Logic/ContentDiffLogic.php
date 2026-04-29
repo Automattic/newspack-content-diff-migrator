@@ -483,37 +483,54 @@ class ContentDiffLogic {
 	}
 
 	/**
-	 * Matches local terms to live terms by slug and taxonomy.
+	 * Matches local terms to their corresponding live terms for attribution.
 	 *
-	 * @param array $results_local_terms Rows from local terms table.
-	 * @param array $results_live_terms  Rows from live terms table.
+	 * Uses priority-based matching -- based on ID, and on slug+taxonomy -- to handle edge
+	 * cases like duplicate term slugs (if live DB terms are invalid, which actually does happen IRL,
+	 * even though WP normally enforces unique slugs per taxonomy):
+	 * - Priority 1: direct term_id match, if the local term's ID exists on live
+	 * - Priority 2: {slug}|{taxonomy}, fallback for regular non-corrupt data
 	 *
-	 * @return array {
-	 *     Array of matched term pairs with local_id and live_id.
+	 * This kind of matching prevents false positive "modified" detection when duplicate term
+	 *  slugs exist, and cause the wrong live term ID to be attributed to a local term.
 	 *
-	 *     @type array $match {
-	 *         @type int $local_id Local term ID.
-	 *         @type int $live_id  Live term ID.
-	 *     }
-	 * }
+	 * @param array $results_local_terms Local terms with keys: term_id, slug, taxonomy.
+	 * @param array $results_live_terms  Live terms with keys: term_id, slug, taxonomy.
+	 *
+	 * @return array Array of ['local_id' => int, 'live_id' => int] mappings.
 	 */
 	public function match_local_to_live_terms( array $results_local_terms, array $results_live_terms ): array {
 		$matched_terms = [];
 
-		// Live terms lookup by slug + taxonomy composite key.
-		$live_terms_lookup = [];
+		// Build two lookups: by ID and by slug|taxonomy.
+		$live_terms_by_id  = [];
+		$live_terms_by_key = [];
 		foreach ( $results_live_terms as $live_term ) {
-			$lookup_key                       = $live_term['slug'] . '|' . $live_term['taxonomy'];
-			$live_terms_lookup[ $lookup_key ] = (int) $live_term['term_id'];
+			$term_id    = (int) $live_term['term_id'];
+			$lookup_key = $live_term['slug'] . '|' . $live_term['taxonomy'];
+
+			$live_terms_by_id[ $term_id ]       = true;
+			$live_terms_by_key[ $lookup_key ][] = $term_id;
 		}
 
 		foreach ( $results_local_terms as $local_term ) {
-			$lookup_key = $local_term['slug'] . '|' . $local_term['taxonomy'];
-			// Term is matched.
-			if ( isset( $live_terms_lookup[ $lookup_key ] ) ) {
+			$local_term_id = (int) $local_term['term_id'];
+			$lookup_key    = $local_term['slug'] . '|' . $local_term['taxonomy'];
+
+			// Priority 1: ID match, when local term_id exists on live.
+			if ( isset( $live_terms_by_id[ $local_term_id ] ) ) {
 				$matched_terms[] = [
-					'local_id' => (int) $local_term['term_id'],
-					'live_id'  => $live_terms_lookup[ $lookup_key ],
+					'local_id' => $local_term_id,
+					'live_id'  => $local_term_id,
+				];
+				continue;
+			}
+
+			// Priority 2: slug+taxonomy fallback.
+			if ( isset( $live_terms_by_key[ $lookup_key ] ) ) {
+				$matched_terms[] = [
+					'local_id' => $local_term_id,
+					'live_id'  => $live_terms_by_key[ $lookup_key ][0],
 				];
 			}
 		}
@@ -781,9 +798,10 @@ class ContentDiffLogic {
 	 * @param array  $results_local_posts   Rows from local posts table (must include ID, post_modified, post_status, post_author).
 	 * @param array  $local_old_id_map      Map of live_id => local_id from old_id postmeta.
 	 * @param string $live_table_prefix     Live DB table prefix (for fetching additional data).
-	 * @param array  $user_old_id_map       Optional. Map of live_user_id => local_user_id.
-	 * @param array  $attachment_old_id_map Optional. Map of live_attachment_id => local_attachment_id.
-	 * @param array  $term_old_id_map       Optional. Map of live_term_id => local_term_id.
+	 * @param array  $user_old_id_map       Map of live_user_id => local_user_id. Pass empty array if not checking author changes.
+	 * @param array  $attachment_old_id_map Map of live_attachment_id => local_attachment_id. Pass empty array if not checking thumbnail changes.
+	 * @param array  $term_old_id_map       Map of live_term_id => local_term_id. Pass empty array if not checking taxonomy changes.
+	 * @param array  $taxonomies            Taxonomies to compare for modifications (e.g., DEFAULT_TAXONOMIES). Only terms in these taxonomies are compared.
 	 *
 	 * @return array {
 	 *     Array of modified post ID pairs.
@@ -799,10 +817,11 @@ class ContentDiffLogic {
 		array $results_live_posts,
 		array $results_local_posts,
 		array $local_old_id_map,
-		string $live_table_prefix = '',
-		array $user_old_id_map = [],
-		array $attachment_old_id_map = [],
-		array $term_old_id_map = []
+		string $live_table_prefix,
+		array $user_old_id_map,
+		array $attachment_old_id_map,
+		array $term_old_id_map,
+		array $taxonomies
 	): array {
 		$ids_modified = [];
 
@@ -820,6 +839,9 @@ class ContentDiffLogic {
 
 		// Flip term map for reverse lookup (local_id => live_id).
 		$local_to_live_term_map = ! empty( $term_old_id_map ) ? array_flip( $term_old_id_map ) : [];
+
+		// Get orphaned term_ids to be handled properly, for O(1) lookup. Orphaned terms are rare and this will not add much to memory usage.
+		$orphaned_term_ids = ! empty( $live_table_prefix ) ? $this->get_orphaned_term_ids( $live_table_prefix ) : [];
 
 		$progress = new Progress( count( $results_live_posts ), 20 );
 		foreach ( $results_live_posts as $key_live_post => $live_post ) {
@@ -915,6 +937,7 @@ class ContentDiffLogic {
 			}
 
 			// Check 6: taxonomies changed (compare term sets).
+			// Only compare terms in the specified taxonomies (those that were attributed).
 			if ( ! empty( $local_to_live_term_map ) && ! empty( $live_table_prefix ) ) {
 				// Get live term IDs with their details.
 				$live_term_relationships = $this->select_term_relationships_rows( $live_table_prefix, $live_id );
@@ -924,7 +947,15 @@ class ContentDiffLogic {
 					$term_taxonomy = $this->select_term_taxonomy_row( $live_table_prefix, $relationship['term_taxonomy_id'] );
 					// Get details for the live terms.
 					if ( $term_taxonomy ) {
-						$term_id                       = (int) $term_taxonomy['term_id'];
+						// Skip comparing taxonomies which are not in the attributed list (not being migrated).
+						if ( ! empty( $taxonomies ) && ! in_array( $term_taxonomy['taxonomy'], $taxonomies, true ) ) {
+							continue;
+						}
+						$term_id = (int) $term_taxonomy['term_id'];
+						// Skip orphaned terms (term_taxonomy exists but term row doesn't).
+						if ( in_array( $term_id, $orphaned_term_ids, true ) ) {
+							continue;
+						}
 						$live_term_ids[]               = $term_id;
 						$live_term_details[ $term_id ] = [
 							'taxonomy' => $term_taxonomy['taxonomy'],
@@ -939,6 +970,10 @@ class ContentDiffLogic {
 				foreach ( $local_term_relationships as $relationship ) {
 					$term_taxonomy = $this->select_term_taxonomy_row( $this->wpdb->prefix, $relationship['term_taxonomy_id'] );
 					if ( $term_taxonomy ) {
+						// Skip comparing taxonomies which are not in the attributed list (not being migrated).
+						if ( ! empty( $taxonomies ) && ! in_array( $term_taxonomy['taxonomy'], $taxonomies, true ) ) {
+							continue;
+						}
 						$local_terms[] = (int) $term_taxonomy['term_id'];
 					}
 				}
@@ -2008,6 +2043,26 @@ class ContentDiffLogic {
 	 */
 	public function select_term_row( string $table_prefix, int $term_id ): ?array {
 		return $this->select( $table_prefix . 'terms', [ 'term_id' => $term_id ], $select_just_one_row = true );
+	}
+
+	/**
+	 * Finds orphaned term_ids (term_taxonomy exists but term row doesn't) where term_taxonomy row exists but term row doesn't.
+	 *
+	 * @param string $table_prefix Table prefix (e.g., 'cdiff_').
+	 *
+	 * @return array Orphaned term_ids.
+	 */
+	public function get_orphaned_term_ids( string $table_prefix ): array {
+		// phpcs:disable -- WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$results = $this->wpdb->get_col(
+			"SELECT tt.term_id
+			FROM {$table_prefix}term_taxonomy tt
+			LEFT JOIN {$table_prefix}terms t ON tt.term_id = t.term_id
+			WHERE t.term_id IS NULL"
+		);
+		// phpcs:enable
+
+		return array_map( 'intval', $results ?? [] );
 	}
 
 	/**

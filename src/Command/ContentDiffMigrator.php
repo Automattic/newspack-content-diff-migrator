@@ -405,7 +405,7 @@ class ContentDiffMigrator {
 		try {
 			$this->db->validate_db_tables( $live_table_prefix, [ 'options' ] );
 		} catch ( \RuntimeException $e ) {
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::ERROR, $e->getMessage() . " About to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --skip-tables=options` ..." );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::WARNING, $e->getMessage() . " About to run `newspack-content-migrator correct-collations-for-live-wp-tables --live-table-prefix={$live_table_prefix} --skip-tables=options` ..." );
 			$this->cmd_correct_collations_for_live_wp_tables(
 				[],
 				[
@@ -454,7 +454,7 @@ class ContentDiffMigrator {
 
 		if ( $unattributed['count'] > 0 ) {
 			// Auto-match unattributed content to live tables and attribute matches.
-			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'There are %d total objects on local without any `%s*` metas. Trying to automatically attribute this content by matching it with live tables...', $unattributed['count'], ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX ) );
+			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'There are %d total objects on local without `%s*` metas. Trying to automatically attribute this content by matching it with live tables...', $unattributed['count'], ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX ) );
 			$attribution_counts = $this->do_attribution_match_to_live_tables(
 				$live_table_prefix,
 				$source_hostname,
@@ -483,7 +483,7 @@ class ContentDiffMigrator {
 					Logger::OUTPUT_BOTH,
 					LogLevel::DEBUG,
 					sprintf(
-						'There are %d total objects remaining on local without any `%s*` metas. See %s for full IDs. If this is new local content from Newspackification, it is perfectly safe to continue. Otherwise see README and the `attribute-ids` command to set the "old ID and source hostname" metas if this content belongs to the same source hostname (e.g. was migrated by some other migration tool).',
+						'There are %d original objects on staging/local without `%s*` metas, see %s for their IDs.',
 						$remaining['count'],
 						ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 						$remaining['file_path']
@@ -566,7 +566,8 @@ class ContentDiffMigrator {
 				$live_table_prefix,
 				$user_old_id_map,
 				$attachment_old_id_map,
-				$term_old_id_map
+				$term_old_id_map,
+				$taxonomies
 			);
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d modified IDs found (see %s).', count( $modified_live_ids ), rtrim( $data_dir, '/' ) . '/run-state/' . RunState::FILE_MODIFIED_IDS ) );
 			MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
@@ -627,7 +628,7 @@ class ContentDiffMigrator {
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( 'Full logs were saved to %s:', rtrim( (string) $data_dir, '/' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- debug/action log: %s', basename( Logger::instance()->get_log_file_path() ?? '' ) ) );
 		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '- run-state manifest: %s', RunState::FILE_MANIFEST ) );
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done searching for new content on live 🙌  Proceed by running the `migrate-live-content` command 🚀' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'All done searching for new content on live 🙌  Proceed to run the `migrate-live-content` command 🚀' );
 	}
 
 	/**
@@ -796,31 +797,75 @@ class ContentDiffMigrator {
 				Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d posts were already deleted, continuing from there...', $already_deleted_count ) );
 			}
 			
-			// Delete modified posts so they can be re-imported.
-			foreach ( $local_ids_to_delete as $key_delete => $id ) {
-				$deleted = wp_delete_post( $id, true );
-				if ( false === $deleted || null === $deleted ) {
-					$context = [
-						'local_id' => $id,
-						'live_id'  => array_search( $id, $modified_ids_map ),
-					];
-					Logger::instance()->log_brief_and_verbose( LogLevel::ERROR, sprintf( 'Failed to delete modified post local ID %d, this post will not be updated/reimported.', $id ), $context );
-					// Don't continue and save to run-state if deletion failed.
-					continue;
-				}
-				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1, $key_delete, 300 );
+			// Batch delete modified posts for speed, so they can be re-imported.
+			$batch_size        = 500;
+			$offset            = 0;
+			$total_to_delete   = count( $local_ids_to_delete );
+			$failed_delete_ids = [];
+			while ( $offset < $total_to_delete ) {
+				$batch        = array_slice( $local_ids_to_delete, $offset, $batch_size );
+				$placeholders = implode( ',', array_fill( 0, count( $batch ), '%d' ) );
 
-				// Save run-state info that this modified ID was deleted.
-				$this->run_state->append_deleted_modified_id(
-					[
-						'live_id'  => array_search( $id, $modified_ids_map ),
-						'local_id' => $id,
-					] 
-				);
+				// Using single table DELETE IGNORE to ensure that individual row failures don't prevent other rows in the batch from being deleted.
+				// Delete revisions' metas and term_relationships (subquery finds revision IDs), then revisions.
+				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->postmeta} WHERE post_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision')", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->term_relationships} WHERE object_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision')", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->posts} WHERE post_parent IN ($placeholders) AND post_type = 'revision'", $batch ) );
+				// phpcs:enable
+				
+				// Delete commentmeta (subquery finds comment IDs), comments.
+				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->commentmeta} WHERE comment_id IN (SELECT comment_ID FROM {$wpdb->comments} WHERE comment_post_ID IN ($placeholders))", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->comments} WHERE comment_post_ID IN ($placeholders)", $batch ) );
+				// phpcs:enable
+
+				// Delete postmeta, term_relationships, posts.
+				// phpcs:disable -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->postmeta} WHERE post_id IN ($placeholders)", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->term_relationships} WHERE object_id IN ($placeholders)", $batch ) );
+				$wpdb->query( $wpdb->prepare( "DELETE IGNORE FROM {$wpdb->posts} WHERE ID IN ($placeholders)", $batch ) );
+				// phpcs:enable
+
+				// Check if some IDs failed to be deleted and track for exclusion from reimport.
+				$still_exist = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE ID IN ($placeholders)", $batch ) ); // phpcs:ignore -- $placeholders is safely constructedWordPress.DB.PreparedSQL.InterpolatedNotPrepared.
+				foreach ( $still_exist as $failed_id ) {
+					$failed_delete_ids[] = (int) $failed_id;
+					Logger::instance()->log_brief_and_verbose(
+						LogLevel::ERROR,
+						sprintf( 'Failed to delete modified post local ID %d, this post will not be updated/reimported.', $failed_id ),
+						[
+							'local_id' => $failed_id,
+							'live_id'  => array_search( $failed_id, $modified_ids_map ),
+						]
+					);
+				}
+
+				// Save run-state for successfully deleted IDs.
+				foreach ( array_diff( $batch, $still_exist ) as $deleted_id ) {
+					$this->run_state->append_deleted_modified_id(
+						[
+							'live_id'  => array_search( $deleted_id, $modified_ids_map ),
+							'local_id' => $deleted_id,
+						]
+					);
+				}
+				
+				// Update offset for next batch.
+				$offset += $batch_size;
+
+				// One cache flush per batch.
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 			}
 
-			// Merge modified posts IDs with $all_live_posts_ids for reimport.
-			$new_live_ids = array_merge( $new_live_ids, array_keys( $modified_ids_map ) );
+			// Merge only successfully deleted modified posts for reimport (exclude failed).
+			$live_ids_to_reimport = [];
+			foreach ( $modified_ids_map as $live_id => $local_id ) {
+				if ( ! in_array( $local_id, $failed_delete_ids, true ) ) {
+					$live_ids_to_reimport[] = $live_id;
+				}
+			}
+			$new_live_ids = array_merge( $new_live_ids, $live_ids_to_reimport );
 		}
 
 		// If no new/modified posts to migrate, return early.
@@ -1003,9 +1048,6 @@ class ContentDiffMigrator {
 				'assoc_args' => $assoc_args,
 			] 
 		);
-
-		// Confirm action.
-		$this->attribute_confirm_action( sprintf( 'This will attribute specified ID pairs from JSONL files to %s.', $source_hostname ) );
 
 		// Variables.
 		global $wpdb;
@@ -1231,7 +1273,7 @@ class ContentDiffMigrator {
 				Logger::OUTPUT_BOTH,
 				LogLevel::DEBUG,
 				sprintf(
-					'There are %d total objects on local without any `%s*` metas. See %s for full IDs.',
+					'There are %d original objects on staging/local without `%s*` metas, see %s for their IDs.',
 					$remaining['count'],
 					ContentDiffLogic::SAVED_META_LIVE_ID_PREFIX,
 					$remaining['file_path']
@@ -1514,9 +1556,9 @@ class ContentDiffMigrator {
 		}
 
 		// Update parent IDs.
-		$dispayed_cli_error_get_local_id     = false;
-		$dispayed_cli_warning_update_parents = false;
-		$progress                            = new Progress( count( $live_ids_for_parents_update ), 20 );
+		$displayed_cli_warning_get_local_id   = false;
+		$displayed_cli_warning_update_parents = false;
+		$progress                             = new Progress( count( $live_ids_for_parents_update ), 20 );
 		foreach ( $live_ids_for_parents_update as $key_id_old => $id_old ) {
 			// Output progress by 10%.
 			$progress_milestone = $progress->tick( $key_id_old + 1 );
@@ -1527,10 +1569,10 @@ class ContentDiffMigrator {
 			// Get new local Post ID.
 			$id_new = $imported_ids_map[ $id_old ] ?? null;
 			if ( null === $id_new ) {
-				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::ERROR, sprintf( 'update_post_parent_ids: live ID %d has no local mapping, skipping.', $id_old ) );
-				if ( false === $dispayed_cli_error_get_local_id ) {
-					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::ERROR, sprintf( 'update_post_parent_ids: some live IDs have no local mapping. See %s for full list (first example: $id_old=%s).', Logger::instance()->get_log_file_path(), $id_old ) );
-					$dispayed_cli_error_get_local_id = true;
+				Logger::instance()->log( Logger::OUTPUT_FILE, LogLevel::WARNING, sprintf( 'update_post_parent_ids: live ID %d has no local mapping, skipping.', $id_old ) );
+				if ( false === $displayed_cli_warning_get_local_id ) {
+					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some live IDs have no local mapping. See %s for full list (first example: $id_old=%s).', Logger::instance()->get_log_file_path(), $id_old ) );
+					$displayed_cli_warning_get_local_id = true;
 				}
 				continue;
 			}
@@ -1583,9 +1625,9 @@ class ContentDiffMigrator {
 						'parent_id_old' => $parent_id_old,
 					] 
 				);
-				if ( false === $dispayed_cli_warning_update_parents ) {
+				if ( false === $displayed_cli_warning_update_parents ) {
 					Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::WARNING, sprintf( 'update_post_parent_ids: some parent IDs not found on live. This is usually not an error (happens when parent_ids are not found on live, or are different post types that are not being migrated). See %s for full list (first example: $id_old=%s, $id_new=%s, $parent_id_old=%s; $parent_id_new set to 0).', Logger::instance()->get_log_file_path(), $id_old, $id_new, $parent_id_old ) );
-					$dispayed_cli_warning_update_parents = true;
+					$displayed_cli_warning_update_parents = true;
 				}
 			}
 
@@ -1755,18 +1797,6 @@ class ContentDiffMigrator {
 			if ( ! is_wp_error( $terms ) && $terms ) {
 				wp_update_term_count_now( $terms, $taxonomy );
 			}
-		}
-	}
-
-	/**
-	 * Confirms attribution action with user (unless test environment).
-	 *
-	 * @param string $message Confirmation message.
-	 */
-	private function attribute_confirm_action( string $message ): void {
-		Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, $message );
-		if ( ! $this->test_env ) {
-			WP_CLI::confirm( 'Continue?' );
 		}
 	}
 

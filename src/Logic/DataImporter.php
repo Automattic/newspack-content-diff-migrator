@@ -447,7 +447,7 @@ class DataImporter {
 		// Validate live term row, it could be missing or invalid.
 		if ( is_null( $live_term_row ) ) {
 			Logger::instance()->log_brief_and_verbose(
-				LogLevel::ERROR,
+				LogLevel::WARNING,
 				'import_single_term_relationship: term_id does not exist in live DB term table, skipping',
 				[
 					'id_old'                 => $id_old,
