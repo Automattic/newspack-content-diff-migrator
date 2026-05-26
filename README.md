@@ -20,7 +20,7 @@ The plugin migrates all the database content, while files synchronization should
 
 ## Installation
 
-Use latest release from the [Newspack Plugins Repository](https://github.com/newspack-archive/newspack-plugins/releases), or install from repository:
+Use latest release from the [Newspack Plugins Repository](https://github.com/Automattic/newspack-content-diff-migrator/releases), or install from repository:
 
 1. Clone or download the plugin to your WordPress plugins directory
 2. Navigate to the plugin directory
