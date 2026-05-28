@@ -1685,6 +1685,11 @@ class ContentDiffMigrator {
 			Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, sprintf( '%d of %d featured image IDs were already updated, continuing from there...', count( $already_updated_ids_map ), count( $imported_nonattachment_ids_map ) ) );
 		}
 
+		// Batch-fetch source-side _thumbnail_id for every imported post so we can pass
+		// it into update_featured_image() and let it apply a precise double-remap guard
+		// (see ContentDiffLogic::update_featured_image for details).
+		$live_thumbnail_ids_by_live_post_id = $this->fetch_live_thumbnail_ids( array_keys( $ids_map_for_featured_update ) );
+
 		// Update featured images.
 		$progress = new Progress( count( $ids_map_for_featured_update ), 20 );
 		$step     = 0;
@@ -1696,7 +1701,9 @@ class ContentDiffMigrator {
 				Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( $progress_milestone ) );
 			}
 
-			$this->logic->update_featured_image( $id_new, $imported_attachment_ids_map );
+			$live_thumbnail_id = $live_thumbnail_ids_by_live_post_id[ $id_old ] ?? null;
+
+			$this->logic->update_featured_image( $id_new, $imported_attachment_ids_map, $live_thumbnail_id );
 
 			// Save to run-state for resume capability (even if post's featured image wasn't updated, it has still been processed).
 			$this->run_state->append_updated_featured_image_post(
@@ -1709,6 +1716,60 @@ class ContentDiffMigrator {
 		if ( $progress->finish() ) {
 			Logger::instance()->log( Logger::OUTPUT_CLI, LogLevel::DEBUG, Progress::format( 100 ) );
 		}
+	}
+
+	/**
+	 * Batch-fetches the source-side `_thumbnail_id` value for the given live post IDs.
+	 *
+	 * Used by update_featured_image_ids() to feed the precise double-remap guard in
+	 * ContentDiffLogic::update_featured_image(). One query for the whole batch rather
+	 * than one query per post.
+	 *
+	 * @param array $live_post_ids List of live post IDs to look up.
+	 *
+	 * @return array Map of live_post_id (int) => live_thumbnail_id (int). Posts without a
+	 *               `_thumbnail_id` postmeta on the live side are omitted from the map.
+	 */
+	private function fetch_live_thumbnail_ids( array $live_post_ids ): array {
+		if ( empty( $live_post_ids ) || ! $this->live_table_prefix ) {
+			return [];
+		}
+
+		global $wpdb;
+		$live_postmeta_table = $this->live_table_prefix . 'postmeta';
+
+		// Sanitize: cast all IDs to int.
+		$live_post_ids_int = array_map( 'intval', $live_post_ids );
+		$live_post_ids_int = array_filter( $live_post_ids_int, fn( $id ) => $id > 0 );
+		if ( empty( $live_post_ids_int ) ) {
+			return [];
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $live_post_ids_int ), '%d' ) );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT post_id, meta_value
+				FROM {$live_postmeta_table}
+				WHERE meta_key = '_thumbnail_id'
+				AND post_id IN ($placeholders)",
+				...$live_post_ids_int
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		$out = [];
+		foreach ( (array) $rows as $row ) {
+			$live_post_id      = (int) $row['post_id'];
+			$live_thumbnail_id = (int) $row['meta_value'];
+			if ( $live_post_id > 0 && $live_thumbnail_id > 0 ) {
+				$out[ $live_post_id ] = $live_thumbnail_id;
+			}
+		}
+
+		return $out;
 	}
 
 	/**

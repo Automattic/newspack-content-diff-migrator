@@ -479,10 +479,6 @@ class BlockUpdater {
 			if ( isset( $block_updated['attrs']['ids'] ) && is_array( $block_updated['attrs']['ids'] ) ) {
 				$block_ids_updated = $block_updated['attrs']['ids'];
 				foreach ( $block_ids_updated as $key => $id ) {
-					// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-					if ( in_array( (int) $id, array_values( $known_attachment_ids_updates ), true ) ) {
-						continue;
-					}
 					$block_ids_updated[ $key ] = $known_attachment_ids_updates[ $id ] ?? $id;
 				}
 				$block_updated['attrs']['ids'] = $block_ids_updated;
@@ -553,10 +549,6 @@ class BlockUpdater {
 			if ( isset( $block_updated['attrs']['ids'] ) && is_array( $block_updated['attrs']['ids'] ) ) {
 				$block_ids_updated = $block_updated['attrs']['ids'];
 				foreach ( $block_ids_updated as $key => $id ) {
-					// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-					if ( in_array( (int) $id, array_values( $known_attachment_ids_updates ), true ) ) {
-						continue;
-					}
 					$block_ids_updated[ $key ] = $known_attachment_ids_updates[ $id ] ?? $id;
 				}
 				$block_updated['attrs']['ids'] = $block_ids_updated;
@@ -625,18 +617,12 @@ class BlockUpdater {
 
 			// Update IDs in block header for imageBefore and imageAfter.
 			if ( isset( $block_updated['attrs']['imageBefore']['id'] ) ) {
-				$before_id = $block_updated['attrs']['imageBefore']['id'];
-				// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-				if ( ! in_array( (int) $before_id, array_values( $known_attachment_ids_updates ), true ) ) {
-					$block_updated['attrs']['imageBefore']['id'] = $known_attachment_ids_updates[ $before_id ] ?? $before_id;
-				}
+				$before_id                                   = $block_updated['attrs']['imageBefore']['id'];
+				$block_updated['attrs']['imageBefore']['id'] = $known_attachment_ids_updates[ $before_id ] ?? $before_id;
 			}
 			if ( isset( $block_updated['attrs']['imageAfter']['id'] ) ) {
-				$after_id = $block_updated['attrs']['imageAfter']['id'];
-				// Skip if current ID is already a valid local ID (prevents ID collision).
-				if ( ! in_array( (int) $after_id, array_values( $known_attachment_ids_updates ), true ) ) {
-					$block_updated['attrs']['imageAfter']['id'] = $known_attachment_ids_updates[ $after_id ] ?? $after_id;
-				}
+				$after_id                                   = $block_updated['attrs']['imageAfter']['id'];
+				$block_updated['attrs']['imageAfter']['id'] = $known_attachment_ids_updates[ $after_id ] ?? $after_id;
 			}
 
 			// Replace block in content.
@@ -666,12 +652,6 @@ class BlockUpdater {
 			$pattern,
 			function ( $matches ) use ( $known_attachment_ids_updates ) {
 				$old_id = (int) $matches[1];
-
-				// Skip if current ID is already a valid local ID (prevents ID collision on subsequent runs).
-				if ( in_array( $old_id, array_values( $known_attachment_ids_updates ), true ) ) {
-					// Return unchanged.
-					return $matches[0];
-				}
 
 				// Check if we have a mapping for this pattern ID.
 				if ( ! isset( $known_attachment_ids_updates[ $old_id ] ) ) {
@@ -940,11 +920,6 @@ class BlockUpdater {
 	 * @return int|null New attachment ID or null if not found.
 	 */
 	private function resolve_new_attachment_id( int $att_id, ?string $src, array &$known_attachment_ids_updates, array $local_hostname_aliases ): ?int {
-		// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-		if ( in_array( $att_id, array_values( $known_attachment_ids_updates ), true ) ) {
-			return null;
-		}
-
 		// Check if we already know the mapping.
 		if ( isset( $known_attachment_ids_updates[ $att_id ] ) ) {
 			return $known_attachment_ids_updates[ $att_id ];
