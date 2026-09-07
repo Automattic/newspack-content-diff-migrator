@@ -55,12 +55,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Automattic/newspack-migration-tools.git",
-                "reference": "7f877075c85b6839cee85897e7de971ea26f2322"
+                "reference": "e121aa0b929ca42ebf4f39924926100e66099961"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/7f877075c85b6839cee85897e7de971ea26f2322",
-                "reference": "7f877075c85b6839cee85897e7de971ea26f2322",
+                "url": "https://api.github.com/repos/Automattic/newspack-migration-tools/zipball/e121aa0b929ca42ebf4f39924926100e66099961",
+                "reference": "e121aa0b929ca42ebf4f39924926100e66099961",
                 "shasum": ""
             },
             "require": {
@@ -119,7 +119,7 @@
                 "source": "https://github.com/Automattic/newspack-migration-tools/tree/trunk",
                 "issues": "https://github.com/Automattic/newspack-migration-tools/issues"
             },
-            "time": "2026-04-30T07:07:08+00:00"
+            "time": "2026-08-05T23:49:09+00:00"
         },
         {
             "name": "bramus/ansi-php",
