@@ -2027,4 +2027,492 @@ HTML;
 		// Should remain unchanged because 27478 is already a local ID.
 		$this->assertEquals( $content, $result );
 	}
+
+	// =========================================================================
+	// GALLERY SHORTCODE TESTS
+	// =========================================================================
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_updates_all_ids(): void {
+		$content_before = $this->load_fixture( 'gallery-shortcode' );
+
+		// Validate fixture contains expected IDs.
+		$this->assertStringContainsString( '60270', $content_before, 'Fixture gallery-shortcode.html does not contain expected ID 60270' );
+		$this->assertStringContainsString( '60476', $content_before, 'Fixture gallery-shortcode.html does not contain expected ID 60476' );
+		$this->assertStringContainsString( '60267', $content_before, 'Fixture gallery-shortcode.html does not contain expected ID 60267' );
+
+		$content_after_expected = str_replace(
+			[ '60270', '60476', '60267' ],
+			[ '18222', '18223', '18224' ],
+			$content_before
+		);
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+			60267 => 18224,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_multiple_galleries_updated_independently(): void {
+		$content_before = <<<'HTML'
+<p>Primeira galeria.</p>
+
+[gallery ids="60270,60476"]
+
+<p>Segunda galeria.</p>
+
+[gallery ids="60267" columns="1"]
+HTML;
+
+		$content_after_expected = str_replace(
+			[ '60270', '60476', '60267' ],
+			[ '18222', '18223', '18224' ],
+			$content_before
+		);
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+			60267 => 18224,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_all_blocks_ids
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Both Gutenberg block IDs and classic gallery shortcode IDs are rewritten in the same pass.
+	 */
+	public function gallery_shortcode_mixed_with_blocks_updates_both(): void {
+		$content_before = $this->load_fixture( 'gallery-shortcode-mixed-with-blocks' );
+
+		$content_after_expected = str_replace(
+			[ '60270', '60476', '60267' ],
+			[ '18222', '18223', '18224' ],
+			$content_before
+		);
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+			60267 => 18224,
+		];
+
+		$result = $this->updater->update_all_blocks_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_without_ids_attribute_is_noop(): void {
+		$content = $this->load_fixture( 'gallery-shortcode-no-ids' );
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_with_empty_ids_is_noop(): void {
+		$content = '[gallery ids="" columns="3"]';
+
+		$known_ids = [ 60270 => 18222 ];
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_ids_not_in_map_remain_unchanged(): void {
+		$content = '[gallery ids="70000,70001"]';
+
+		$known_ids = [ 60270 => 18222 ]; // None of the gallery IDs are mapped.
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Only mapped IDs are rewritten; unmapped IDs stay, and original order is preserved.
+	 */
+	public function gallery_shortcode_partial_map_updates_only_mapped_ids_preserving_order(): void {
+		$content_before         = '[gallery ids="60270,70000,60267"]';
+		$content_after_expected = '[gallery ids="18222,70000,18224"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60267 => 18224,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Re-running over already-rewritten content is a no-op (IDs already local are not re-mapped).
+	 */
+	public function gallery_shortcode_is_idempotent_on_rerun(): void {
+		$content_before = $this->load_fixture( 'gallery-shortcode' );
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+			60267 => 18224,
+		];
+
+		$first_run  = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+		$second_run = $this->updater->update_gallery_shortcode_ids( $first_run, $known_ids );
+
+		$this->assertEquals( $first_run, $second_run );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * When an ID is already a local ID (a value in the map), it must not be re-mapped
+	 * even though it also exists as a live key mapping to a different ID (collision risk).
+	 */
+	public function gallery_shortcode_skips_ids_already_local(): void {
+		$content_before         = '[gallery ids="18222,60476"]';
+		$content_after_expected = '[gallery ids="18222,18223"]';
+
+		// Cumulative map: 18222 is both a VALUE (local) and a KEY (live from a different object).
+		$known_ids = [
+			60270 => 18222, // First import: live 60270 -> local 18222.
+			18222 => 99999, // Different object: live 18222 -> local 99999 (COLLISION RISK!).
+			60476 => 18223, // Normal mapping that should be applied.
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_preserves_single_quotes(): void {
+		$content_before         = "[gallery ids='60270,60476']";
+		$content_after_expected = "[gallery ids='18222,18223']";
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Spaces after commas in the CSV are normalized away on the rewritten IDs.
+	 */
+	public function gallery_shortcode_normalizes_spaced_csv(): void {
+		$content_before         = '[gallery ids="60270, 60476, 60267"]';
+		$content_after_expected = '[gallery ids="18222,18223,18224"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+			60267 => 18224,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 */
+	public function gallery_shortcode_no_gallery_present_returns_unchanged(): void {
+		$content = '<p>Sem galeria aqui, apenas texto.</p>';
+
+		$known_ids = [ 60270 => 18222 ];
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Duplicate identical gallery strings are all updated consistently.
+	 */
+	public function gallery_shortcode_duplicate_identical_galleries_all_updated(): void {
+		$content_before = <<<'HTML'
+<p>Bloco A.</p>
+
+[gallery ids="60270,60476"]
+
+<p>Bloco B.</p>
+
+[gallery ids="60270,60476"]
+HTML;
+
+		$content_after_expected = str_replace(
+			[ '60270', '60476' ],
+			[ '18222', '18223' ],
+			$content_before
+		);
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Empty CSV segments (leading/trailing/double commas) are preserved, not coerced to 0;
+	 * only the mapped numeric IDs change.
+	 */
+	public function gallery_shortcode_preserves_empty_csv_segments(): void {
+		$content_before         = '[gallery ids=",60270,,60476,"]';
+		$content_after_expected = '[gallery ids=",18222,,18223,"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+
+		// Re-running must be a no-op (idempotent) on the already-rewritten, still-malformed CSV.
+		$second_run = $this->updater->update_gallery_shortcode_ids( $result, $known_ids );
+		$this->assertEquals( $result, $second_run );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A gallery whose only CSV anomaly is stray commas and whose IDs are all unmapped is left untouched
+	 * (no spurious rewrite injecting a 0 id).
+	 */
+	public function gallery_shortcode_unmapped_ids_with_trailing_comma_is_noop(): void {
+		$content = '[gallery ids="70000,"]';
+
+		$known_ids = [ 60270 => 18222 ]; // 70000 is not mapped.
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A presentational attribute holding the same digits as the ID being rewritten must not be touched,
+	 * whichever side of `ids` it sits on, since the rewrite is anchored on the attribute name, not on the value.
+	 */
+	public function gallery_shortcode_does_not_touch_colliding_attribute_values(): void {
+		$known_ids = [ 3 => 18224 ];
+
+		$this->assertEquals(
+			'[gallery ids="18224" columns="3"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery ids="3" columns="3"]', $known_ids )
+		);
+
+		$this->assertEquals(
+			'[gallery columns="3" ids="18224"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery columns="3" ids="3"]', $known_ids )
+		);
+
+		$this->assertEquals(
+			'[gallery id="3" ids="18224"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery id="3" ids="3"]', $known_ids )
+		);
+
+		$this->assertEquals(
+			'[gallery size="3" ids="18224" link="3"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery size="3" ids="3" link="3"]', $known_ids )
+		);
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * The `include` attribute (WP 2.9) holds attachment IDs just like `ids`, and is rewritten too.
+	 */
+	public function gallery_shortcode_updates_include_attribute(): void {
+		$content_before         = '[gallery include="60270,60476" columns="2"]';
+		$content_after_expected = '[gallery include="18222,18223" columns="2"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * The `exclude` attribute (WP 2.9) holds attachment IDs and is rewritten too.
+	 */
+	public function gallery_shortcode_updates_exclude_attribute(): void {
+		$content_before         = '[gallery exclude="60270,60476"]';
+		$content_after_expected = '[gallery exclude="18222,18223"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * All three attachment ID attributes present at once are each rewritten independently,
+	 * including when two of them hold the very same ID.
+	 */
+	public function gallery_shortcode_updates_all_attachment_id_attributes(): void {
+		$content_before         = '[gallery ids="60270" include="60476" exclude="60476"]';
+		$content_after_expected = '[gallery ids="18222" include="18223" exclude="18223"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+
+		$second_run = $this->updater->update_gallery_shortcode_ids( $result, $known_ids );
+		$this->assertEquals( $result, $second_run );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * `id` is a post ID whose attachment children are displayed, not an attachment ID,
+	 * so the attachment ID map must never be applied to it.
+	 */
+	public function gallery_shortcode_never_updates_post_id_attribute(): void {
+		$content = '[gallery id="60270" columns="3"]';
+
+		$known_ids = [ 60270 => 18222 ];
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Unquoted attribute values are rewritten and stay unquoted.
+	 */
+	public function gallery_shortcode_preserves_unquoted_values(): void {
+		$content_before         = '[gallery ids=60270,60476]';
+		$content_after_expected = '[gallery ids=18222,18223]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A longer attribute name ending in a handled name (e.g. `data-ids`) must not be mistaken for it.
+	 */
+	public function gallery_shortcode_does_not_match_longer_attribute_names(): void {
+		$content_before         = '[gallery ids="60270" data-ids="60270"]';
+		$content_after_expected = '[gallery ids="18222" data-ids="60270"]';
+
+		$known_ids = [ 60270 => 18222 ];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A bare `[gallery]` displays the current post's children and carries no IDs to rewrite.
+	 */
+	public function gallery_shortcode_without_any_attributes_is_noop(): void {
+		$content = '<p>Antes.</p>[gallery]<p>Depois.</p>';
+
+		$known_ids = [ 60270 => 18222 ];
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
 }

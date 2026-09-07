@@ -9,6 +9,7 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\MigrationTools\Logic\Shortcodes;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
 
@@ -16,6 +17,13 @@ use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulat
  * Handles updating attachment IDs in various Gutenberg block types.
  */
 class BlockUpdater {
+
+	/**
+	 * Core `[gallery]` shortcode attributes which hold comma separated attachment IDs.
+	 *
+	 * @var string[]
+	 */
+	private const GALLERY_SHORTCODE_ATTACHMENT_IDS_ATTRIBUTES = [ 'ids', 'include', 'exclude' ];
 
 	/**
 	 * WpBlockManipulator instance.
@@ -30,6 +38,13 @@ class BlockUpdater {
 	 * @var HtmlElementManipulator
 	 */
 	private HtmlElementManipulator $html_element_manipulator;
+
+	/**
+	 * Shortcodes instance.
+	 *
+	 * @var Shortcodes
+	 */
+	private Shortcodes $shortcodes;
 
 	/**
 	 * Callback for resolving attachment URL to post ID.
@@ -49,6 +64,7 @@ class BlockUpdater {
 	public function __construct( callable $attachment_url_to_postid_resolver ) {
 		$this->wp_block_manipulator              = new WpBlockManipulator();
 		$this->html_element_manipulator          = new HtmlElementManipulator();
+		$this->shortcodes                        = new Shortcodes();
 		$this->attachment_url_to_postid_resolver = $attachment_url_to_postid_resolver;
 	}
 
@@ -75,6 +91,7 @@ class BlockUpdater {
 	 * - wp:jetpack/slideshow
 	 * - wp:jetpack/image-compare
 	 * - wp:block (pattern references)
+	 * - classic `[gallery]` shortcode (`ids`, `include` and `exclude` attributes)
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference, will be updated.
@@ -93,6 +110,7 @@ class BlockUpdater {
 		$content = $this->update_jetpackslideshow_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_jetpackimagecompare_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_patterns_wp_block_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
+		$content = $this->update_gallery_shortcode_ids( $content, $known_attachment_ids_updates );
 
 		return $content;
 	}
@@ -692,6 +710,128 @@ class BlockUpdater {
 		);
 
 		return $content_updated;
+	}
+
+	/**
+	 * Updates attachment IDs in classic `[gallery]` shortcodes.
+	 *
+	 * Core `[gallery]` (see `gallery_shortcode()` in wp-includes/media.php) carries attachment IDs in three
+	 * attributes, all of them comma separated lists, and all three are remapped here:
+	 *  - `ids`     -- explicitly ordered list of attachment IDs (since WP 3.5). Core copies it onto `include`.
+	 *  - `include` -- list of attachment IDs to display (since WP 2.9).
+	 *  - `exclude` -- list of attachment IDs to omit from the post's children (since WP 2.9).
+	 *
+	 * Deliberately left untouched:
+	 *  - `id`   -- a *post* ID whose attachment children are displayed (since WP 2.5), not an attachment ID,
+	 *              so the attachment ID map does not apply to it.
+	 *  - `[gallery]` with none of the above, which pulls the current post's children and needs no rewriting.
+	 *  - every presentational attribute (`columns`, `size`, `link`, `order`, `orderby`, `itemtag`, ...).
+	 *
+	 * Each list is remapped token by token through the known ID map. Tokens which are already valid local IDs are
+	 * left alone, so repeated runs cannot remap an ID twice. Non numeric tokens (from leading, trailing or doubled
+	 * commas) are carried over verbatim rather than being coerced to `0`. Rewriting is anchored on the attribute
+	 * name, matched in any case (`ids`, `IDS` and `Ids` are one and the same attribute to WP), and preserves the
+	 * original quote style, so digits appearing elsewhere in the shortcode -- `columns="3"` next to `ids="3"`, for
+	 * instance -- are never touched. A rewritten list is normalized: tokens are trimmed and re-joined with a plain
+	 * comma.
+	 *
+	 * @param string $content                      Post content.
+	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new).
+	 *
+	 * @return string Updated content.
+	 */
+	public function update_gallery_shortcode_ids( string $content, array $known_attachment_ids_updates ): string {
+		$shortcodes = $this->shortcodes->get_all_shortcodes_from_content( 'gallery', $content );
+		if ( empty( $shortcodes ) ) {
+			return $content;
+		}
+
+		$content_updated                     = $content;
+		$known_attachment_ids_updates_values = array_values( $known_attachment_ids_updates );
+
+		foreach ( $shortcodes as $shortcode ) {
+			$shortcode_updated = $shortcode;
+
+			foreach ( self::GALLERY_SHORTCODE_ATTACHMENT_IDS_ATTRIBUTES as $attribute ) {
+				// Returns false when the attribute is absent, and true when it is present but has no value.
+				$ids_csv = $this->shortcodes->get_shortcode_attribute( $attribute, $shortcode );
+				if ( ! is_string( $ids_csv ) || '' === $ids_csv ) {
+					continue;
+				}
+
+				$old_ids = array_map( 'trim', explode( ',', $ids_csv ) );
+				$new_ids = [];
+				foreach ( $old_ids as $old_id ) {
+					// Preserve empty/non-numeric tokens (e.g. leading/trailing/double commas) as-is, so they are not coerced to 0.
+					if ( ! ctype_digit( $old_id ) ) {
+						$new_ids[] = $old_id;
+						continue;
+					}
+
+					$old_id_int = (int) $old_id;
+
+					// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
+					if ( in_array( $old_id_int, $known_attachment_ids_updates_values, true ) ) {
+						$new_ids[] = $old_id;
+						continue;
+					}
+
+					$new_ids[] = (string) ( $known_attachment_ids_updates[ $old_id_int ] ?? $old_id_int );
+				}
+
+				if ( $new_ids === $old_ids ) {
+					continue;
+				}
+
+				$shortcode_updated = $this->replace_shortcode_attribute_value( $shortcode_updated, $attribute, $ids_csv, implode( ',', $new_ids ) );
+			}
+
+			if ( $shortcode_updated === $shortcode ) {
+				continue;
+			}
+
+			$content_updated = str_replace( $shortcode, $shortcode_updated, $content_updated );
+		}
+
+		return $content_updated;
+	}
+
+	/**
+	 * Replaces a single shortcode attribute's value, anchored on the attribute name.
+	 *
+	 * Matches `name=value`, `name="value"` and `name='value'`, and writes the new value back using whichever quote
+	 * style was found, so that an identical value used by another attribute of the same shortcode is left intact.
+	 *
+	 * The name is matched case-insensitively, because WP itself treats shortcode attribute names that way: it
+	 * lowercases every name while parsing (`shortcode_parse_atts()`), so `[gallery IDS="1,2"]` reaches
+	 * `gallery_shortcode()` as `ids` and renders the very same gallery as `[gallery ids="1,2"]`.
+	 *
+	 * @param string $shortcode Full shortcode string, including brackets.
+	 * @param string $attribute Attribute name.
+	 * @param string $value_old Current attribute value, without surrounding quotes.
+	 * @param string $value_new Replacement attribute value.
+	 *
+	 * @return string Updated shortcode, unchanged if the attribute/value pair was not matched.
+	 */
+	private function replace_shortcode_attribute_value( string $shortcode, string $attribute, string $value_old, string $value_new ): string {
+		$pattern = '/'
+			. '(?<![-\w])'                              // Not part of a longer attribute name, e.g. `data-ids`.
+			// The `(?i:...)` group keeps the case-insensitivity on the name alone, leaving the value matched verbatim.
+			. '((?i:' . preg_quote( $attribute, '/' ) . ')\s*=\s*)' // Attribute name and equals sign.
+			. '(["\']?)'                                // Opening quote, if any.
+			. preg_quote( $value_old, '/' )             // Current value.
+			. '\2'                                      // Same closing quote, or nothing when unquoted.
+			. '/';
+
+		$shortcode_updated = preg_replace_callback(
+			$pattern,
+			// Callback rather than a replacement string, since $value_new may carry over verbatim tokens containing `$` or `\`.
+			fn( array $matches ): string => $matches[1] . $matches[2] . $value_new . $matches[2],
+			$shortcode,
+			1
+		);
+
+		return $shortcode_updated ?? $shortcode;
 	}
 
 	/**
