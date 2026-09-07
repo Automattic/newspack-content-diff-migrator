@@ -19,6 +19,13 @@ use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulat
 class BlockUpdater {
 
 	/**
+	 * Core `[gallery]` shortcode attributes which hold comma separated attachment IDs.
+	 *
+	 * @var string[]
+	 */
+	private const GALLERY_SHORTCODE_ATTACHMENT_IDS_ATTRIBUTES = [ 'ids', 'include', 'exclude' ];
+
+	/**
 	 * WpBlockManipulator instance.
 	 *
 	 * @var WpBlockManipulator
@@ -84,7 +91,7 @@ class BlockUpdater {
 	 * - wp:jetpack/slideshow
 	 * - wp:jetpack/image-compare
 	 * - wp:block (pattern references)
-	 * - classic `[gallery ids="..."]` shortcode
+	 * - classic `[gallery]` shortcode (`ids`, `include` and `exclude` attributes)
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference, will be updated.
@@ -103,7 +110,7 @@ class BlockUpdater {
 		$content = $this->update_jetpackslideshow_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_jetpackimagecompare_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_patterns_wp_block_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
-		$content = $this->update_gallery_shortcode_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
+		$content = $this->update_gallery_shortcode_ids( $content, $known_attachment_ids_updates );
 
 		return $content;
 	}
@@ -706,64 +713,119 @@ class BlockUpdater {
 	}
 
 	/**
-	 * Updates attachment IDs in classic `[gallery ids="..."]` shortcodes.
+	 * Updates attachment IDs in classic `[gallery]` shortcodes.
 	 *
-	 * Only the `ids` attribute of the core `[gallery]` shortcode is handled. The CSV value is
-	 * remapped through the known ID map; the surrounding shortcode string (quote style and other attributes)
-	 * is preserved by replacing only the CSV substring, but the `ids` CSV is normalized (trimmed + re-joined with commas) when rewritten.
+	 * Core `[gallery]` (see `gallery_shortcode()` in wp-includes/media.php) carries attachment IDs in three
+	 * attributes, all of them comma separated lists, and all three are remapped here:
+	 *  - `ids`     -- explicitly ordered list of attachment IDs (since WP 3.5). Core copies it onto `include`.
+	 *  - `include` -- list of attachment IDs to display (since WP 2.9).
+	 *  - `exclude` -- list of attachment IDs to omit from the post's children (since WP 2.9).
+	 *
+	 * Deliberately left untouched:
+	 *  - `id`   -- a *post* ID whose attachment children are displayed (since WP 2.5), not an attachment ID,
+	 *              so the attachment ID map does not apply to it.
+	 *  - `[gallery]` with none of the above, which pulls the current post's children and needs no rewriting.
+	 *  - every presentational attribute (`columns`, `size`, `link`, `order`, `orderby`, `itemtag`, ...).
+	 *
+	 * Each list is remapped token by token through the known ID map. Tokens which are already valid local IDs are
+	 * left alone, so repeated runs cannot remap an ID twice. Non numeric tokens (from leading, trailing or doubled
+	 * commas) are carried over verbatim rather than being coerced to `0`. Rewriting is anchored on the attribute
+	 * name and preserves the original quote style, so digits appearing elsewhere in the shortcode -- `columns="3"`
+	 * next to `ids="3"`, for instance -- are never touched. A rewritten list is normalized: tokens are trimmed and
+	 * re-joined with a plain comma.
 	 *
 	 * @param string $content                      Post content.
-	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference.
-	 * @param array  $local_hostname_aliases       Hostnames to treat as local. Unused here; kept for signature parity.
+	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new).
 	 *
 	 * @return string Updated content.
 	 */
-	public function update_gallery_shortcode_ids( string $content, array &$known_attachment_ids_updates, array $local_hostname_aliases = [] ): string { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
-		if ( ! $this->shortcodes->has_shortcode( 'gallery', $content ) ) {
+	public function update_gallery_shortcode_ids( string $content, array $known_attachment_ids_updates ): string {
+		$shortcodes = $this->shortcodes->get_all_shortcodes_from_content( 'gallery', $content );
+		if ( empty( $shortcodes ) ) {
 			return $content;
 		}
 
-		$content_updated = $content;
-		$shortcodes      = $this->shortcodes->get_all_shortcodes_from_content( 'gallery', $content );
+		$content_updated                     = $content;
+		$known_attachment_ids_updates_values = array_values( $known_attachment_ids_updates );
+
 		foreach ( $shortcodes as $shortcode ) {
-			$ids_csv = $this->shortcodes->get_shortcode_attribute( 'ids', $shortcode );
+			$shortcode_updated = $shortcode;
 
-			// Skip `[gallery]` with no `ids` (pulls all post children -- must be a no-op) or an empty `ids`.
-			if ( ! is_string( $ids_csv ) || '' === $ids_csv ) {
-				continue;
-			}
-
-			$old_ids                             = array_map( 'trim', explode( ',', $ids_csv ) );
-			$new_ids                             = [];
-			$known_attachment_ids_updates_values = array_values( $known_attachment_ids_updates );
-			foreach ( $old_ids as $old_id ) {
-				// Preserve empty/non-numeric tokens (e.g. leading/trailing/double commas) as-is, so they are not coerced to 0.
-				if ( ! ctype_digit( $old_id ) ) {
-					$new_ids[] = $old_id;
+			foreach ( self::GALLERY_SHORTCODE_ATTACHMENT_IDS_ATTRIBUTES as $attribute ) {
+				// Returns false when the attribute is absent, and true when it is present but has no value.
+				$ids_csv = $this->shortcodes->get_shortcode_attribute( $attribute, $shortcode );
+				if ( ! is_string( $ids_csv ) || '' === $ids_csv ) {
 					continue;
 				}
 
-				$old_id_int = (int) $old_id;
+				$old_ids = array_map( 'trim', explode( ',', $ids_csv ) );
+				$new_ids = [];
+				foreach ( $old_ids as $old_id ) {
+					// Preserve empty/non-numeric tokens (e.g. leading/trailing/double commas) as-is, so they are not coerced to 0.
+					if ( ! ctype_digit( $old_id ) ) {
+						$new_ids[] = $old_id;
+						continue;
+					}
 
-				// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-				if ( in_array( $old_id_int, $known_attachment_ids_updates_values, true ) ) {
-					$new_ids[] = $old_id;
+					$old_id_int = (int) $old_id;
+
+					// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
+					if ( in_array( $old_id_int, $known_attachment_ids_updates_values, true ) ) {
+						$new_ids[] = $old_id;
+						continue;
+					}
+
+					$new_ids[] = (string) ( $known_attachment_ids_updates[ $old_id_int ] ?? $old_id_int );
+				}
+
+				if ( $new_ids === $old_ids ) {
 					continue;
 				}
 
-				$new_ids[] = (string) ( $known_attachment_ids_updates[ $old_id_int ] ?? $old_id_int );
+				$shortcode_updated = $this->replace_shortcode_attribute_value( $shortcode_updated, $attribute, $ids_csv, implode( ',', $new_ids ) );
 			}
 
-			if ( $new_ids === $old_ids ) {
+			if ( $shortcode_updated === $shortcode ) {
 				continue;
 			}
 
-			$new_ids_csv       = implode( ',', $new_ids );
-			$shortcode_updated = str_replace( $ids_csv, $new_ids_csv, $shortcode );
-			$content_updated   = str_replace( $shortcode, $shortcode_updated, $content_updated );
+			$content_updated = str_replace( $shortcode, $shortcode_updated, $content_updated );
 		}
 
 		return $content_updated;
+	}
+
+	/**
+	 * Replaces a single shortcode attribute's value, anchored on the attribute name.
+	 *
+	 * Matches `name=value`, `name="value"` and `name='value'`, and writes the new value back using whichever quote
+	 * style was found, so that an identical value used by another attribute of the same shortcode is left intact.
+	 *
+	 * @param string $shortcode Full shortcode string, including brackets.
+	 * @param string $attribute Attribute name.
+	 * @param string $value_old Current attribute value, without surrounding quotes.
+	 * @param string $value_new Replacement attribute value.
+	 *
+	 * @return string Updated shortcode, unchanged if the attribute/value pair was not matched.
+	 */
+	private function replace_shortcode_attribute_value( string $shortcode, string $attribute, string $value_old, string $value_new ): string {
+		$pattern = '/'
+			. '(?<![-\w])'                              // Not part of a longer attribute name, e.g. `data-ids`.
+			. '(' . preg_quote( $attribute, '/' ) . '\s*=\s*)' // Attribute name and equals sign.
+			. '(["\']?)'                                // Opening quote, if any.
+			. preg_quote( $value_old, '/' )             // Current value.
+			. '\2'                                      // Same closing quote, or nothing when unquoted.
+			. '/';
+
+		$shortcode_updated = preg_replace_callback(
+			$pattern,
+			// Callback rather than a replacement string, since $value_new may carry over verbatim tokens containing `$` or `\`.
+			fn( array $matches ): string => $matches[1] . $matches[2] . $value_new . $matches[2],
+			$shortcode,
+			1
+		);
+
+		return $shortcode_updated ?? $shortcode;
 	}
 
 	/**

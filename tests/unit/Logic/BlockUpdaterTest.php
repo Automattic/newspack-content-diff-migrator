@@ -2352,4 +2352,167 @@ HTML;
 
 		$this->assertEquals( $content, $result );
 	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A presentational attribute holding the same digits as the ID being rewritten must not be touched,
+	 * whichever side of `ids` it sits on, since the rewrite is anchored on the attribute name, not on the value.
+	 */
+	public function gallery_shortcode_does_not_touch_colliding_attribute_values(): void {
+		$known_ids = [ 3 => 18224 ];
+
+		$this->assertEquals(
+			'[gallery ids="18224" columns="3"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery ids="3" columns="3"]', $known_ids )
+		);
+
+		$this->assertEquals(
+			'[gallery columns="3" ids="18224"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery columns="3" ids="3"]', $known_ids )
+		);
+
+		$this->assertEquals(
+			'[gallery id="3" ids="18224"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery id="3" ids="3"]', $known_ids )
+		);
+
+		$this->assertEquals(
+			'[gallery size="3" ids="18224" link="3"]',
+			$this->updater->update_gallery_shortcode_ids( '[gallery size="3" ids="3" link="3"]', $known_ids )
+		);
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * The `include` attribute (WP 2.9) holds attachment IDs just like `ids`, and is rewritten too.
+	 */
+	public function gallery_shortcode_updates_include_attribute(): void {
+		$content_before         = '[gallery include="60270,60476" columns="2"]';
+		$content_after_expected = '[gallery include="18222,18223" columns="2"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * The `exclude` attribute (WP 2.9) holds attachment IDs and is rewritten too.
+	 */
+	public function gallery_shortcode_updates_exclude_attribute(): void {
+		$content_before         = '[gallery exclude="60270,60476"]';
+		$content_after_expected = '[gallery exclude="18222,18223"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * All three attachment ID attributes present at once are each rewritten independently,
+	 * including when two of them hold the very same ID.
+	 */
+	public function gallery_shortcode_updates_all_attachment_id_attributes(): void {
+		$content_before         = '[gallery ids="60270" include="60476" exclude="60476"]';
+		$content_after_expected = '[gallery ids="18222" include="18223" exclude="18223"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+
+		$second_run = $this->updater->update_gallery_shortcode_ids( $result, $known_ids );
+		$this->assertEquals( $result, $second_run );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * `id` is a post ID whose attachment children are displayed, not an attachment ID,
+	 * so the attachment ID map must never be applied to it.
+	 */
+	public function gallery_shortcode_never_updates_post_id_attribute(): void {
+		$content = '[gallery id="60270" columns="3"]';
+
+		$known_ids = [ 60270 => 18222 ];
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Unquoted attribute values are rewritten and stay unquoted.
+	 */
+	public function gallery_shortcode_preserves_unquoted_values(): void {
+		$content_before         = '[gallery ids=60270,60476]';
+		$content_after_expected = '[gallery ids=18222,18223]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A longer attribute name ending in a handled name (e.g. `data-ids`) must not be mistaken for it.
+	 */
+	public function gallery_shortcode_does_not_match_longer_attribute_names(): void {
+		$content_before         = '[gallery ids="60270" data-ids="60270"]';
+		$content_after_expected = '[gallery ids="18222" data-ids="60270"]';
+
+		$known_ids = [ 60270 => 18222 ];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A bare `[gallery]` displays the current post's children and carries no IDs to rewrite.
+	 */
+	public function gallery_shortcode_without_any_attributes_is_noop(): void {
+		$content = '<p>Antes.</p>[gallery]<p>Depois.</p>';
+
+		$known_ids = [ 60270 => 18222 ];
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
 }
