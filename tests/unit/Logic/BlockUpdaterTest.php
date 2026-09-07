@@ -2311,4 +2311,45 @@ HTML;
 
 		$this->assertEquals( $content_after_expected, $result );
 	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * Empty CSV segments (leading/trailing/double commas) are preserved, not coerced to 0;
+	 * only the mapped numeric IDs change.
+	 */
+	public function gallery_shortcode_preserves_empty_csv_segments(): void {
+		$content_before         = '[gallery ids=",60270,,60476,"]';
+		$content_after_expected = '[gallery ids=",18222,,18223,"]';
+
+		$known_ids = [
+			60270 => 18222,
+			60476 => 18223,
+		];
+
+		$result = $this->updater->update_gallery_shortcode_ids( $content_before, $known_ids );
+
+		$this->assertEquals( $content_after_expected, $result );
+
+		// Re-running must be a no-op (idempotent) on the already-rewritten, still-malformed CSV.
+		$second_run = $this->updater->update_gallery_shortcode_ids( $result, $known_ids );
+		$this->assertEquals( $result, $second_run );
+	}
+
+	/**
+	 * @test
+	 * @covers \Newspack\ContentDiffMigrator\Logic\BlockUpdater::update_gallery_shortcode_ids
+	 *
+	 * A gallery whose only CSV anomaly is stray commas and whose IDs are all unmapped is left untouched
+	 * (no spurious rewrite injecting a 0 id).
+	 */
+	public function gallery_shortcode_unmapped_ids_with_trailing_comma_is_noop(): void {
+		$content = '[gallery ids="70000,"]';
+
+		$known_ids = [ 60270 => 18222 ]; // 70000 is not mapped.
+		$result    = $this->updater->update_gallery_shortcode_ids( $content, $known_ids );
+
+		$this->assertEquals( $content, $result );
+	}
 }

@@ -733,13 +733,20 @@ class BlockUpdater {
 				continue;
 			}
 
-			$old_ids = array_map( 'trim', explode( ',', $ids_csv ) );
-			$new_ids = [];
+			$old_ids                             = array_map( 'trim', explode( ',', $ids_csv ) );
+			$new_ids                             = [];
+			$known_attachment_ids_updates_values = array_values( $known_attachment_ids_updates );
 			foreach ( $old_ids as $old_id ) {
+				// Preserve empty/non-numeric tokens (e.g. leading/trailing/double commas) as-is, so they are not coerced to 0.
+				if ( ! ctype_digit( $old_id ) ) {
+					$new_ids[] = $old_id;
+					continue;
+				}
+
 				$old_id_int = (int) $old_id;
 
 				// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-				if ( in_array( $old_id_int, array_values( $known_attachment_ids_updates ), true ) ) {
+				if ( in_array( $old_id_int, $known_attachment_ids_updates_values, true ) ) {
 					$new_ids[] = $old_id;
 					continue;
 				}
