@@ -730,9 +730,10 @@ class BlockUpdater {
 	 * Each list is remapped token by token through the known ID map. Tokens which are already valid local IDs are
 	 * left alone, so repeated runs cannot remap an ID twice. Non numeric tokens (from leading, trailing or doubled
 	 * commas) are carried over verbatim rather than being coerced to `0`. Rewriting is anchored on the attribute
-	 * name and preserves the original quote style, so digits appearing elsewhere in the shortcode -- `columns="3"`
-	 * next to `ids="3"`, for instance -- are never touched. A rewritten list is normalized: tokens are trimmed and
-	 * re-joined with a plain comma.
+	 * name, matched in any case (`ids`, `IDS` and `Ids` are one and the same attribute to WP), and preserves the
+	 * original quote style, so digits appearing elsewhere in the shortcode -- `columns="3"` next to `ids="3"`, for
+	 * instance -- are never touched. A rewritten list is normalized: tokens are trimmed and re-joined with a plain
+	 * comma.
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new).
@@ -801,6 +802,10 @@ class BlockUpdater {
 	 * Matches `name=value`, `name="value"` and `name='value'`, and writes the new value back using whichever quote
 	 * style was found, so that an identical value used by another attribute of the same shortcode is left intact.
 	 *
+	 * The name is matched case-insensitively, because WP itself treats shortcode attribute names that way: it
+	 * lowercases every name while parsing (`shortcode_parse_atts()`), so `[gallery IDS="1,2"]` reaches
+	 * `gallery_shortcode()` as `ids` and renders the very same gallery as `[gallery ids="1,2"]`.
+	 *
 	 * @param string $shortcode Full shortcode string, including brackets.
 	 * @param string $attribute Attribute name.
 	 * @param string $value_old Current attribute value, without surrounding quotes.
@@ -811,7 +816,8 @@ class BlockUpdater {
 	private function replace_shortcode_attribute_value( string $shortcode, string $attribute, string $value_old, string $value_new ): string {
 		$pattern = '/'
 			. '(?<![-\w])'                              // Not part of a longer attribute name, e.g. `data-ids`.
-			. '(' . preg_quote( $attribute, '/' ) . '\s*=\s*)' // Attribute name and equals sign.
+			// The `(?i:...)` group keeps the case-insensitivity on the name alone, leaving the value matched verbatim.
+			. '((?i:' . preg_quote( $attribute, '/' ) . ')\s*=\s*)' // Attribute name and equals sign.
 			. '(["\']?)'                                // Opening quote, if any.
 			. preg_quote( $value_old, '/' )             // Current value.
 			. '\2'                                      // Same closing quote, or nothing when unquoted.
