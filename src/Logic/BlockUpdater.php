@@ -709,8 +709,8 @@ class BlockUpdater {
 	 * Updates attachment IDs in classic `[gallery ids="..."]` shortcodes.
 	 *
 	 * Only the `ids` attribute of the core `[gallery]` shortcode is handled. The CSV value is
-	 * remapped through the known ID map; the surrounding shortcode string (quote style, spacing,
-	 * other attributes) is preserved by replacing only the CSV substring.
+	 * remapped through the known ID map; the surrounding shortcode string (quote style and other attributes)
+	 * is preserved by replacing only the CSV substring, but the `ids` CSV is normalized (trimmed + re-joined with commas) when rewritten.
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference.
