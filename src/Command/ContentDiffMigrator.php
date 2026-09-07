@@ -898,7 +898,7 @@ class ContentDiffMigrator {
 		$this->update_featured_image_ids( $imported_posts_data, $source_hostname, $imported_nonattachment_ids_map, $imported_attachment_ids_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
-		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in block content...' );
+		Logger::instance()->log( Logger::OUTPUT_BOTH, LogLevel::DEBUG, 'Updating attachment IDs in post content...' );
 		$this->update_attachment_ids_in_blocks( $imported_posts_data, $source_hostname, $imported_nonattachment_ids_map, $imported_attachment_ids_map, $imported_wp_block_ids_map );
 		MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
