@@ -9,6 +9,7 @@
 
 namespace Newspack\ContentDiffMigrator\Logic;
 
+use Newspack\MigrationTools\Logic\Shortcodes;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\HtmlElementManipulator;
 use NewspackContentConverter\ContentPatcher\ElementManipulators\WpBlockManipulator;
 
@@ -32,6 +33,13 @@ class BlockUpdater {
 	private HtmlElementManipulator $html_element_manipulator;
 
 	/**
+	 * Shortcodes instance.
+	 *
+	 * @var Shortcodes
+	 */
+	private Shortcodes $shortcodes;
+
+	/**
 	 * Callback for resolving attachment URL to post ID.
 	 *
 	 * @var callable|null Callback that takes (url, aliases) and returns post ID.
@@ -49,6 +57,7 @@ class BlockUpdater {
 	public function __construct( callable $attachment_url_to_postid_resolver ) {
 		$this->wp_block_manipulator              = new WpBlockManipulator();
 		$this->html_element_manipulator          = new HtmlElementManipulator();
+		$this->shortcodes                        = new Shortcodes();
 		$this->attachment_url_to_postid_resolver = $attachment_url_to_postid_resolver;
 	}
 
@@ -75,6 +84,7 @@ class BlockUpdater {
 	 * - wp:jetpack/slideshow
 	 * - wp:jetpack/image-compare
 	 * - wp:block (pattern references)
+	 * - classic `[gallery ids="..."]` shortcode
 	 *
 	 * @param string $content                      Post content.
 	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference, will be updated.
@@ -93,6 +103,7 @@ class BlockUpdater {
 		$content = $this->update_jetpackslideshow_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_jetpackimagecompare_blocks_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 		$content = $this->update_patterns_wp_block_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
+		$content = $this->update_gallery_shortcode_ids( $content, $known_attachment_ids_updates, $local_hostname_aliases );
 
 		return $content;
 	}
@@ -690,6 +701,60 @@ class BlockUpdater {
 			},
 			$content
 		);
+
+		return $content_updated;
+	}
+
+	/**
+	 * Updates attachment IDs in classic `[gallery ids="..."]` shortcodes.
+	 *
+	 * Only the `ids` attribute of the core `[gallery]` shortcode is handled. The CSV value is
+	 * remapped through the known ID map; the surrounding shortcode string (quote style, spacing,
+	 * other attributes) is preserved by replacing only the CSV substring.
+	 *
+	 * @param string $content                      Post content.
+	 * @param array  $known_attachment_ids_updates Known ID mappings (old => new). Passed by reference.
+	 * @param array  $local_hostname_aliases       Hostnames to treat as local. Unused here; kept for signature parity.
+	 *
+	 * @return string Updated content.
+	 */
+	public function update_gallery_shortcode_ids( string $content, array &$known_attachment_ids_updates, array $local_hostname_aliases = [] ): string { // phpcs:ignore -- Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed.
+		if ( ! $this->shortcodes->has_shortcode( 'gallery', $content ) ) {
+			return $content;
+		}
+
+		$content_updated = $content;
+		$shortcodes      = $this->shortcodes->get_all_shortcodes_from_content( 'gallery', $content );
+		foreach ( $shortcodes as $shortcode ) {
+			$ids_csv = $this->shortcodes->get_shortcode_attribute( 'ids', $shortcode );
+
+			// Skip `[gallery]` with no `ids` (pulls all post children -- must be a no-op) or an empty `ids`.
+			if ( ! is_string( $ids_csv ) || '' === $ids_csv ) {
+				continue;
+			}
+
+			$old_ids = array_map( 'trim', explode( ',', $ids_csv ) );
+			$new_ids = [];
+			foreach ( $old_ids as $old_id ) {
+				$old_id_int = (int) $old_id;
+
+				// Skip if current ID is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
+				if ( in_array( $old_id_int, array_values( $known_attachment_ids_updates ), true ) ) {
+					$new_ids[] = $old_id;
+					continue;
+				}
+
+				$new_ids[] = (string) ( $known_attachment_ids_updates[ $old_id_int ] ?? $old_id_int );
+			}
+
+			if ( $new_ids === $old_ids ) {
+				continue;
+			}
+
+			$new_ids_csv       = implode( ',', $new_ids );
+			$shortcode_updated = str_replace( $ids_csv, $new_ids_csv, $shortcode );
+			$content_updated   = str_replace( $shortcode, $shortcode_updated, $content_updated );
+		}
 
 		return $content_updated;
 	}
