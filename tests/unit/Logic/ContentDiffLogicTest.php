@@ -2346,11 +2346,88 @@ class ContentDiffLogicTest extends WP_UnitTestCase {
 			(string) $attachment_new => 99999, // Collision risk: current thumb matches this live_id.
 		];
 
-		$this->logic->update_featured_image( $post_id, $map );
+		// Pass the post's source-side live thumbnail ID. With it, the function precisely
+		// determines that the current value is already the correctly-remapped local target
+		// and skips. This is the legitimate chain-protection scenario.
+		$this->logic->update_featured_image( $post_id, $map, $attachment_old );
 
-		// Should remain unchanged because attachment_new is in local_ids_set.
+		// Should remain unchanged because attachment_new is the correct local target for live id $attachment_old.
 		$result = get_post_meta( $post_id, '_thumbnail_id', true );
 		$this->assertEquals( $attachment_new, (int) $result );
+	}
+
+	/**
+	 * Regression test for ID-collision false-skip bug introduced in a7a16e7.
+	 *
+	 * Before the fix, the broad `in_array(current, array_values($map))` check would cause
+	 * `update_featured_image` to skip a post whose `_thumbnail_id` is a STALE live ID that
+	 * happens to numerically match the new local ID of a *different* imported attachment.
+	 *
+	 * Concretely: live attachment A (id 1000) was imported as local 2000. Independently,
+	 * live attachment B (id 2000) was imported as local 3000. A post that originally
+	 * referenced live attachment B (id 2000) has its `_thumbnail_id = 2000` carried over
+	 * verbatim from live. The broad check fires because 2000 is in array_values (it's the
+	 * local ID assigned to A), so the FI update is skipped — leaving the post pointing at
+	 * staging's pre-existing post 2000 (an unrelated image).
+	 */
+	public function test_update_featured_image_should_remap_when_value_coincides_with_other_local_id(): void {
+		// Set up attachments so that live attachment B's live ID (2000) coincides with
+		// the new local ID of a different imported attachment A (live 1000 -> local 2000).
+		$live_id_a  = 1000;
+		$local_id_a = self::factory()->attachment->create(); // arbitrary local id assigned by factory
+		$live_id_b  = 2000;                                  // shares numeric value with $local_id_a in production scenarios
+		$local_id_b = self::factory()->attachment->create();
+		$post_id    = self::factory()->post->create();
+
+		// Post originally referenced live attachment B; the live id was copied verbatim
+		// during the diff and never remapped.
+		update_post_meta( $post_id, '_thumbnail_id', $live_id_b );
+
+		// Imported attachments map.
+		$map = [
+			(string) $live_id_a => $local_id_a,
+			(string) $live_id_b => $local_id_b,
+		];
+
+		// Force the collision: insert another row mapping some other live id to $live_id_b
+		// so $live_id_b appears in array_values($map). This reproduces the production
+		// pattern where local IDs accumulate over time and coincide with new live IDs.
+		$map[ (string) ( $live_id_a + 999 ) ] = $live_id_b;
+
+		// Caller passes the source-side live thumbnail ID (what live had for this post).
+		$this->logic->update_featured_image( $post_id, $map, $live_id_b );
+
+		// Must remap to $local_id_b. With the bug, this would still be $live_id_b.
+		$result = get_post_meta( $post_id, '_thumbnail_id', true );
+		$this->assertEquals( $local_id_b, (int) $result, 'Stale live thumbnail ID must be remapped even when it coincides with another imported local ID.' );
+	}
+
+	/**
+	 * Companion test: when the caller cannot supply the source-side live thumbnail ID
+	 * (null), the function falls back to the simple lookup-and-remap behavior. This is
+	 * the pre-a7a16e7 behavior and must remain correct when source data is unavailable.
+	 */
+	public function test_update_featured_image_should_remap_when_live_thumbnail_id_unknown(): void {
+		$live_id_a  = 1100;
+		$local_id_a = self::factory()->attachment->create();
+		$live_id_b  = 2100;
+		$local_id_b = self::factory()->attachment->create();
+		$post_id    = self::factory()->post->create();
+
+		update_post_meta( $post_id, '_thumbnail_id', $live_id_b );
+
+		$map = [
+			(string) $live_id_a => $local_id_a,
+			(string) $live_id_b => $local_id_b,
+			// Collision row: another live id maps to $live_id_b.
+			(string) 9999       => $live_id_b,
+		];
+
+		// Without the optional live-thumbnail-id argument, the function must still remap.
+		$this->logic->update_featured_image( $post_id, $map );
+
+		$result = get_post_meta( $post_id, '_thumbnail_id', true );
+		$this->assertEquals( $local_id_b, (int) $result );
 	}
 
 	/**

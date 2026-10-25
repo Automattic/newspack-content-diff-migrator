@@ -1742,10 +1742,19 @@ class ContentDiffLogic {
 	/**
 	 * Updates a single Post's featured image ID with new ID after insertion.
 	 *
-	 * @param int   $post_id                     Local Post ID.
-	 * @param array $imported_attachment_ids_map Keys are IDs on Live Site, values are IDs of imported posts on Local Site.
+	 * @param int      $post_id                     Local Post ID.
+	 * @param array    $imported_attachment_ids_map Keys are IDs on Live Site, values are IDs of imported posts on Local Site.
+	 * @param int|null $live_thumbnail_id           Optional. The post's source-side `_thumbnail_id`
+	 *                                              (i.e. the live attachment ID that the source post
+	 *                                              referenced). When supplied, this enables a precise
+	 *                                              double-remap guard: if the current local
+	 *                                              `_thumbnail_id` already equals the local target
+	 *                                              that `$live_thumbnail_id` maps to, the update is
+	 *                                              skipped. When null, no guard is applied (the
+	 *                                              caller is expected to be authoritative about
+	 *                                              whether the post still needs remapping).
 	 */
-	public function update_featured_image( int $post_id, array $imported_attachment_ids_map ): void {
+	public function update_featured_image( int $post_id, array $imported_attachment_ids_map, ?int $live_thumbnail_id = null ): void {
 		if ( empty( $imported_attachment_ids_map ) ) {
 			return;
 		}
@@ -1766,8 +1775,21 @@ class ContentDiffLogic {
 			return;
 		}
 
-		// Skip if current thumbnail is already a valid local ID, i.e. was already updated (prevents ID collision/overlap on subsequent runs).
-		if ( in_array( (int) $current_thumbnail_id, array_values( $imported_attachment_ids_map ), true ) ) {
+		// Precise double-remap guard: when the caller knows the post's source-side
+		// `_thumbnail_id` (the live attachment ID), and that live ID has a known local
+		// counterpart in the map, AND the post's current `_thumbnail_id` already equals
+		// that local counterpart, the FI was already correctly remapped on a prior pass.
+		// Skip to avoid the chain case (live X -> local Y, live Y -> local Z) from
+		// rewriting Y -> Z on a subsequent run.
+		//
+		// Note: this replaces the prior `in_array( current, array_values($map) )` check,
+		// which produced false positives whenever the current value (still a stale live
+		// ID) coincided numerically with the local ID assigned to some unrelated imported
+		// attachment — a common pattern on sites with accumulated NCDM history.
+		if ( null !== $live_thumbnail_id
+			&& isset( $imported_attachment_ids_map[ $live_thumbnail_id ] )
+			&& (int) $imported_attachment_ids_map[ $live_thumbnail_id ] === (int) $current_thumbnail_id
+		) {
 			return;
 		}
 
