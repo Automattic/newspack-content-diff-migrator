@@ -877,6 +877,118 @@ class CmdMigrateLiveContentTaxonomyTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Tests that term counts are recalculated by term_taxonomy_id when it differs from term_id.
+	 *
+	 * The importer increments counts during import, so a pre-existing stale count only gets corrected by the final
+	 * recount, which must target the term's term_taxonomy_id and not its term_id.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_recalculate_term_count_when_term_id_differs_from_term_taxonomy_id(): void {
+		global $wpdb;
+
+		// Push the term_taxonomy auto-increment ahead of the terms one, so the next term gets term_id != term_taxonomy_id.
+		$spacer = wp_insert_term( 'NCDM Spacer', 'category' );
+		$wpdb->insert( // phpcs:ignore
+			$wpdb->term_taxonomy,
+			[
+				'term_taxonomy_id' => max( $spacer['term_id'], $spacer['term_taxonomy_id'] ) + 100,
+				'term_id'          => $spacer['term_id'],
+				'taxonomy'         => 'ncdm_spacer',
+				'description'      => '',
+				'parent'           => 0,
+				'count'            => 0,
+			]
+		);
+
+		// Existing local term with a stale count.
+		$local_term  = wp_insert_term( 'Stale Count Cat', 'category', [ 'slug' => 'stale-count-cat' ] );
+		$local_tt_id = (int) $local_term['term_taxonomy_id'];
+		$this->assertNotEquals( (int) $local_term['term_id'], $local_tt_id, 'Precondition: local term_id and term_taxonomy_id should differ.' );
+		$wpdb->update( $wpdb->term_taxonomy, [ 'count' => 50 ], [ 'term_taxonomy_id' => $local_tt_id ] ); // phpcs:ignore
+
+		// Live: same term assigned to 3 posts.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 11401, 'name' => 'Stale Count Cat', 'slug' => 'stale-count-cat', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 11401, 'term_id' => 11401, 'taxonomy' => 'category', 'description' => '', 'parent' => 0, 'count' => 3 ] ); // phpcs:ignore
+		for ( $i = 1; $i <= 3; $i++ ) {
+			$post = $this->create_post_fixture( [ 'ID' => 11400 + $i ] );
+			$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+			$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 11400 + $i, 'term_taxonomy_id' => 11401 ] ); // phpcs:ignore
+		}
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Read from DB directly to bypass the object cache.
+		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT count FROM {$wpdb->term_taxonomy} WHERE term_taxonomy_id = %d", $local_tt_id ) ); // phpcs:ignore
+		$this->assertSame( 3, $count, 'Stale term count should be recalculated to 3.' );
+	}
+
+	/**
+	 * Tests that term counts are recalculated for all terms when a taxonomy spans multiple recount batches.
+	 *
+	 * @group taxonomy
+	 */
+	public function test_should_recalculate_term_counts_across_multiple_batches(): void {
+		global $wpdb;
+
+		// More terms than the recount batch size (up to 1200), so the recount spans multiple batches.
+		$terms_count = 1201;
+		$stale_count = 99;
+		$base_id     = (int) max(
+			$wpdb->get_var( "SELECT MAX(term_id) FROM {$wpdb->terms}" ), // phpcs:ignore
+			$wpdb->get_var( "SELECT MAX(term_taxonomy_id) FROM {$wpdb->term_taxonomy}" ) // phpcs:ignore
+		) + 1000;
+
+		// Bulk insert local post_tag terms with stale counts, using term_id == term_taxonomy_id.
+		$terms_values = [];
+		$tt_values    = [];
+		for ( $i = 0; $i < $terms_count; $i++ ) {
+			$id             = $base_id + $i;
+			$terms_values[] = $wpdb->prepare( '(%d, %s, %s, 0)', $id, 'Batch Tag ' . $i, 'batch-tag-' . $i );
+			$tt_values[]    = $wpdb->prepare( "(%d, %d, 'post_tag', '', 0, %d)", $id, $id, $stale_count );
+		}
+		$wpdb->query( "INSERT INTO {$wpdb->terms} (term_id, name, slug, term_group) VALUES " . implode( ',', $terms_values ) ); // phpcs:ignore
+		$wpdb->query( "INSERT INTO {$wpdb->term_taxonomy} (term_taxonomy_id, term_id, taxonomy, description, parent, count) VALUES " . implode( ',', $tt_values ) ); // phpcs:ignore
+
+		// Assign local published posts to the first, a middle and the last term.
+		$first_tt_id  = $base_id;
+		$middle_tt_id = $base_id + 600;
+		$last_tt_id   = $base_id + $terms_count - 1;
+		foreach ( [ $first_tt_id, $middle_tt_id, $last_tt_id ] as $tt_id ) {
+			$post_id = self::factory()->post->create();
+			$wpdb->insert( $wpdb->term_relationships, [ 'object_id' => $post_id, 'term_taxonomy_id' => $tt_id ] ); // phpcs:ignore
+		}
+
+		// Live: one post with a tag, so migration runs through to the recount step.
+		$wpdb->insert( $this->live_table_prefix . 'terms', [ 'term_id' => 11501, 'name' => 'Batch Live Tag', 'slug' => 'batch-live-tag', 'term_group' => 0 ] ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_taxonomy', [ 'term_taxonomy_id' => 11501, 'term_id' => 11501, 'taxonomy' => 'post_tag', 'description' => '', 'parent' => 0, 'count' => 1 ] ); // phpcs:ignore
+		$post = $this->create_post_fixture( [ 'ID' => 11502 ] );
+		$wpdb->insert( $this->live_table_prefix . 'posts', $post ); // phpcs:ignore
+		$wpdb->insert( $this->live_table_prefix . 'term_relationships', [ 'object_id' => 11502, 'term_taxonomy_id' => 11501 ] ); // phpcs:ignore
+
+		$this->run_search_command();
+		$this->run_migrate_command();
+
+		// Read from DB directly to bypass the object cache.
+		$counts = $wpdb->get_results( // phpcs:ignore
+			$wpdb->prepare(
+				"SELECT term_taxonomy_id, count FROM {$wpdb->term_taxonomy} WHERE term_taxonomy_id BETWEEN %d AND %d",
+				$base_id,
+				$last_tt_id
+			),
+			OBJECT_K
+		);
+
+		$this->assertCount( $terms_count, $counts, 'All bulk-inserted terms should exist.' );
+		$this->assertSame( '1', $counts[ $first_tt_id ]->count, 'First term count should be 1.' );
+		$this->assertSame( '1', $counts[ $middle_tt_id ]->count, 'Middle term count should be 1.' );
+		$this->assertSame( '1', $counts[ $last_tt_id ]->count, 'Last term count should be 1.' );
+		$stale_rows = array_filter( $counts, fn( $row ) => (int) $row->count === $stale_count );
+		$this->assertEmpty( $stale_rows, 'No term should keep its stale count.' );
+	}
+
+	/**
 	 * Tests that default taxonomies (category, post_tag, author) are migrated when no --custom-taxonomies-csv is provided.
 	 *
 	 * @group taxonomy
