@@ -1786,17 +1786,53 @@ class ContentDiffMigrator {
 	 * @param array $taxonomies_to_migrate Taxonomies to migrate.
 	 */
 	private function recalculate_term_counts( array $taxonomies_to_migrate ): void {
+		global $wpdb;
+
+		$batch_size = 500;
+
 		foreach ( $taxonomies_to_migrate as $taxonomy ) {
-			$terms = get_terms(
-				[
-					'taxonomy'   => $taxonomy,
-					'hide_empty' => false,
-					'fields'     => 'ids',
-				] 
-			);
-			if ( ! is_wp_error( $terms ) && $terms ) {
-				wp_update_term_count_now( $terms, $taxonomy );
+			if ( ! taxonomy_exists( $taxonomy ) ) {
+				continue;
 			}
+
+			$last_tt_id = 0;
+
+			do {
+				// term_taxonomy_id: the ID wp_update_term_count_now() actually expects.
+				// Keyset pagination on the primary key stays fast at any depth.
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+				$tt_ids = $wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT term_taxonomy_id
+                                     FROM {$wpdb->term_taxonomy}
+                                    WHERE taxonomy = %s AND term_taxonomy_id > %d
+                             ORDER BY term_taxonomy_id ASC
+                                    LIMIT %d",
+						$taxonomy,
+						$last_tt_id,
+						$batch_size
+					)
+				);
+
+				if ( ! $tt_ids ) {
+					break;
+				}
+
+				$last_tt_id = (int) end( $tt_ids );
+
+				// Keeps core semantics: custom update_count_callback, attachment
+				// handling, status filters and hooks all still run.
+				wp_update_term_count_now( $tt_ids, $taxonomy );
+
+				// Release per-batch memory.
+				$wpdb->flush();          // drops $wpdb->last_result.
+				$wpdb->queries = [];     // no-op unless SAVEQUERIES is on.
+				if ( function_exists( 'wp_cache_flush_runtime' ) ) {
+					wp_cache_flush_runtime(); // in-process cache only; persistent cache is untouched.
+				}
+
+				$count_of_tt_ids = count( $tt_ids );
+			} while ( $count_of_tt_ids === $batch_size );
 		}
 	}
 
