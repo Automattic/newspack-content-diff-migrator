@@ -1788,7 +1788,7 @@ class ContentDiffMigrator {
 	private function recalculate_term_counts( array $taxonomies_to_migrate ): void {
 		global $wpdb;
 
-		$batch_size = 500;
+		$batch_size = 1000;
 
 		foreach ( $taxonomies_to_migrate as $taxonomy ) {
 			if ( ! taxonomy_exists( $taxonomy ) ) {
@@ -1824,12 +1824,8 @@ class ContentDiffMigrator {
 				// handling, status filters and hooks all still run.
 				wp_update_term_count_now( $tt_ids, $taxonomy );
 
-				// Release per-batch memory.
-				$wpdb->flush();          // drops $wpdb->last_result.
-				$wpdb->queries = [];     // no-op unless SAVEQUERIES is on.
-				if ( function_exists( 'wp_cache_flush_runtime' ) ) {
-					wp_cache_flush_runtime(); // in-process cache only; persistent cache is untouched.
-				}
+				// One cleanup + pause per batch (1000 terms), same pace as other cdiff loops.
+				MemoryCleanupHook::cleanup( $this->test_env ? 0 : 1 );
 
 				$count_of_tt_ids = count( $tt_ids );
 			} while ( $count_of_tt_ids === $batch_size );
